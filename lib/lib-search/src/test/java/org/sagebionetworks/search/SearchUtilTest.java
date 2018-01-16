@@ -477,7 +477,7 @@ public class SearchUtilTest {
 		SearchUtil.formulateAuthorizationFilter(userInfo);
 	}
 
-	@Test (expected = DatastoreException.class)
+	@Test (expected = IllegalArgumentException.class)
 	public void testFormulateAuthorizationFilterEmptyUserGroups(){
 		UserInfo userInfo = new UserInfo(false);
 		userInfo.setGroups(new HashSet<>());
@@ -510,17 +510,17 @@ public class SearchUtilTest {
 	////////////////////////////////////////
 
 	@Test(expected = IllegalArgumentException.class)
-	public void testConvertSearchDocumentsToJSONNullDocuments(){
+	public void testConvertSearchDocumentsToJSONStringNullDocuments(){
 		SearchUtil.convertSearchDocumentsToJSONString(null);
 	}
 
 	@Test(expected = IllegalArgumentException.class)
-	public void testConvertSearchDocumentsToJSONEmptyDocuments(){
+	public void testConvertSearchDocumentsToJSONStringEmptyDocuments(){
 		SearchUtil.convertSearchDocumentsToJSONString(new LinkedList<>());
 	}
 
 	@Test
-	public void testConvertSearchDocumentsToJSON(){
+	public void testConvertSearchDocumentsToJSONString(){
 		Document deleteDoc = new Document();
 		deleteDoc.setId("syn123");
 		deleteDoc.setType(DocumentTypeNames.delete);

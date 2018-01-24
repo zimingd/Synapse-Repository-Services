@@ -38,7 +38,6 @@ public class CloudSearchClientProvider {
 				singletonWrapper = new CloudsSearchDomainClientAdapter(awsCloudSearchDomainClient);
 				return singletonWrapper;
 			} else{
-				log.warn("CloudSearch is not finished initializing");
 				throw new TemporarilyUnavailableException("Search has not yet been initialized. Please try again later!");
 			}
 		}

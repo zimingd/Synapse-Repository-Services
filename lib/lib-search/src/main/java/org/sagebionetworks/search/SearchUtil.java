@@ -242,7 +242,7 @@ public class SearchUtil{
 		return synapseSearchResults;
 	}
 
-	private static Facet convertToSynapseSearchFacet(String facetName, BucketInfo bucketInfo) {
+	static Facet convertToSynapseSearchFacet(String facetName, BucketInfo bucketInfo) {
 		FacetTypeNames facetType = FACET_TYPES.get(facetName);
 		if (facetType == null) {
 			throw new IllegalArgumentException(
@@ -268,7 +268,7 @@ public class SearchUtil{
 		return synapseFacet;
 	}
 
-	private static org.sagebionetworks.repo.model.search.Hit convertToSynapseHit(com.amazonaws.services.cloudsearchdomain.model.Hit cloudSearchHit){
+	static org.sagebionetworks.repo.model.search.Hit convertToSynapseHit(com.amazonaws.services.cloudsearchdomain.model.Hit cloudSearchHit){
 		Map<String, List<String>> fieldsMap = cloudSearchHit.getFields();
 
 		org.sagebionetworks.repo.model.search.Hit synapseHit = new org.sagebionetworks.repo.model.search.Hit();
@@ -289,7 +289,7 @@ public class SearchUtil{
 	}
 
 
-	private static String getFirstListValueFromMap(Map<String, List<String>> map, String key){
+	static String getFirstListValueFromMap(Map<String, List<String>> map, String key){
 		List<String> list = map.get(key);
 		return (list == null || list.isEmpty()) ? null : list.get(0);
 	}

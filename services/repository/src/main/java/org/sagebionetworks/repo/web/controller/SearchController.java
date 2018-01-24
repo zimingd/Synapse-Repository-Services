@@ -37,14 +37,12 @@ public class SearchController extends BaseController {
 	/**
 	 * @param userId
 	 * @param searchQuery
-	 * @param request
 	 * @return search results from CloudSearch
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = { "/search" }, method = RequestMethod.POST)
 	public @ResponseBody
-	SearchResults proxySearch(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @RequestBody SearchQuery searchQuery,
-			HttpServletRequest request) {
+	SearchResults proxySearch(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @RequestBody SearchQuery searchQuery) {
 		return serviceProvider.getSearchService().proxySearch(userId, searchQuery);
 	}
 }

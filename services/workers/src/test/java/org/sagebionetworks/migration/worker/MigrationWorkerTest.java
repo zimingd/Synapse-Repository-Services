@@ -29,6 +29,8 @@ import org.sagebionetworks.repo.model.migration.*;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.google.common.collect.Lists;
+
 public class MigrationWorkerTest {
 	
 	@Mock
@@ -140,8 +142,7 @@ public class MigrationWorkerTest {
 	@Test
 	public void testProcessAsyncMigrationRangeCountRequest() throws Throwable {
 		AsyncMigrationRangeChecksumRequest mReq = new AsyncMigrationRangeChecksumRequest();
-		mReq.setType(MigrationType.ACCESS_APPROVAL.name());
-		
+		mReq.setMigrationType(MigrationType.ACCESS_APPROVAL);
 		migrationWorker.processRequest(user, mReq, "JOBID");
 		
 		verify(mockMigrationManager).processAsyncMigrationRangeChecksumRequest(user, mReq);
@@ -184,5 +185,24 @@ public class MigrationWorkerTest {
 		// call under test
 		migrationWorker.processRequest(user, request, jobId);
 		verify(mockMigrationManager).backupRequest(user, request);
+	}
+	
+	@Test
+	public void testProcessRequestDelete() throws Exception {
+		String jobId = "123";
+		DeleteListRequest request = new DeleteListRequest();
+		request.setIdsToDelete(Lists.newArrayList(211L));
+		// call under test
+		migrationWorker.processRequest(user, request, jobId);
+		verify(mockMigrationManager).deleteById(user, request);
+	}
+	
+	@Test
+	public void testProcessRequestCalculateOptimalRanges() throws Exception {
+		String jobId = "123";
+		CalculateOptimalRangeRequest request = new CalculateOptimalRangeRequest();
+		// call under test
+		migrationWorker.processRequest(user, request, jobId);
+		verify(mockMigrationManager).calculateOptimalRanges(user, request);
 	}
 }

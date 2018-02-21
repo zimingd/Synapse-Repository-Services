@@ -32,25 +32,20 @@ import java.util.Set;
 import java.util.StringJoiner;
 
 import static org.sagebionetworks.search.SearchConstants.FIELD_ACL;
+import static org.sagebionetworks.search.SearchConstants.FIELD_CONSORTIUM;
 import static org.sagebionetworks.search.SearchConstants.FIELD_CREATED_BY;
-import static org.sagebionetworks.search.SearchConstants.FIELD_CREATED_BY_R;
 import static org.sagebionetworks.search.SearchConstants.FIELD_CREATED_ON;
 import static org.sagebionetworks.search.SearchConstants.FIELD_DESCRIPTION;
 import static org.sagebionetworks.search.SearchConstants.FIELD_DISEASE;
-import static org.sagebionetworks.search.SearchConstants.FIELD_DISEASE_R;
 import static org.sagebionetworks.search.SearchConstants.FIELD_ETAG;
 import static org.sagebionetworks.search.SearchConstants.FIELD_MODIFIED_BY;
-import static org.sagebionetworks.search.SearchConstants.FIELD_MODIFIED_BY_R;
 import static org.sagebionetworks.search.SearchConstants.FIELD_MODIFIED_ON;
 import static org.sagebionetworks.search.SearchConstants.FIELD_NAME;
 import static org.sagebionetworks.search.SearchConstants.FIELD_NODE_TYPE;
-import static org.sagebionetworks.search.SearchConstants.FIELD_NODE_TYPE_R;
 import static org.sagebionetworks.search.SearchConstants.FIELD_NUM_SAMPLES;
 import static org.sagebionetworks.search.SearchConstants.FIELD_PLATFORM;
 import static org.sagebionetworks.search.SearchConstants.FIELD_REFERENCE;
-import static org.sagebionetworks.search.SearchConstants.FIELD_SPECIES;
 import static org.sagebionetworks.search.SearchConstants.FIELD_TISSUE;
-import static org.sagebionetworks.search.SearchConstants.FIELD_TISSUE_R;
 
 public class SearchUtil{
 	public static final Map<String, FacetTypeNames> FACET_TYPES;
@@ -60,7 +55,6 @@ public class SearchUtil{
 		facetTypes.put(FIELD_NODE_TYPE, FacetTypeNames.LITERAL);
 		facetTypes.put(FIELD_DISEASE, FacetTypeNames.LITERAL);
 		facetTypes.put(FIELD_TISSUE, FacetTypeNames.LITERAL);
-		facetTypes.put(FIELD_SPECIES, FacetTypeNames.LITERAL);
 		facetTypes.put(FIELD_PLATFORM, FacetTypeNames.LITERAL);
 		facetTypes.put(FIELD_CREATED_BY, FacetTypeNames.LITERAL);
 		facetTypes.put(FIELD_MODIFIED_BY, FacetTypeNames.LITERAL);
@@ -69,6 +63,7 @@ public class SearchUtil{
 		facetTypes.put(FIELD_CREATED_ON, FacetTypeNames.DATE);
 		facetTypes.put(FIELD_MODIFIED_ON, FacetTypeNames.DATE);
 		facetTypes.put(FIELD_NUM_SAMPLES, FacetTypeNames.CONTINUOUS);
+		facetTypes.put(FIELD_CONSORTIUM, FacetTypeNames.LITERAL);
 		FACET_TYPES = Collections.unmodifiableMap(facetTypes);
 	}
 
@@ -94,7 +89,7 @@ public class SearchUtil{
 
 		// unstructured query terms into structured query terms
 		if (q != null && q.size() > 0)
-			queryTermsStringBuilder.append("(and " + joinQueries(q, " ") + ")");
+			queryTermsStringBuilder.append(joinQueryTerms(q));
 
 		// boolean query into structured query terms
 		if (bq != null && bq.size() > 0) {
@@ -171,17 +166,12 @@ public class SearchUtil{
 
 		// facets
 		if (searchQuery.getFacet() != null && searchQuery.getFacet().size() > 0){ //iterate over all facets
-			StringBuilder facetStringBuilder = new StringBuilder('{');
-			int initialStrBuilderLen = facetStringBuilder.length();
+			StringJoiner facetStringJoiner = new StringJoiner(",","{" ,"}");
 			for(String facetFieldName : searchQuery.getFacet()){
-				if (facetStringBuilder.length() > initialStrBuilderLen){
-					facetStringBuilder.append(',');
-				}
 				//no options inside {} since none are used by the webclient
-				facetStringBuilder.append("\""+ facetFieldName + "\":{}");
+				facetStringJoiner.add("\""+ facetFieldName + "\":{}");
 			}
-			facetStringBuilder.append('}');
-			searchRequest.setFacet(facetStringBuilder.toString());
+			searchRequest.setFacet(facetStringJoiner.toString());
 		}
 
 		//switch to size parameter in facet
@@ -272,17 +262,18 @@ public class SearchUtil{
 		Map<String, List<String>> fieldsMap = cloudSearchHit.getFields();
 
 		org.sagebionetworks.repo.model.search.Hit synapseHit = new org.sagebionetworks.repo.model.search.Hit();
-		synapseHit.setCreated_by(getFirstListValueFromMap(fieldsMap, FIELD_CREATED_BY_R));
+		synapseHit.setCreated_by(getFirstListValueFromMap(fieldsMap, FIELD_CREATED_BY));
 		synapseHit.setCreated_on(NumberUtils.createLong(getFirstListValueFromMap(fieldsMap, FIELD_CREATED_ON)));
 		synapseHit.setDescription(getFirstListValueFromMap(fieldsMap, FIELD_DESCRIPTION));
-		synapseHit.setDisease(getFirstListValueFromMap(fieldsMap, FIELD_DISEASE_R));
+		synapseHit.setDisease(getFirstListValueFromMap(fieldsMap, FIELD_DISEASE));
 		synapseHit.setEtag(getFirstListValueFromMap(fieldsMap, FIELD_ETAG));
-		synapseHit.setModified_by(getFirstListValueFromMap(fieldsMap, FIELD_MODIFIED_BY_R));
+		synapseHit.setModified_by(getFirstListValueFromMap(fieldsMap, FIELD_MODIFIED_BY));
 		synapseHit.setModified_on(NumberUtils.createLong(getFirstListValueFromMap(fieldsMap, FIELD_MODIFIED_ON)));
 		synapseHit.setName(getFirstListValueFromMap(fieldsMap, FIELD_NAME));
-		synapseHit.setNode_type(getFirstListValueFromMap(fieldsMap, FIELD_NODE_TYPE_R));
+		synapseHit.setNode_type(getFirstListValueFromMap(fieldsMap, FIELD_NODE_TYPE));
 		synapseHit.setNum_samples(NumberUtils.createLong(getFirstListValueFromMap(fieldsMap, FIELD_NUM_SAMPLES)));
-		synapseHit.setTissue(getFirstListValueFromMap(fieldsMap, FIELD_TISSUE_R));
+		synapseHit.setTissue(getFirstListValueFromMap(fieldsMap, FIELD_TISSUE));
+		synapseHit.setConsortium(getFirstListValueFromMap(fieldsMap, FIELD_CONSORTIUM));
 		//synapseHit.setPath() also exists but there does not appear to be a path field in the cloudsearch anymore.
 		synapseHit.setId(cloudSearchHit.getId());
 		return synapseHit;
@@ -311,23 +302,16 @@ public class SearchUtil{
 		return "(prefix" + (fieldName==null ? "" : " field=" + fieldName) + " '" + prefixStringWithAsterisk.substring(0, asteriskIndex) + "')";
 	}
 	
-	private static String joinQueries(List<String> list, String delimiter){
-		StringBuilder sb = new StringBuilder();
+	public static String joinQueryTerms(List<String> list){
+		StringJoiner sb = new StringJoiner(" ", "(and ", ")");
 		for (String item : list) {
 			if(item.contains("*")){
-				sb.append(createPrefixQuery(item, null));
+				sb.add(createPrefixQuery(item, null));
 			}else{
-				sb.append('\''); //appends ' character
-				sb.append(item);
-				sb.append('\'');
+				sb.add('\'' + item + '\''); //wraps item with single quotes (e.g. 'item')
 			}
-			sb.append(delimiter);
 		}
-		String str = sb.toString();
-		if (str.length() > 0) {
-			str = str.substring(0, str.length()-1);
-		}
-		return str;
+		return sb.toString();
 	}
 
 	private static String escapeQuotedValue(String value) {
@@ -353,17 +337,11 @@ public class SearchUtil{
 		ValidateArgument.requirement(!userGroups.isEmpty(), "no groups for user " + userInfo);
 
 		// Make our boolean query
-		StringBuilder authorizationFilterBuilder = new StringBuilder("(or ");
-		int initialLen = authorizationFilterBuilder.length();
+		StringJoiner authorizationFilterJoiner = new StringJoiner(" ","(or ", ")");
 		for (Long group : userGroups) {
-			if (authorizationFilterBuilder.length() > initialLen) {
-				authorizationFilterBuilder.append(" ");
-			}
-			authorizationFilterBuilder.append(FIELD_ACL).append(":'").append(group).append("'");
+			authorizationFilterJoiner.add(FIELD_ACL + ":'" + group + "'");
 		}
-		authorizationFilterBuilder.append(")");
-
-		return authorizationFilterBuilder.toString();
+		return authorizationFilterJoiner.toString();
 	}
 
 	/**
@@ -401,7 +379,5 @@ public class SearchUtil{
 		if(document.getFields() == null){
 			document.setFields(new DocumentFields());
 		}
-		// The id field must match the document's id.
-		document.getFields().setId(document.getId());
 	}
 }

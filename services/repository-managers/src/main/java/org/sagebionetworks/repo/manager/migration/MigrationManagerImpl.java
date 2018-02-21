@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Writer;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,8 +35,12 @@ import org.sagebionetworks.repo.model.migration.AsyncMigrationTypeCountRequest;
 import org.sagebionetworks.repo.model.migration.AsyncMigrationTypeCountsRequest;
 import org.sagebionetworks.repo.model.migration.BackupTypeListRequest;
 import org.sagebionetworks.repo.model.migration.BackupTypeRangeRequest;
-import org.sagebionetworks.repo.model.migration.BackupTypeRequest;
 import org.sagebionetworks.repo.model.migration.BackupTypeResponse;
+import org.sagebionetworks.repo.model.migration.CalculateOptimalRangeRequest;
+import org.sagebionetworks.repo.model.migration.CalculateOptimalRangeResponse;
+import org.sagebionetworks.repo.model.migration.DeleteListRequest;
+import org.sagebionetworks.repo.model.migration.DeleteListResponse;
+import org.sagebionetworks.repo.model.migration.IdRange;
 import org.sagebionetworks.repo.model.migration.ListBucketProvider;
 import org.sagebionetworks.repo.model.migration.MigrationRangeChecksum;
 import org.sagebionetworks.repo.model.migration.MigrationType;
@@ -56,7 +61,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.google.common.collect.Iterables;
-import com.google.common.collect.Sets;
 
 
 /**
@@ -91,11 +95,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	/**
 	 * Migration types for principals.
 	 */
-	static final Set<MigrationType> PRINCIPAL_TYPES = Sets.newHashSet(
-			MigrationType.PRINCIPAL, 
-			MigrationType.CREDENTIAL,
-			MigrationType.GROUP_MEMBERS
-	);
+	static Set<MigrationType> PRINCIPAL_TYPES;
 
 	/**
 	 * The maximum size of a backup batch.
@@ -180,7 +180,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	public List<Long> createOrUpdateBatch(UserInfo user, final MigrationType type, final InputStream in, BackupAliasType backupAliasType) throws Exception {
 		validateUser(user);
 		if(type == null) throw new IllegalArgumentException("Type cannot be null");
-		return migratableTableDao.runWithForeignKeyIgnored((Callable<List<Long>>) () -> {
+		return migratableTableDao.runWithKeyChecksIgnored((Callable<List<Long>>) () -> {
 			// Get the database object from the dao
 			MigratableDatabaseObject mdo = migratableTableDao.getObjectForType(type);
 			return createOrUpdateBatch(mdo, in, backupAliasType);
@@ -193,7 +193,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	public int deleteObjectsById(final UserInfo user, final MigrationType type, final List<Long> idList) throws Exception {
 		validateUser(user);
 		// Do deletes with the foreign key checks off.
-		return migratableTableDao.runWithForeignKeyIgnored(() -> {
+		return migratableTableDao.runWithKeyChecksIgnored(() -> {
 			// If this type has secondary types then delete them first
 			List<MigratableDatabaseObject> secondary = migratableTableDao.getObjectForType(type).getSecondaryTypes();
 			if(secondary != null){
@@ -446,7 +446,7 @@ public class MigrationManagerImpl implements MigrationManager {
 			for(RowMetadata row: list){
 				toDelete.add(row.getId());
 			}
-			deleteObjectsById(user, type, toDelete);
+			deleteById(user, type, toDelete);
 		}
 	}
 	
@@ -539,21 +539,21 @@ public class MigrationManagerImpl implements MigrationManager {
 
 	@Override
 	public MigrationTypeChecksum processAsyncMigrationTypeChecksumRequest(
-			final UserInfo user, final AsyncMigrationTypeChecksumRequest mReq) {
-		String t = mReq.getType();
-		MigrationType mt = MigrationType.valueOf(t);
-		return getChecksumForType(user, mt);
+			final UserInfo user, final AsyncMigrationTypeChecksumRequest request) {
+		ValidateArgument.required(request, "request");
+		ValidateArgument.required(request.getMigrationType(), "request.migrationType");
+		return getChecksumForType(user, request.getMigrationType());
 	}
 
 	@Override
 	public MigrationRangeChecksum processAsyncMigrationRangeChecksumRequest(
-			final UserInfo user, final AsyncMigrationRangeChecksumRequest mReq) {
-		String t = mReq.getType();
-		MigrationType mt = MigrationType.valueOf(t);
-		String salt = mReq.getSalt();
-		long minId = mReq.getMinId();
-		long maxId = mReq.getMaxId();
-		return getChecksumForIdRange(user, mt, salt, minId, maxId);
+			final UserInfo user, final AsyncMigrationRangeChecksumRequest request) {
+		ValidateArgument.required(request, "request");
+		ValidateArgument.required(request.getMigrationType(), "request.migrationType");
+		ValidateArgument.required(request.getSalt(), "request.salt");
+		ValidateArgument.required(request.getMinId(), "request.minId");
+		ValidateArgument.required(request.getMaxId(), "request.maxId");
+		return getChecksumForIdRange(user, request.getMigrationType(), request.getSalt(), request.getMinId(), request.getMaxId());
 	}
 
 	@Override
@@ -600,6 +600,10 @@ public class MigrationManagerImpl implements MigrationManager {
 	public void initialize() {
 		// validate all of the foreign keys.
 		validateForeignKeys();
+		
+		PRINCIPAL_TYPES = new HashSet<>();
+		PRINCIPAL_TYPES.add(MigrationType.PRINCIPAL);
+		PRINCIPAL_TYPES.addAll(getSecondaryTypes(MigrationType.PRINCIPAL));
 	}
 
 	/*
@@ -706,6 +710,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	 * (non-Javadoc)
 	 * @see org.sagebionetworks.repo.manager.migration.MigrationManager#restoreRequest(org.sagebionetworks.repo.model.UserInfo, org.sagebionetworks.repo.model.migration.RestoreTypeRequest)
 	 */
+	@WriteTransactionReadCommitted // required see PLFM-4832
 	@Override
 	public RestoreTypeResponse restoreRequest(UserInfo user, RestoreTypeRequest request) throws IOException {
 		ValidateArgument.required(user, "User");
@@ -715,6 +720,11 @@ public class MigrationManagerImpl implements MigrationManager {
 		ValidateArgument.required(request.getBatchSize(), "requset.batchSize");
 		ValidateArgument.required(request.getBackupFileKey(), "request.backupFileKey");
 		validateUser(user);
+		// If given a range then delete all data for that range.
+		if(request.getMinimumRowId() != null && request.getMaximumRowId() != null) {
+			deleteByRange(request.getMigrationType(), request.getMinimumRowId(), request.getMaximumRowId());
+		}
+		
 		// Stream all of the data to a local temporary file.
 		File temp = fileProvider.createTempFile("MigrationRestore", ".zip");
 		FileInputStream fis = null;
@@ -751,7 +761,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	 * @param aliasType
 	 * @return
 	 */
-	public RestoreTypeResponse restoreStream(InputStream input, MigrationType primaryType,
+	RestoreTypeResponse restoreStream(InputStream input, MigrationType primaryType,
 			BackupAliasType backupAliasType, long batchSize) {
 		RestoreTypeResponse response = new RestoreTypeResponse();
 		if(!this.migratableTableDao.isMigrationTypeRegistered(primaryType)) {
@@ -794,7 +804,7 @@ public class MigrationManagerImpl implements MigrationManager {
 	 * @param secondaryTypes
 	 * @param currentBatch
 	 */
-	public void restoreBatch(MigrationType currentType, MigrationType primaryType, List<MigrationType> secondaryTypes,
+	void restoreBatch(MigrationType currentType, MigrationType primaryType, List<MigrationType> secondaryTypes,
 			List<DatabaseObject<?>> currentBatch) {
 		if(!currentBatch.isEmpty()) {
 			// push the data to the database
@@ -868,6 +878,62 @@ public class MigrationManagerImpl implements MigrationManager {
 		this.fireDeleteBatchEvent(type, idList);
 		int deleteCount = this.migratableTableDao.deleteById(type, idList);
 		return deleteCount;
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.sagebionetworks.repo.manager.migration.MigrationManager#deleteById(org.sagebionetworks.repo.model.UserInfo, org.sagebionetworks.repo.model.migration.DeleteListRequest)
+	 */
+	@WriteTransactionReadCommitted
+	@Override
+	public DeleteListResponse deleteById(UserInfo user, DeleteListRequest request) {
+		ValidateArgument.required(request, "request");
+		int deleteCount = deleteById(user, request.getMigrationType(), request.getIdsToDelete());
+		DeleteListResponse response = new DeleteListResponse();
+		response.setDeleteCount(new Long(deleteCount));
+		return response;
+	}
+
+	@Override
+	public boolean isBootstrapType(MigrationType type) {
+		return PRINCIPAL_TYPES.contains(type);
+	}
+	
+	/**
+	 * Delete all primary and secondary data for the given ID range.
+	 * @param type
+	 * @param minimumId minimum ID (inclusive).
+	 * @param maximumId maximum ID (exclusive).
+	 */
+	void deleteByRange(MigrationType type, long minimumId, long maximumId) {
+		if(this.migratableTableDao.isMigrationTypeRegistered(type)) {
+			List<MigrationType> secondaryTypes = getSecondaryTypes(type);
+			for(MigrationType secondaryType: secondaryTypes) {
+				this.migratableTableDao.deleteByRange(secondaryType, minimumId, maximumId);
+			}
+			this.migratableTableDao.deleteByRange(type, minimumId, maximumId);
+		}
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.sagebionetworks.repo.manager.migration.MigrationManager#calculateRanges(org.sagebionetworks.repo.model.UserInfo, org.sagebionetworks.repo.model.migration.CalculateBackupRangeRequest)
+	 */
+	@Override
+	public CalculateOptimalRangeResponse calculateOptimalRanges(UserInfo user, CalculateOptimalRangeRequest request) {
+		ValidateArgument.required(request, "request");
+		ValidateArgument.required(request.getMigrationType(), "request.migrationType");
+		ValidateArgument.required(request.getMinimumId(), "request.minimumId");
+		ValidateArgument.required(request.getMaximumId(), "request.maximumId");
+		ValidateArgument.required(request.getOptimalRowsPerRange(), "request.optimalRowsPerRange");
+		ValidateArgument.required(user, "User");
+		validateUser(user);
+		List<IdRange> ranges = migratableTableDao.calculateRangesForType(request.getMigrationType(),
+				request.getMinimumId(), request.getMaximumId(), request.getOptimalRowsPerRange());
+		CalculateOptimalRangeResponse response = new CalculateOptimalRangeResponse();
+		response.setRanges(ranges);
+		response.setMigrationType(request.getMigrationType());
+		return response;
 	}
 
 }

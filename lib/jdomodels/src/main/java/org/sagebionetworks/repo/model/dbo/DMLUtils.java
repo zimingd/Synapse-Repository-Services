@@ -2,10 +2,12 @@ package org.sagebionetworks.repo.model.dbo;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 
 import org.sagebionetworks.repo.model.dbo.migration.ChecksumTableResult;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.RowMetadata;
+import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
@@ -210,6 +212,22 @@ public class DMLUtils {
 		main.append(mapping.getTableName());
 		main.append(" WHERE ");
 		appendPrimaryKey(mapping, main);
+		return main.toString();
+	}
+	
+	/**
+	 * Delete rows with a range of backup IDs.
+	 * @param mapping
+	 * @return
+	 */
+	public static String createDeleteByBackupIdRange(TableMapping mapping) {
+		ValidateArgument.required(mapping, "Mapping cannot be null");
+		ValidateArgument.required(mapping.getFieldColumns(), "TableMapping.getFieldColumns() cannot be null");
+		StringBuilder main = new StringBuilder();
+		main.append("DELETE FROM ");
+		main.append(mapping.getTableName());
+		main.append(" WHERE ");
+		addBackupRange(main, mapping);
 		return main.toString();
 	}
 	
@@ -678,5 +696,89 @@ public class DMLUtils {
 			}
 		};
 	}
+
+	/**
+	 * Create the SQL to list primary IDs with all associated secondary cardinality.
+	 * @param primaryMapping
+	 * @param secondaryMappings
+	 * @return
+	 */
+	public static String createPrimaryCardinalitySql(TableMapping primaryMapping, List<TableMapping> secondaryMappings) {
+		StringBuilder builder = new StringBuilder();
+		String primaryBackupColumnName = getBackupIdColumnName(primaryMapping).getColumnName();
+		// Select
+		builder.append("SELECT P0.");
+		builder.append(primaryBackupColumnName);
+		builder.append(", 1 ");
+		int index = 0;
+		for(TableMapping secondary: secondaryMappings) {
+			builder.append(" + T").append(index).append(".");
+			builder.append("CARD");
+			index++;
+		}
+		builder.append(" AS CARD");
+		// from
+		builder.append(" FROM ").append(primaryMapping.getTableName()).append(" AS P0");
+		// Join sub-query for each secondary type
+		index = 0;
+		for(TableMapping secondary: secondaryMappings) {
+			builder.append(" JOIN (");
+			builder.append(createCardinalitySubQueryForSecondary(primaryMapping, secondary));
+			builder.append(") T").append(index);
+			builder.append(" ON (P0.").append(primaryBackupColumnName);
+			builder.append(" = ");
+			builder.append("T").append(index).append(".").append(primaryBackupColumnName);
+			builder.append(")");
+			index++;
+		}
+		// where
+		builder.append(" WHERE");
+		builder.append(" P0.");
+		builder.append(getBackupIdColumnName(primaryMapping).getColumnName());
+		builder.append(" >= :").append(BIND_MIN_ID).append(" AND P0.");
+		builder.append(getBackupIdColumnName(primaryMapping).getColumnName());
+		builder.append(" < :").append(BIND_MAX_ID);
+		builder.append(" ORDER BY P0.").append(primaryBackupColumnName).append(" ASC");
+		return builder.toString();
+	}
 	
+	/**
+	 * Create a cardinality sub-query for a secondary type.
+	 * @param primaryMapping
+	 * @param secondaryMapping
+	 * @return
+	 */
+	public static String createCardinalitySubQueryForSecondary(TableMapping primaryMapping, TableMapping secondaryMapping) {
+		StringBuilder builder = new StringBuilder();
+		String primaryBackupIdColumnName = getBackupIdColumnName(primaryMapping).getColumnName();
+		String secondaryBackupIdColumnName = getBackupIdColumnName(secondaryMapping).getColumnName();
+		// Select
+		builder.append("SELECT P.");
+		builder.append(primaryBackupIdColumnName);
+		builder.append(",");
+		builder.append(" + COUNT(S.");
+		builder.append(secondaryBackupIdColumnName);
+		builder.append(")");
+		builder.append(" AS CARD");
+		// from
+		builder.append(" FROM ").append(primaryMapping.getTableName()).append(" AS P");
+		// Join
+		builder.append(" LEFT JOIN ").append(secondaryMapping.getTableName()).append(" AS S");
+		builder.append(" ON (");
+		builder.append("P.").append(primaryBackupIdColumnName);
+		builder.append(" = ");
+		builder.append(" S.").append(secondaryBackupIdColumnName);
+		builder.append(")");
+		// where
+		builder.append(" WHERE");
+		builder.append(" P.");
+		builder.append(primaryBackupIdColumnName);
+		builder.append(" >= :").append(BIND_MIN_ID).append(" AND P.");
+		builder.append(primaryBackupIdColumnName);
+		builder.append(" < :").append(BIND_MAX_ID);
+		builder.append(" GROUP BY P.");
+		builder.append(primaryBackupIdColumnName);
+		return builder.toString();
+	}
+
 }

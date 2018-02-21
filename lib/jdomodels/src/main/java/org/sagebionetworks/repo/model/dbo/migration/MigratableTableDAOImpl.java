@@ -14,6 +14,7 @@ import java.util.concurrent.Callable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.sagebionetworks.StackConfiguration;
+import org.sagebionetworks.database.StreamingJdbcTemplate;
 import org.sagebionetworks.repo.model.dbo.AutoIncrementDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.AutoTableMapping;
 import org.sagebionetworks.repo.model.dbo.DMLUtils;
@@ -21,6 +22,7 @@ import org.sagebionetworks.repo.model.dbo.DatabaseObject;
 import org.sagebionetworks.repo.model.dbo.FieldColumn;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.TableMapping;
+import org.sagebionetworks.repo.model.migration.IdRange;
 import org.sagebionetworks.repo.model.migration.MigrationType;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.RowMetadata;
@@ -30,6 +32,7 @@ import org.sagebionetworks.repo.transactions.WriteTransactionReadCommitted;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.SingleColumnRowMapper;
 import org.springframework.jdbc.core.namedparam.BeanPropertySqlParameterSource;
@@ -57,6 +60,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			+ " DELETE_RULE != 'RESTRICT' AND UNIQUE_CONSTRAINT_SCHEMA = ?";
 
 	private static final String SET_FOREIGN_KEY_CHECKS = "SET FOREIGN_KEY_CHECKS = ?";
+	private static final String SET_UNIQUE_KEY_CHECKS = "SET UNIQUE_CHECKS = ?";
 
 	Logger log = LogManager.getLogger(MigratableTableDAOImpl.class);
 
@@ -107,6 +111,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 
 	// SQL
 	private Map<MigrationType, String> deleteSqlMap = new HashMap<MigrationType, String>();
+	private Map<MigrationType, String> deleteByRangeMap = new HashMap<MigrationType, String>();
 	private Map<MigrationType, String> countSqlMap = new HashMap<MigrationType, String>();
 	private Map<MigrationType, String> maxSqlMap = new HashMap<MigrationType, String>();
 	private Map<MigrationType, String> minSqlMap = new HashMap<MigrationType, String>();
@@ -216,6 +221,8 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 		// Build up the SQL cache.
 		String delete = DMLUtils.createBatchDelete(mapping);
 		deleteSqlMap.put(type, delete);
+		String deleteByRange = DMLUtils.createDeleteByBackupIdRange(mapping);
+		deleteByRangeMap.put(type, deleteByRange);
 		String count = DMLUtils.createGetCountByPrimaryKeyStatement(mapping);
 		countSqlMap.put(type, count);
 		String mx = DMLUtils.createGetMaxByBackupKeyStatement(mapping);
@@ -573,10 +580,10 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 	 * @see org.sagebionetworks.repo.model.dbo.migration.MigratableTableDAO#runWithForeignKeyIgnored(java.util.concurrent.Callable)
 	 */
 	@Override
-	public <T> T runWithForeignKeyIgnored(Callable<T> call) {
+	public <T> T runWithKeyChecksIgnored(Callable<T> call) {
 		try{
 			// unconditionally turn off foreign key checks.
-			setForeignKeyChecks(false);
+			setGlobalKeyChecks(false);
 			try {
 				return call.call();
 			} catch (Exception e) {
@@ -584,7 +591,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			}
 		}finally{
 			// unconditionally turn on foreign key checks.
-			setForeignKeyChecks(true);
+			setGlobalKeyChecks(true);
 		}
 	}
 	
@@ -592,7 +599,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 	 * Helper to enable/disable foreign keys.
 	 * @param enabled
 	 */
-	private void setForeignKeyChecks(boolean enabled) {
+	private void setGlobalKeyChecks(boolean enabled) {
 		int value;
 		if(enabled){
 			// trun it on.
@@ -602,6 +609,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			value = 0;
 		}
 		jdbcTemplate.update(SET_FOREIGN_KEY_CHECKS, value);
+		jdbcTemplate.update(SET_UNIQUE_KEY_CHECKS, value);
 	}
 
 
@@ -703,7 +711,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			return new LinkedList<>();
 		}
 		// Foreign Keys must be ignored for this operation.
-		return this.runWithForeignKeyIgnored(() -> {
+		return this.runWithKeyChecksIgnored(() -> {
 			List<Long> createOrUpdateIds = new LinkedList<>();
 			FieldColumn backukpIdColumn = this.backupIdColumns.get(type);
 			String sql = getInsertOrUpdateSql(type);
@@ -735,7 +743,7 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			return 0;
 		}
 		// Foreign Keys must be ignored for this operation.
-		return this.runWithForeignKeyIgnored(() -> {
+		return this.runWithKeyChecksIgnored(() -> {
 			String deleteSQL = this.deleteSqlMap.get(type);
 			SqlParameterSource params = new MapSqlParameterSource(
 					DMLUtils.BIND_VAR_ID_lIST, idList);
@@ -743,5 +751,62 @@ public class MigratableTableDAOImpl implements MigratableTableDAO {
 			return namedTemplate.update(deleteSQL, params);
 		});
 	}
-	
+
+	@WriteTransactionReadCommitted
+	@Override
+	public int deleteByRange(final MigrationType type, final long minimumId, final long maximumId) {
+		ValidateArgument.required(type,"MigrationType");
+		// Foreign Keys must be ignored for this operation.
+		return this.runWithKeyChecksIgnored(() -> {
+			String deleteSQL = this.deleteByRangeMap.get(type);
+			NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(jdbcTemplate);
+			Map<String, Object> parameters = new HashMap<>(2);
+			parameters.put(DMLUtils.BIND_MIN_ID, minimumId);
+			parameters.put(DMLUtils.BIND_MAX_ID, maximumId);
+			return namedTemplate.update(deleteSQL, parameters);
+		});
+	}
+
+	@Override
+	public List<IdRange> calculateRangesForType(MigrationType migrationType, long minimumId, long maximumId,
+			long optimalNumberOfRows) {
+		// Build the ranges by scanning each primary ID and its secondary cardinality.
+		final IdRangeBuilder builder = new IdRangeBuilder(optimalNumberOfRows);
+		String sql = getPrimaryCardinalitySql(migrationType);
+		// need to use a streaming template for this case.
+		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(new StreamingJdbcTemplate(jdbcTemplate.getDataSource()));
+		Map<String, Object> parameters = new HashMap<>(2);
+		parameters.put(DMLUtils.BIND_MIN_ID, minimumId);
+		parameters.put(DMLUtils.BIND_MAX_ID, maximumId);
+		// Stream over each primary row ID and its associated secondary cardinality.
+		namedTemplate.query(sql, parameters, new RowCallbackHandler() {
+
+			@Override
+			public void processRow(ResultSet rs) throws SQLException {
+				// pass each row to the builder
+				long primaryRowId = rs.getLong(1);
+				long cardinality = rs.getLong(2);
+				builder.addRow(primaryRowId, cardinality);
+			}});
+		// The build collates the results
+		return builder.collateResults();
+	}
+
+	/**
+	 * Get the SQL for a primary cardinality.
+	 * @param primaryType
+	 * @return
+	 */
+	public String getPrimaryCardinalitySql(MigrationType primaryType) {
+		MigratableDatabaseObject primaryObject = getMigratableObject(primaryType);
+		TableMapping primaryMapping = primaryObject.getTableMapping();
+		List<TableMapping> secondaryMapping = new LinkedList<>();
+		List<MigratableDatabaseObject> secondaryTypes = primaryObject.getSecondaryTypes();
+		if(secondaryTypes != null) {
+			for(MigratableDatabaseObject secondary: secondaryTypes) {
+				secondaryMapping.add(secondary.getTableMapping());
+			}
+		}
+		return DMLUtils.createPrimaryCardinalitySql(primaryMapping, secondaryMapping);
+	}
 }

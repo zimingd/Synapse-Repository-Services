@@ -13,6 +13,7 @@ import java.util.concurrent.Callable;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sagebionetworks.ids.IdGenerator;
@@ -33,6 +34,7 @@ import org.sagebionetworks.repo.model.dbo.persistence.table.DBOColumnModel;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.file.PreviewFileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.migration.IdRange;
 import org.sagebionetworks.repo.model.migration.MigrationType;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.RowMetadata;
@@ -40,6 +42,7 @@ import org.sagebionetworks.repo.model.migration.RowMetadataResult;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
@@ -60,6 +63,10 @@ public class MigratableTableDAOImplAutowireTest {
 	
 	@Autowired
 	ColumnModelDAO columnModelDao;
+	
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+	
 
 	@Autowired
 	private IdGenerator idGenerator;
@@ -268,7 +275,7 @@ public class MigratableTableDAOImplAutowireTest {
 			// expected
 		}
 		// While the check is off we can violate foreign keys.
-		Boolean result = migratableTableDAO.runWithForeignKeyIgnored(new Callable<Boolean>(){
+		Boolean result = migratableTableDAO.runWithKeyChecksIgnored(new Callable<Boolean>(){
 			@Override
 			public Boolean call() throws Exception {
 				// We should be able to do this now that foreign keys are disabled.
@@ -290,6 +297,41 @@ public class MigratableTableDAOImplAutowireTest {
 		}catch(Exception e){
 			// expected
 		}
+	}
+	
+	/**
+	 * Currently this test does not pass. Here is a quote from the MySQL docs:
+	 * 
+	 * "Setting this variable to 0 does not require storage engines to ignore
+	 * duplicate keys. An engine is still permitted to check for them and issue
+	 * duplicate-key errors if it detects them"
+	 * 
+	 * @throws Exception
+	 */
+	@Ignore
+	@Test
+	public void testRunWithUniquenessIgnored() throws Exception{
+		jdbcTemplate.execute("DROP TABLE IF EXISTS `KEY_TEST`");
+		// setup a simple table.
+		jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS `KEY_TEST` (" + 
+				"  `ID` bigint(20) NOT NULL," + 
+				"  `ETAG` char(36) NOT NULL," + 
+				"  PRIMARY KEY (`ID`)," + 
+				"  UNIQUE KEY `ETAG` (`ETAG`)" + 
+				")");
+		// While the check is off we can violate foreign keys.
+		Boolean result = migratableTableDAO.runWithKeyChecksIgnored(new Callable<Boolean>(){
+			@Override
+			public Boolean call() throws Exception {
+				// first row with an etag
+				jdbcTemplate.execute("INSERT INTO KEY_TEST VALUES ('1','E1')");
+				// new row with duplicate etag
+				jdbcTemplate.execute("INSERT INTO KEY_TEST VALUES ('2','E1')");
+				return true;
+			}});
+		assertTrue(result);
+		assertEquals(new Long(2), jdbcTemplate.queryForObject("SELECT COUNT(*) FROM KEY_TEST", Long.class));
+		jdbcTemplate.execute("DROP TABLE `KEY_TEST`");
 	}
 	
 
@@ -698,6 +740,38 @@ public class MigratableTableDAOImplAutowireTest {
 	}
 	
 	@Test
+	public void testDeleteByRange() {
+		List<Long> ids = new LinkedList<>();
+		ColumnModel one = new ColumnModel();
+		one.setColumnType(ColumnType.INTEGER);
+		one.setName("one");
+		one  = columnModelDao.createColumnModel(one);
+		ids.add(Long.parseLong(one.getId()));
+		
+		ColumnModel two = new ColumnModel();
+		two.setColumnType(ColumnType.INTEGER);
+		two.setName("two");
+		two = columnModelDao.createColumnModel(two);
+		ids.add(Long.parseLong(two.getId()));
+		
+		ColumnModel three = new ColumnModel();
+		three.setColumnType(ColumnType.INTEGER);
+		three.setName("three");
+		three = columnModelDao.createColumnModel(three);
+		ids.add(Long.parseLong(three.getId()));
+		
+		// Stream over the results
+		long minId = ids.get(0);
+		long maxId = ids.get(2);
+		// should exclude last row since max is exclusive
+		int count = migratableTableDAO.deleteByRange(MigrationType.COLUMN_MODEL, minId, maxId);
+		assertEquals(2, count);
+		// add one to the max to delete the last.
+		count = migratableTableDAO.deleteByRange(MigrationType.COLUMN_MODEL, minId, maxId+1);
+		assertEquals(1, count);
+	}
+	
+	@Test
 	public void testCreateOrUpdate() {
 		// Note: Principal does not need to exists since foreign keys will be off.
 		DBOCredential one = new DBOCredential();
@@ -728,5 +802,84 @@ public class MigratableTableDAOImplAutowireTest {
 		assertEquals(ids.size(), deletedCount);
 		deletedCount = migratableTableDAO.deleteById(type, ids);
 		assertEquals(0, deletedCount);
+	}
+	
+	@Test
+	public void testGetPrimaryCardinalitySql() {
+		String expected = 
+				"SELECT P0.ID, 1  + T0.CARD AS CARD"
+				+ " FROM JDONODE AS P0"
+				+ " JOIN"
+				+ " (SELECT P.ID, + COUNT(S.OWNER_NODE_ID) AS CARD"
+				+ " FROM JDONODE AS P"
+				+ " LEFT JOIN JDOREVISION AS S ON (P.ID =  S.OWNER_NODE_ID)"
+				+ " WHERE P.ID >= :BMINID AND P.ID < :BMAXID GROUP BY P.ID) T0"
+				+ " ON (P0.ID = T0.ID)"
+				+ " WHERE P0.ID >= :BMINID AND P0.ID < :BMAXID"
+				+ " ORDER BY P0.ID ASC";
+		String sql = migratableTableDAO.getPrimaryCardinalitySql(MigrationType.NODE);
+		assertEquals(expected, sql);
+	}
+	
+	@Test
+	public void testGetPrimaryCardinalitySqlPLFM_4857() {
+		String expected = 
+				"SELECT P0.ID, 1  + T0.CARD + T1.CARD AS CARD"
+				+ " FROM V2_WIKI_PAGE AS P0"
+				+ " JOIN"
+				+ " (SELECT P.ID, + COUNT(S.WIKI_ID) AS CARD FROM V2_WIKI_PAGE AS P"
+				+ " LEFT JOIN V2_WIKI_ATTACHMENT_RESERVATION AS S"
+				+ " ON (P.ID =  S.WIKI_ID)"
+				+ " WHERE P.ID >= :BMINID AND P.ID < :BMAXID GROUP BY P.ID) T0"
+				+ " ON (P0.ID = T0.ID)"
+				+ " JOIN"
+				+ " (SELECT P.ID, + COUNT(S.WIKI_ID) AS CARD FROM V2_WIKI_PAGE AS P"
+				+ " LEFT JOIN V2_WIKI_MARKDOWN AS S"
+				+ " ON (P.ID =  S.WIKI_ID)"
+				+ " WHERE P.ID >= :BMINID AND P.ID < :BMAXID GROUP BY P.ID) T1"
+				+ " ON (P0.ID = T1.ID)"
+				+ " WHERE P0.ID >= :BMINID AND P0.ID < :BMAXID"
+				+ " ORDER BY P0.ID ASC";
+		String sql = migratableTableDAO.getPrimaryCardinalitySql(MigrationType.V2_WIKI_PAGE);
+		assertEquals(expected, sql);
+	}
+	
+	@Test
+	public void testCalculateRangesForType() {
+		List<Long> ids = new LinkedList<>();
+		ColumnModel one = new ColumnModel();
+		one.setColumnType(ColumnType.INTEGER);
+		one.setName("one");
+		one  = columnModelDao.createColumnModel(one);
+		ids.add(Long.parseLong(one.getId()));
+		
+		ColumnModel two = new ColumnModel();
+		two.setColumnType(ColumnType.INTEGER);
+		two.setName("two");
+		two = columnModelDao.createColumnModel(two);
+		ids.add(Long.parseLong(two.getId()));
+		
+		ColumnModel three = new ColumnModel();
+		three.setColumnType(ColumnType.INTEGER);
+		three.setName("three");
+		three = columnModelDao.createColumnModel(three);
+		ids.add(Long.parseLong(three.getId()));
+		
+		MigrationType migrationType = MigrationType.COLUMN_MODEL;
+		long minimumId = ids.get(0);
+		long maximumId = ids.get(2)+1;
+		long optimalNumberOfRows = 2;
+		// call under test
+		List<IdRange> range = migratableTableDAO.calculateRangesForType(migrationType, minimumId, maximumId, optimalNumberOfRows);
+		// one should include the first two rows
+		IdRange expectedOne = new IdRange();
+		expectedOne.setMinimumId(ids.get(0));
+		expectedOne.setMaximumId(ids.get(1)+1);
+		// two should include the third row.
+		IdRange expectedTwo = new IdRange();
+		expectedTwo.setMinimumId(ids.get(2));
+		expectedTwo.setMaximumId(ids.get(2)+1);
+		List<IdRange> expected = Lists.newArrayList(expectedOne, expectedTwo);
+		assertEquals(expected, range);
 	}
 }

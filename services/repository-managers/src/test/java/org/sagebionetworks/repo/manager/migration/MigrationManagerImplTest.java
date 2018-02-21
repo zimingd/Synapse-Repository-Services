@@ -57,10 +57,16 @@ import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
 import org.sagebionetworks.repo.model.dbo.persistence.DBONode;
 import org.sagebionetworks.repo.model.dbo.persistence.DBORevision;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOSubjectAccessRequirement;
+import org.sagebionetworks.repo.model.dbo.persistence.DBOUserGroup;
 import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.sagebionetworks.repo.model.migration.BackupTypeListRequest;
 import org.sagebionetworks.repo.model.migration.BackupTypeRangeRequest;
 import org.sagebionetworks.repo.model.migration.BackupTypeResponse;
+import org.sagebionetworks.repo.model.migration.CalculateOptimalRangeRequest;
+import org.sagebionetworks.repo.model.migration.CalculateOptimalRangeResponse;
+import org.sagebionetworks.repo.model.migration.DeleteListRequest;
+import org.sagebionetworks.repo.model.migration.DeleteListResponse;
+import org.sagebionetworks.repo.model.migration.IdRange;
 import org.sagebionetworks.repo.model.migration.MigrationType;
 import org.sagebionetworks.repo.model.migration.MigrationTypeChecksum;
 import org.sagebionetworks.repo.model.migration.RestoreTypeRequest;
@@ -126,6 +132,8 @@ public class MigrationManagerImplTest {
 	List<MigratableDatabaseObject<?, ?>> nodeStream;
 	List<MigratableDatabaseObject<?, ?>> revisionStream;
 	RestoreTypeRequest restoreTypeRequest;
+	CalculateOptimalRangeRequest optimalRangeRequest;
+	List<IdRange> ranges;
 	
 	@Before
 	public void before() throws IOException{
@@ -156,6 +164,7 @@ public class MigrationManagerImplTest {
 		when(mockUser.isAdmin()).thenReturn(true);
 		
 		when(mockDao.getObjectForType(MigrationType.NODE)).thenReturn(new DBONode());
+		when(mockDao.getObjectForType(MigrationType.PRINCIPAL)).thenReturn(new DBOUserGroup());
 		
 		nodeOne = new DBONode();
 		nodeOne.setId(123L);;
@@ -216,6 +225,21 @@ public class MigrationManagerImplTest {
 		restoreTypeRequest.setBackupFileKey("backupFileKey");
 		restoreTypeRequest.setBatchSize(batchSize);
 		restoreTypeRequest.setMigrationType(MigrationType.NODE);
+		
+		optimalRangeRequest = new CalculateOptimalRangeRequest();
+		optimalRangeRequest.setMigrationType(MigrationType.NODE);
+		optimalRangeRequest.setMinimumId(1L);
+		optimalRangeRequest.setMaximumId(99L);
+		optimalRangeRequest.setOptimalRowsPerRange(11L);
+		
+		IdRange range = new IdRange();
+		range.setMinimumId(1L);
+		range.setMaximumId(100L);
+		ranges = Lists.newArrayList(range);
+		
+		when(mockDao.calculateRangesForType(any(MigrationType.class), anyLong(),  anyLong(),  anyLong())).thenReturn(ranges);
+		
+		manager.initialize();
 	}
 	
 	@Test
@@ -433,16 +457,16 @@ public class MigrationManagerImplTest {
 	public void testValidateForeignKeysRefrenceWithinPrimaryGroup() {		
 		// Call under test
 		manager.validateForeignKeys();
-		verify(mockDao).listNonRestrictedForeignKeys();
-		verify(mockDao).mapSecondaryTablesToPrimaryGroups();
+		verify(mockDao, times(2)).listNonRestrictedForeignKeys();
+		verify(mockDao, times(2)).mapSecondaryTablesToPrimaryGroups();
 	}
 	
 	@Test
 	public void testInitialize() {
 		manager.initialize();
 		// should trigger foreign key validation
-		verify(mockDao).listNonRestrictedForeignKeys();
-		verify(mockDao).mapSecondaryTablesToPrimaryGroups();
+		verify(mockDao, times(2)).listNonRestrictedForeignKeys();
+		verify(mockDao, times(2)).mapSecondaryTablesToPrimaryGroups();
 	}
 	
 	/**
@@ -740,10 +764,14 @@ public class MigrationManagerImplTest {
 	
 	@Test
 	public void testPrincipalTypes() {
-		assertEquals(3, MigrationManagerImpl.PRINCIPAL_TYPES.size());
+		DBOUserGroup dbo = new DBOUserGroup();
+		List<MigratableDatabaseObject<?, ?>> secondaries = dbo.getSecondaryTypes();
+		// includes principal plus principal's secondaries
+		assertEquals(secondaries.size()+1, MigrationManagerImpl.PRINCIPAL_TYPES.size());
 		assertTrue(MigrationManagerImpl.PRINCIPAL_TYPES.contains(MigrationType.PRINCIPAL));
-		assertTrue(MigrationManagerImpl.PRINCIPAL_TYPES.contains(MigrationType.CREDENTIAL));
-		assertTrue(MigrationManagerImpl.PRINCIPAL_TYPES.contains(MigrationType.GROUP_MEMBERS));
+		for(MigratableDatabaseObject<?, ?> secondary: secondaries) {
+			assertTrue(MigrationManagerImpl.PRINCIPAL_TYPES.contains(secondary.getMigratableTableType()));
+		}
 	}
 	
 	@Test
@@ -803,6 +831,29 @@ public class MigrationManagerImplTest {
 		int count = manager.deleteById(mockUser, type, toDelete);
 		assertEquals(0, count);
 		verify(mockDao, never()).deleteById(any(MigrationType.class), anyListOf(Long.class));
+	}
+	
+	@Test
+	public void testDeleteByIdRequest() {
+		MigrationType type = MigrationType.NODE;
+		DeleteListRequest request = new DeleteListRequest();
+		request.setIdsToDelete(Lists.newArrayList(123L));
+		request.setMigrationType(type);
+		when(mockDao.deleteById(any(MigrationType.class), anyListOf(Long.class))).thenReturn(1,2);
+		// call under test
+		DeleteListResponse reponse = manager.deleteById(mockUser, request);
+		assertNotNull(reponse);
+		assertEquals(new Long(3), reponse.getDeleteCount());
+		verify(mockDao).deleteById(type, request.getIdsToDelete());
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testDeleteByIdRequestNullRequest() {
+		MigrationType type = MigrationType.NODE;
+		DeleteListRequest request = null;
+		when(mockDao.deleteById(any(MigrationType.class), anyListOf(Long.class))).thenReturn(1,2);
+		// call under test
+		manager.deleteById(mockUser, request);
 	}
 	
 	@Test
@@ -923,7 +974,9 @@ public class MigrationManagerImplTest {
 	}
 	
 	@Test
-	public void testRestoreRequest() throws IOException {
+	public void testRestoreRequestNoRange() throws IOException {
+		restoreTypeRequest.setMaximumRowId(null);
+		restoreTypeRequest.setMinimumRowId(null);
 		// call under test
 		RestoreTypeResponse response = manager.restoreRequest(mockUser, restoreTypeRequest);
 		assertNotNull(response);
@@ -937,7 +990,38 @@ public class MigrationManagerImplTest {
 		verify(mockS3Client).deleteObject(MigrationManagerImpl.backupBucket, restoreTypeRequest.getBackupFileKey());
 		verify(mockFileInputStream).close();
 		verify(mockFile).delete();
+		
+		// delete by range should not occur when the range is missing.
+		verify(mockDao, never()).deleteByRange(any(MigrationType.class), anyLong(), anyLong());
 	}
+	
+	
+	@Test
+	public void testRestoreRequestWithRange() throws IOException {
+		long max = 99L;
+		long min = 3L;
+		restoreTypeRequest.setMaximumRowId(max);
+		restoreTypeRequest.setMinimumRowId(min);
+		// call under test
+		RestoreTypeResponse response = manager.restoreRequest(mockUser, restoreTypeRequest);
+		assertNotNull(response);
+		// the file should be fetched from S3
+		verify(mockS3Client).getObject(getObjectRequestCaptor.capture(), eq(mockFile));
+		GetObjectRequest gor = getObjectRequestCaptor.getValue();
+		assertNotNull(gor);
+		assertEquals(MigrationManagerImpl.backupBucket, gor.getBucketName());
+		assertEquals(restoreTypeRequest.getBackupFileKey(), gor.getKey());
+		// the file should be deleted
+		verify(mockS3Client).deleteObject(MigrationManagerImpl.backupBucket, restoreTypeRequest.getBackupFileKey());
+		verify(mockFileInputStream).close();
+		verify(mockFile).delete();
+		
+		// should delete the primary
+		verify(mockDao).deleteByRange(MigrationType.NODE, min, max);
+		// should delete the secondary
+		verify(mockDao).deleteByRange(MigrationType.NODE_REVISION, min, max);
+	}
+	
 	
 	@Test
 	public void testRestoreRequestCleanup() throws IOException {
@@ -1007,5 +1091,86 @@ public class MigrationManagerImplTest {
 		restoreTypeRequest.setBatchSize(null);
 		// call under test
 		manager.restoreRequest(mockUser, restoreTypeRequest);
+	}
+	
+	@Test
+	public void testDeleteByRange() {
+		MigrationType type = MigrationType.NODE;
+		long minimumId = 3L;
+		long maximumId = 45L;
+		// call under test
+		manager.deleteByRange(type, minimumId, maximumId);
+		// should delete the primary
+		verify(mockDao).deleteByRange(type, minimumId, maximumId);
+		// should delete the secondary
+		verify(mockDao).deleteByRange(MigrationType.NODE_REVISION, minimumId, maximumId);
+	}
+	
+	@Test
+	public void testDeleteByRangeNotRegistered() {
+		MigrationType type = MigrationType.NODE;
+		when(mockDao.isMigrationTypeRegistered(type)).thenReturn(false);
+		long minimumId = 3L;
+		long maximumId = 45L;
+		// call under test
+		manager.deleteByRange(type, minimumId, maximumId);
+		// deletes should not occur
+		verify(mockDao, never()).deleteByRange(any(MigrationType.class), anyLong(), anyLong());
+	}
+	
+	@Test
+	public void testCalculateOptimalRanges() {
+		// call under test
+		CalculateOptimalRangeResponse response = manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+		assertNotNull(response);
+		assertEquals(optimalRangeRequest.getMigrationType(), response.getMigrationType());
+		assertEquals(ranges, response.getRanges());
+		verify(mockDao).calculateRangesForType(
+				optimalRangeRequest.getMigrationType(),
+				optimalRangeRequest.getMinimumId(),
+				optimalRangeRequest.getMaximumId(),
+				optimalRangeRequest.getOptimalRowsPerRange());
+	}
+	
+	@Test (expected=UnauthorizedException.class)
+	public void testCalculateOptimalRangesUnauthorized() {
+		when(mockUser.isAdmin()).thenReturn(false);
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testCalculateOptimalRangesNullRequest() {
+		optimalRangeRequest = null;
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testCalculateOptimalRangesNullType() {
+		optimalRangeRequest.setMigrationType(null);
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testCalculateOptimalRangesNullMin() {
+		optimalRangeRequest.setMinimumId(null);
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testCalculateOptimalRangesNullMax() {
+		optimalRangeRequest.setMaximumId(null);
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
+	}
+	
+	@Test (expected=IllegalArgumentException.class)
+	public void testCalculateOptimalRangesNullOptimalSize() {
+		optimalRangeRequest.setOptimalRowsPerRange(null);
+		// call under test
+		manager.calculateOptimalRanges(mockUser, optimalRangeRequest);
 	}
 }

@@ -7,10 +7,12 @@ import java.util.concurrent.Callable;
 
 import org.sagebionetworks.repo.model.dbo.DatabaseObject;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
+import org.sagebionetworks.repo.model.migration.IdRange;
 import org.sagebionetworks.repo.model.migration.MigrationType;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.RowMetadata;
 import org.sagebionetworks.repo.model.migration.RowMetadataResult;
+import org.sagebionetworks.util.Callback;
 
 /**
  * An abstraction for a Data Access Object (DAO) that can be used to migrate an single database table.
@@ -148,15 +150,14 @@ public interface MigratableTableDAO extends MigrationTypeProvider {
 	public List<MigrationType> getPrimaryMigrationTypes();
 	
 	/**
-	 * Run a method with foreign key constraints off.
-	 * The global state of the database will be set to not check foreign key constraints
-	 * while the passed callable is running.
-	 * The foreign key constraint checking will unconditionally be re-enabled after the callable finishes.
+	 * Run a method with foreign key and uniqueness constraints checks off.
+	 * The global state of the database changed to disable checks  while the passed callable is running.
+	 * The key checking will unconditionally be re-enabled after the callable finishes.
 	 * @param call
 	 * @return
 	 * @throws Exception
 	 */
-	public <T> T runWithForeignKeyIgnored(Callable<T> call) throws Exception;
+	public <T> T runWithKeyChecksIgnored(Callable<T> call) throws Exception;
 	
 	/**
 	 * Checks if the migration type has been registered
@@ -194,5 +195,30 @@ public interface MigratableTableDAO extends MigrationTypeProvider {
 	 * @return
 	 */
 	int deleteById(MigrationType type, List<Long> idList);
+
+	/**
+	 * Delete all rows of the given type and row ID range.
+	 * @param type
+	 * @param minimumId inclusive
+	 * @param maximumId exclusive
+	 */
+	public int deleteByRange(MigrationType type, long minimumId, long maximumId);
+
+	/**
+	 * Calculate the ID ranges with the optimal number of rows for the given type.
+	 * @param migrationType
+	 * @param minimumId
+	 * @param maximumId
+	 * @param optimalNumberOfRows
+	 * @return
+	 */
+	public List<IdRange> calculateRangesForType(MigrationType migrationType, long minimumId, long maximumId, long optimalNumberOfRows);
+
+	/**
+	 * Get the SQL used for primary cardinality.
+	 * @param node
+	 * @return
+	 */
+	public String getPrimaryCardinalitySql(MigrationType node);
 
 }

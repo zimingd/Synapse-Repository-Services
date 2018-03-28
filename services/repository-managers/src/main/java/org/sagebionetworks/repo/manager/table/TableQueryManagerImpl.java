@@ -670,10 +670,8 @@ public class TableQueryManagerImpl implements TableQueryManager {
 		String tableId = query.getTableName();
 		// Get a connection to the table.
 		TableIndexDAO indexDao = tableConnectionFactory.getConnection(tableId);
-		// Can only get the benefactors if the table is available.
-		// We can only run this query if the table is available.
-		validateTableIsAvailable(tableId);
 		// lookup the distinct benefactor IDs applied to the table.
+		//TODO: try catch if not availabnle
 		Set<Long> tableBenefactors = indexDao.getDistinctLongValues(tableId, TableConstants.ROW_BENEFACTOR);
 		if(tableBenefactors.isEmpty()){
 			throw new EmptyResultException("Table has no benefactors", tableId);

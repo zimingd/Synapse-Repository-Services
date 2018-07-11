@@ -4,7 +4,6 @@ import static org.sagebionetworks.repo.model.table.TableConstants.NULL_VALUE_KEY
 
 import org.apache.commons.lang.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.FacetColumnRangeRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnValuesRequest;
@@ -25,11 +24,8 @@ public class FacetRequestColumnModel {
 	
 	/**
 	 * Constructor.
-	 * Pass in 
-	 * @param columnName name of the column
-	 * @param facetType the type of the facet either enum or 
-	 * @param columnValues the 
-	 * @param facetRange 
+	 * @param columnModel The original ColumnModel from which we derive the FacetRequestColumnModel
+	 * @param facetColumnRequest The FacetColumnRequest describing the requested facet.
 	 * 
 	 */
 	public FacetRequestColumnModel(ColumnModel columnModel, FacetColumnRequest facetColumnRequest){
@@ -70,7 +66,7 @@ public class FacetRequestColumnModel {
 	 * returns null if no search conditions exist
 	 * @return
 	 */
-	public String getSearchConditionString(){
+	String getSearchConditionString(){
 		return this.searchConditionString;
 	}
 	
@@ -83,7 +79,7 @@ public class FacetRequestColumnModel {
 	 * @param facetColumnRequest
 	 * @return the search condition string
 	 */
-	public static String createFacetSearchConditionString(FacetColumnRequest facetColumnRequest){
+	static String createFacetSearchConditionString(FacetColumnRequest facetColumnRequest){
 		if (facetColumnRequest == null){
 			return null;
 		}
@@ -108,9 +104,7 @@ public class FacetRequestColumnModel {
 		StringBuilder builder = new StringBuilder("(");
 		
 		//at this point we know at least one value is not null and is not empty string
-		builder.append("\"");
-		builder.append(facetRange.getColumnName());
-		builder.append("\"");
+		appendFacetColumnNameToStringBuilder(builder, facetRange);
 		if(min == null){ //only max exists
 			builder.append("<=");
 			appendValueToStringBuilder(builder, max);
@@ -139,9 +133,7 @@ public class FacetRequestColumnModel {
 			if(builder.length() > initialSize){
 				builder.append(" OR ");
 			}
-			builder.append("\"");
-			builder.append(facetValues.getColumnName());
-			builder.append("\"");
+			appendFacetColumnNameToStringBuilder(builder, facetValues);
 			if(value.equals(NULL_VALUE_KEYWORD)){
 				builder.append(" IS NULL");
 			}else{
@@ -152,14 +144,20 @@ public class FacetRequestColumnModel {
 		builder.append(")");
 		return builder.toString();
 	}
-	
+
+	static void appendFacetColumnNameToStringBuilder(StringBuilder builder, FacetColumnRequest facetColumnRequest) {
+		builder.append("\"");
+		builder.append(facetColumnRequest.getColumnName().replaceAll("\"", "\"\""));
+		builder.append("\"");
+	}
+
 	/**
 	 * Appends a value to the string builder
 	 * and places single quotes (') around it if the column type is String
 	 */ 
 	static void appendValueToStringBuilder(StringBuilder builder, String value){
 		builder.append("'");
-		builder.append(value);
+		builder.append(value.replaceAll("'", "''"));
 		builder.append("'");
 	}
 

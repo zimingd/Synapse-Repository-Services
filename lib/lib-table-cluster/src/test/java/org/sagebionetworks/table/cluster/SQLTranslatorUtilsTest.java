@@ -196,7 +196,7 @@ public class SQLTranslatorUtilsTest {
 		assertEquals(ColumnType.STRING, results.getColumnType());
 		assertEquals(null, results.getId());
 	}
-	
+
 	@Test
 	public void testGetSelectColumnsConstantDouble() throws ParseException{
 		DerivedColumn derivedColumn = new TableQueryParser("1.23").derivedColumn();

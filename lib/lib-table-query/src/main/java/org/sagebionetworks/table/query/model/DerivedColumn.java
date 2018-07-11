@@ -49,11 +49,12 @@ public class DerivedColumn extends SQLElement {
 	public String getDisplayName() {
 		String name = null;
 		if(asClause != null){
-			name = asClause.getFirstElementOfType(ActualIdentifier.class).toSql();
-		}else {
-			name = this.toSql();
+			return asClause.getFirstElementOfType(ActualIdentifier.class).toSqlWithoutQuotes();
+		}else if(this.hasAnyAggregateElements()) {
+			return this.toSql();
+		}else{
+				return this.toSqlWithoutQuotes();
 		}
-		return stripLeadingAndTailingQuotes(name);
 	}
 	
 	/**

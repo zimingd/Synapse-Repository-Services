@@ -164,9 +164,9 @@ public class DerivedColumnTest {
 	}
 	
 	@Test
-	public void testStripLeadingAndTailingQuotesDouble() {
-		String result = DerivedColumn.stripLeadingAndTailingQuotes("\"double\"quote\"");
-		assertEquals("double\"quote", result);
+	public void testStripLeadingAndTailingQuotesDouble() throws ParseException{
+		DerivedColumn element = SqlElementUntils.createDerivedColumn("\"double\"quote\"");
+		assertEquals("double\"quote", element.getReferencedColumnName());
 	}
 	
 	@Test

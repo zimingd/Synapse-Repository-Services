@@ -361,6 +361,14 @@ public class SqlElementUntilsTest {
 		assertNotNull(sortKey);
 		assertEquals("MAX(foo)", sortKey.toSql());
 	}
+
+	@Test
+	public void testCreateSortKeyDoubleQuotes() throws ParseException{
+		// function should not be wrapped in quotes.
+		SortKey sortKey = SqlElementUntils.createSortKey("I have \"quotes\"");
+		assertNotNull(sortKey);
+		assertEquals("\"I have \"\"quotes\"\"\"", sortKey.toSql());
+	}
 	
 	@Test
 	public void testCreateDoubleQuotedDerivedColumn(){
@@ -373,5 +381,16 @@ public class SqlElementUntilsTest {
 		DerivedColumn dr = SqlElementUntils.createNonQuotedDerivedColumn("ROW_ID");
 		assertEquals("ROW_ID", dr.toSql());
 	}
-	
+
+	@Test
+	public void testCreateDoubleQuotedDerivedColumnNameIncludesSpaces(){
+		DerivedColumn dr = SqlElementUntils.createDoubleQuotedDerivedColumn("foo bar");
+		assertEquals("\"foo bar\"", dr.toSql());
+	}
+
+	@Test
+	public void testCreateDoubleQuotedDerivedColumnNameIncludesDoubleQuotes(){
+		DerivedColumn dr = SqlElementUntils.createDoubleQuotedDerivedColumn("foo\"bar\"");
+		assertEquals("\"foo\"\"bar\"\"\"", dr.toSql());
+	}
 }

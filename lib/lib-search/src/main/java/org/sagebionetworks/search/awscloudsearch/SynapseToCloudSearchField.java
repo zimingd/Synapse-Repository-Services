@@ -23,6 +23,7 @@ import static org.sagebionetworks.search.awscloudsearch.CloudSearchFieldConstant
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -35,36 +36,38 @@ import org.sagebionetworks.util.ValidateArgument;
  * to their actual CloudSearch fields.
  */
 public enum SynapseToCloudSearchField {
-	ID(SearchFieldName.Id, CLOUD_SEARCH_FIELD_ID),
-	NAME(SearchFieldName.Name, CLOUD_SEARCH_FIELD_NAME),
-	ENTITY_TYPE(SearchFieldName.EntityType, CLOUD_SEARCH_FIELD_NODE_TYPE),
-	MODIFIED_BY(SearchFieldName.ModifiedBy, CLOUD_SEARCH_FIELD_MODIFIED_BY),
-	MODIFIED_ON(SearchFieldName.ModifiedOn, CLOUD_SEARCH_FIELD_MODIFIED_ON),
-	CREATED_BY(SearchFieldName.CreatedBy, CLOUD_SEARCH_FIELD_CREATED_BY),
-	CREATED_ON(SearchFieldName.CreatedOn, CLOUD_SEARCH_FIELD_CREATED_ON),
-	DESCRIPTION(SearchFieldName.Description, CLOUD_SEARCH_FIELD_DESCRIPTION),
+	ID(SearchFieldName.Id, CLOUD_SEARCH_FIELD_ID, false),
+	NAME(SearchFieldName.Name, CLOUD_SEARCH_FIELD_NAME, true),
+	ENTITY_TYPE(SearchFieldName.EntityType, CLOUD_SEARCH_FIELD_NODE_TYPE, false),
+	MODIFIED_BY(SearchFieldName.ModifiedBy, CLOUD_SEARCH_FIELD_MODIFIED_BY, false),
+	MODIFIED_ON(SearchFieldName.ModifiedOn, CLOUD_SEARCH_FIELD_MODIFIED_ON, false),
+	CREATED_BY(SearchFieldName.CreatedBy, CLOUD_SEARCH_FIELD_CREATED_BY, false),
+	CREATED_ON(SearchFieldName.CreatedOn, CLOUD_SEARCH_FIELD_CREATED_ON, true),
+	DESCRIPTION(SearchFieldName.Description, CLOUD_SEARCH_FIELD_DESCRIPTION, true),
 
 	//indexes of annotations
-	CONSORTIUM(SearchFieldName.Consortium, CLOUD_SEARCH_FIELD_CONSORTIUM),
-	DISEASE(SearchFieldName.Disease, CLOUD_SEARCH_FIELD_DISEASE),
-	NUM_SAMPLES(SearchFieldName.NumSamples, CLOUD_SEARCH_FIELD_NUM_SAMPLES),
-	TISSUE(SearchFieldName.Tissue, CLOUD_SEARCH_FIELD_TISSUE),
+	CONSORTIUM(SearchFieldName.Consortium, CLOUD_SEARCH_FIELD_CONSORTIUM, true),
+	DISEASE(SearchFieldName.Disease, CLOUD_SEARCH_FIELD_DISEASE, true),
+	NUM_SAMPLES(SearchFieldName.NumSamples, CLOUD_SEARCH_FIELD_NUM_SAMPLES, true),
+	TISSUE(SearchFieldName.Tissue, CLOUD_SEARCH_FIELD_TISSUE, true),
 
 	//The ones below are not exposed in our API currently (and probably never will be)
-	ETAG(null, CLOUD_SEARCH_FIELD_ETAG),
-	BOOST(null, CLOUD_SEARCH_FIELD_BOOST),
-	PARENT_ID(null, CLOUD_SEARCH_FIELD_PARENT_ID),
-	PLATFORM(null, CLOUD_SEARCH_FIELD_PLATFORM),
-	REFERENCE(null, CLOUD_SEARCH_FIELD_REFERENCE),
-	ACL(null, CLOUD_SEARCH_FIELD_ACL),
-	UPDATE_ACL(null, CLOUD_SEARCH_FIELD_UPDATE_ACL);
+	ETAG(null, CLOUD_SEARCH_FIELD_ETAG, false),
+	BOOST(null, CLOUD_SEARCH_FIELD_BOOST, false),
+	PARENT_ID(null, CLOUD_SEARCH_FIELD_PARENT_ID, false),
+	PLATFORM(null, CLOUD_SEARCH_FIELD_PLATFORM, false),
+	REFERENCE(null, CLOUD_SEARCH_FIELD_REFERENCE, false),
+	ACL(null, CLOUD_SEARCH_FIELD_ACL, false),
+	UPDATE_ACL(null, CLOUD_SEARCH_FIELD_UPDATE_ACL, false);
 
 	private final SearchFieldName synapseSearchFieldName;
 	private final CloudSearchField cloudSearchField;
+	private boolean includeInSearchedFields;
 
-	SynapseToCloudSearchField(SearchFieldName synapseSearchFieldName, CloudSearchField cloudSearchField){
+	SynapseToCloudSearchField(SearchFieldName synapseSearchFieldName, CloudSearchField cloudSearchField, boolean includeInSearchedFields){
 		this.synapseSearchFieldName = synapseSearchFieldName;
 		this.cloudSearchField = cloudSearchField;
+		this.includeInSearchedFields = includeInSearchedFields;
 	}
 
 	/**
@@ -98,5 +101,13 @@ public enum SynapseToCloudSearchField {
 		return indexFields;
 	}
 
-
+	public static List<String> getQueriedFieldNames(){
+		List<String> searchedFields = new ArrayList<>();
+		for(SynapseToCloudSearchField fieldEnum : values()){
+			if (fieldEnum.includeInSearchedFields){
+				searchedFields.add(fieldEnum.cloudSearchField.getFieldName());
+			}
+		}
+		return searchedFields;
+	}
 }

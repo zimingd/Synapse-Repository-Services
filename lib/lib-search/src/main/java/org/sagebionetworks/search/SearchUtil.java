@@ -78,6 +78,13 @@ public class SearchUtil{
 		FACET_TYPES = Collections.unmodifiableMap(facetTypes);
 	}
 
+	public static final String QUERY_OPTIONS;
+	static {
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("fields", SynapseToCloudSearchField.getQueriedFieldNames());
+		QUERY_OPTIONS = jsonObject.toString();
+	}
+
 	/**
 	 * Returns a String of the input with Unicode characters not supported by the Search Service stripped out.
 	 * @param charSequence input to be stripped of unsupported Unicode characters
@@ -94,7 +101,7 @@ public class SearchUtil{
 		List<KeyValue> bq = searchQuery.getBooleanQuery();
 		List<KeyRange> rangeQueries =  searchQuery.getRangeQuery();
 
-		SearchRequest searchRequest = new SearchRequest();
+		SearchRequest searchRequest = new SearchRequest().withQueryOptions(QUERY_OPTIONS);
 
 		// clean up empty q
 		if(q != null && q.size() == 1 && "".equals(q.get(0))) {

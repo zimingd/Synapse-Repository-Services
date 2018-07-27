@@ -73,8 +73,8 @@ public class SearchUtilTest {
 	@Before
 	public void before() throws Exception {
 		query = new SearchQuery();
-		expectedSearchRequestBaseWithQueryTerm =  new SearchRequest().withQueryParser(QueryParser.Simple);
-		expectedSearchRequestBaseNoQueryTermSet = new SearchRequest().withQueryParser(QueryParser.Structured).withQuery("matchall");
+		expectedSearchRequestBaseWithQueryTerm =  new SearchRequest().withQueryParser(QueryParser.Simple).withQueryOptions(SearchUtil.QUERY_OPTIONS);
+		expectedSearchRequestBaseNoQueryTermSet = new SearchRequest().withQueryParser(QueryParser.Structured).withQuery("matchall").withQueryOptions(SearchUtil.QUERY_OPTIONS);
 		// q
 		q = new ArrayList<>();
 		q.add("hello");
@@ -124,6 +124,12 @@ public class SearchUtilTest {
 		searchFacetOption.setMaxResultCount(42L);
 		searchFacetOption.setSortType(SearchFacetSort.COUNT);
 		searchFacetOption.setName(SearchFieldName.EntityType);
+	}
+
+	@Test
+	public void testQueryOptionString(){
+		//Test the expected value of the statically generated QUERY_OPTIONS string.
+		assertEquals("{\"fields\":[\"name\",\"description\",\"consortium\",\"disease\",\"num_samples\",\"tissue\"]}", SearchUtil.QUERY_OPTIONS);
 	}
 
 	//////////////////////////////////////

@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -31,6 +32,22 @@ public class SynapseToCloudSearchFieldTest {
 		assertEquals(18, actualfieldNames.size());
 		assertEquals(expectedFieldNames, actualfieldNames);
 	}
+
+	@Test
+	public void testGetQueriedFieldNames() throws IOException{
+		List<String> list = SynapseToCloudSearchField.getQueriedFieldNames();
+		assertNotNull(list);
+
+		Set<String> expectedFieldNames = Sets.newHashSet("disease", "consortium",
+				"description", "tissue","name", "num_samples");
+
+		Set<String> actualfieldNames = new HashSet<>(list);
+		// We currently have 6 index fields that should be queried against for search results
+		assertEquals(6, list.size());
+		assertEquals(6, actualfieldNames.size());
+		assertEquals(expectedFieldNames, actualfieldNames);
+	}
+
 
 	@Test(expected = IllegalArgumentException.class)
 	public void testCloudSearchFieldFor_nullSearchFieldName(){

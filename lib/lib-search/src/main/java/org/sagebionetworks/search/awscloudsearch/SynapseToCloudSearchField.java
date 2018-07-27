@@ -36,16 +36,17 @@ import org.sagebionetworks.util.ValidateArgument;
  * to their actual CloudSearch fields.
  */
 public enum SynapseToCloudSearchField {
+	//Entity metadata that are exposed in our API
 	ID(SearchFieldName.Id, CLOUD_SEARCH_FIELD_ID, false),
 	NAME(SearchFieldName.Name, CLOUD_SEARCH_FIELD_NAME, true),
 	ENTITY_TYPE(SearchFieldName.EntityType, CLOUD_SEARCH_FIELD_NODE_TYPE, false),
 	MODIFIED_BY(SearchFieldName.ModifiedBy, CLOUD_SEARCH_FIELD_MODIFIED_BY, false),
 	MODIFIED_ON(SearchFieldName.ModifiedOn, CLOUD_SEARCH_FIELD_MODIFIED_ON, false),
 	CREATED_BY(SearchFieldName.CreatedBy, CLOUD_SEARCH_FIELD_CREATED_BY, false),
-	CREATED_ON(SearchFieldName.CreatedOn, CLOUD_SEARCH_FIELD_CREATED_ON, true),
+	CREATED_ON(SearchFieldName.CreatedOn, CLOUD_SEARCH_FIELD_CREATED_ON, false),
 	DESCRIPTION(SearchFieldName.Description, CLOUD_SEARCH_FIELD_DESCRIPTION, true),
 
-	//indexes of annotations
+	//Specific Annotations of an Entity (see SearchDocumentDriverImpl)
 	CONSORTIUM(SearchFieldName.Consortium, CLOUD_SEARCH_FIELD_CONSORTIUM, true),
 	DISEASE(SearchFieldName.Disease, CLOUD_SEARCH_FIELD_DISEASE, true),
 	NUM_SAMPLES(SearchFieldName.NumSamples, CLOUD_SEARCH_FIELD_NUM_SAMPLES, true),
@@ -60,8 +61,15 @@ public enum SynapseToCloudSearchField {
 	ACL(null, CLOUD_SEARCH_FIELD_ACL, false),
 	UPDATE_ACL(null, CLOUD_SEARCH_FIELD_UPDATE_ACL, false);
 
+	// Exposed Enum in Synapse's API
 	private final SearchFieldName synapseSearchFieldName;
+
+	// Wrapper w/ information about CloudSearch field index configurations.
 	private final CloudSearchField cloudSearchField;
+
+	// Whether the field will be used when running a user's query
+	// This is different from CloudSearchField.isSearchable,
+	// which defines if an index can be used in any search at all (including our result filtering).
 	private boolean includeInSearchedFields;
 
 	SynapseToCloudSearchField(SearchFieldName synapseSearchFieldName, CloudSearchField cloudSearchField, boolean includeInSearchedFields){
@@ -101,6 +109,10 @@ public enum SynapseToCloudSearchField {
 		return indexFields;
 	}
 
+	/**
+	 * Returns a List of index field names of the indexes against which the user's query will be run.
+	 * @return a List of index field names of the indexes against which the user's query will be run.
+	 */
 	public static List<String> getQueriedFieldNames(){
 		List<String> searchedFields = new ArrayList<>();
 		for(SynapseToCloudSearchField fieldEnum : values()){

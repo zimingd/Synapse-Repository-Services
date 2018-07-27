@@ -78,7 +78,7 @@ public class SearchUtil{
 		FACET_TYPES = Collections.unmodifiableMap(facetTypes);
 	}
 
-	public static final String QUERY_OPTIONS;
+	static final String QUERY_OPTIONS;
 	static {
 		JSONObject jsonObject = new JSONObject();
 		jsonObject.put("fields", SynapseToCloudSearchField.getQueriedFieldNames());

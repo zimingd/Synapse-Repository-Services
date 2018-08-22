@@ -332,6 +332,12 @@ public interface StackConfiguration {
 	public Map<String, String> getWorkerQueueName();
 
 	/**
+	 * The ARN of the SNS Topic for which worker queues will
+	 * @return
+	 */
+	public String getQueueOldestMessageAlarmNotificationTopicARN();
+
+	/**
 	 * The name of the AWS topic where repository changes messages are published.
 	 * 
 	 * @return

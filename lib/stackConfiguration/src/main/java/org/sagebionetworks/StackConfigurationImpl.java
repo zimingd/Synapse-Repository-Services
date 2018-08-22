@@ -540,6 +540,10 @@ public class StackConfigurationImpl implements StackConfiguration {
 		};
 	}
 
+	public String getQueueOldestMessageAlarmNotificationTopicARN(){
+		return "I have no clue right now"; //TODO: replace placeholder
+	}
+
 	/**
 	 * The name of the AWS topic where repository changes messages are published.
 	 * 

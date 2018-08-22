@@ -17,6 +17,9 @@
 	<bean id="awsSQSClient" class="org.sagebionetworks.aws.AwsClientFactory"
 		factory-method="createAmazonSQSClient" scope="singleton" />
 
+	<bean id="awsCloudWatchClient" class="org.sagebionetworks.aws.AwsClientFactory"
+		  factory-method="createCloudWatchClient" scope="singleton" />
+
 	<!-- The RepositoryMessagePublisher publish repository change messages to 
 		an AWS topic -->
 	<bean id="messagePublisher"

@@ -1,8 +1,6 @@
 package org.sagebionetworks.table.worker;
 
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -65,10 +63,6 @@ public class TableWorker implements ChangeMessageDrivenRunner, LockTimeoutAware 
 	@Override
 	public void run(ProgressCallback progressCallback, ChangeMessage change)
 			throws RecoverableMessageException, Exception {
-		// If the feature is disabled then we simply swallow all messages
-		if (!configuration.getTableEnabled()) {
-			return;
-		}
 		if(lockTimeoutSec == null){
 			throw new IllegalStateException("lockTimeoutSec must be set before the worker can be run.");
 		}
@@ -221,10 +215,6 @@ public class TableWorker implements ChangeMessageDrivenRunner, LockTimeoutAware 
 		// Create or update the table with this schema.
 		tableManagerSupport.attemptToUpdateTableProgress(tableId, resetToken,
 				"Creating table ", 0L, 100L);
-		
-		// List all of the changes
-		tableManagerSupport.attemptToUpdateTableProgress(tableId, resetToken,
-				"Getting current table row versions ", 0L, 100L);
 
 		// List all change sets applied to this table.
 		List<TableRowChange> changes = tableEntityManager.listRowSetsKeysForTable(tableId);

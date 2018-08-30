@@ -184,6 +184,8 @@ public class UrlHelpers {
 	public static final String ASYNCHRONOUS_JOB_CANCEL = ASYNCHRONOUS_JOB_ID + "/cancel";
 	public static final String ADMIN_ASYNCHRONOUS_JOB = ADMIN + ASYNCHRONOUS_JOB;
 	public static final String ADMIN_ASYNCHRONOUS_JOB_ID = ADMIN + ASYNCHRONOUS_JOB_ID;
+	
+	public static final String ADMIN_ID_GEN_EXPORT = ADMIN + "/id/generator/export";
 
 	/**
 	 * All of the base URLs for Synapse objects with ID.
@@ -483,13 +485,6 @@ public class UrlHelpers {
 	public static final String USER_MIRROR = "/userMirror";
 
 	/**
-	 * These are the new more RESTful backup/restore URLS.
-	 */
-	public static final String DAEMON 						= ADMIN+"/daemon";
-	public static final String DAEMON_ID					= "/{daemonId}";
-	public static final String ENTITY_DAEMON_ID				= DAEMON+DAEMON_ID;
-
-	/**
 	 * Storage usage summary for the current user.
 	 */
 	public static final String STORAGE_SUMMARY = "/storageSummary";
@@ -612,13 +607,7 @@ public class UrlHelpers {
 	public static final String MIGRATION = "/migration";
 	public static final String MIGRATION_COUNTS = MIGRATION+"/counts";
 	public static final String MIGRATION_COUNT = MIGRATION+"/count";
-	public static final String MIGRATION_ROWS = MIGRATION+"/rows";
-	public static final String MIGRATION_ROWS_BY_RANGE = MIGRATION+"/rowsbyrange";
 	public static final String MIGRATION_DELTA = MIGRATION+"/delta";
-	public static final String MIGRATION_BACKUP = MIGRATION+"/backup";
-	public static final String MIGRATION_RESTORE = MIGRATION+"/restore";
-	public static final String MIGRATION_DELETE = MIGRATION+"/delete";
-	public static final String MIGRATION_STATUS = MIGRATION+"/status";
 	public static final String MIGRATION_PRIMARY = MIGRATION+"/primarytypes";
 	public static final String MIGRATION_PRIMARY_NAMES = MIGRATION_PRIMARY + "/names";
 	public static final String MIGRATION_TYPES = MIGRATION+"/types";
@@ -754,7 +743,8 @@ public class UrlHelpers {
 	// Tables
 	public static final String COLUMN = "/column";
 	public static final String COLUMN_BATCH = COLUMN + "/batch";
-	public static final String COLUMN_TABLE_IVEW = COLUMN + "/tableview/defaults/{viewtype}";
+	public static final String COLUMN_TABLE_VIEW_DEFAULT = COLUMN + "/tableview/defaults";
+	public static final String COLUMN_TABLE_VIEW_DEFAULT_TYPE = COLUMN_TABLE_VIEW_DEFAULT+"/{viewtype}";
 	public static final String ROW_ID = "/row/{rowId}";
 	public static final String ROW_VERSION = "/version/{versionNumber}";
 	public static final String TABLE = "/table";
@@ -1012,7 +1002,6 @@ public class UrlHelpers {
 	public static final String AUTH_USER_PASSWORD_EMAIL = AUTH_USER_PASSWORD + "/email";
 	public static final String AUTH_TERMS_OF_USE = "/termsOfUse";
 	public static final String AUTH_SECRET_KEY = "/secretKey";
-	public static final String AUTH_OPEN_ID_CALLBACK = "/openIdCallback";
 	
 	public static final String AUTH_OAUTH_2 = "/oauth2";
 	public static final String AUTH_OAUTH_2_AUTH_URL = AUTH_OAUTH_2+"/authurl";
@@ -1033,16 +1022,6 @@ public class UrlHelpers {
 	public static final String ADMIN_CLEAR_LOCKS = ADMIN+"/locks";
 
 	/**
-	 * API for testing throttling
-	 */
-	public static final String ADMIN_WAIT = ADMIN + "/wait";
-	
-	/**
-	 * API for testing exception handling
-	 */
-	public static final String ADMIN_EXCEPTION = ADMIN + "/exception";
-
-	/**
 	 * API for updating a file
 	 * @see PLFM-4108
 	 */
@@ -1055,18 +1034,6 @@ public class UrlHelpers {
 		PROPERTY2URLSUFFIX = Collections.unmodifiableMap(property2urlsuffix);
 	}
 
-	/**
-	 * Determine the controller URL prefix for a given model class
-	 * 
-	 * @param theModelClass
-	 * @return the URL for the model class
-	 */
-//	@SuppressWarnings("unchecked")
-//	public static String getUrlForModel(Class theModelClass) {
-//		EntityType type =  EntityType.getNodeTypeForClass(theModelClass);
-//		return type.getUrlPrefix();
-//	}
-
 	
 	/**
 	 * Helper function to create a relative URL for an entity's annotations
@@ -1075,7 +1042,7 @@ public class UrlHelpers {
 	 * This includes not only the entity id but also the controller and servlet
 	 * portions of the path
 	 * 
-	 * @param request
+	 * @param loginRequest
 	 * @return the uri for this entity's annotations
 	 */
 	public static String makeEntityAnnotationsUri(String entityId) {
@@ -1089,7 +1056,7 @@ public class UrlHelpers {
 	 * This includes not only the entity id but also the controller and servlet
 	 * portions of the path
 	 * 
-	 * @param request
+	 * @param loginRequest
 	 * @return the uri for this entity's annotations
 	 */
 	public static String makeEntityACLUri(String entityId) {

@@ -1,6 +1,23 @@
 package org.sagebionetworks.table.cluster;
 
-import static org.sagebionetworks.repo.model.table.TableConstants.*;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_ALIAS;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_DOUBLE_ABSTRACT;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_ENTITY_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_KEY;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_TABLE;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_ALIAS;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_BENEFACTOR_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_ETAG;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_VERSION;
+import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_TABLE;
+import static org.sagebionetworks.repo.model.table.TableConstants.FILE_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ROW_BENEFACTOR;
+import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ETAG;
+import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ROW_VERSION;
+import static org.sagebionetworks.repo.model.table.TableConstants.SCHEMA_HASH;
+import static org.sagebionetworks.repo.model.table.TableConstants.SINGLE_KEY;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -12,10 +29,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.table.AbstractDouble;
 import org.sagebionetworks.repo.model.table.AnnotationDTO;
@@ -25,7 +40,7 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.EntityField;
 import org.sagebionetworks.repo.model.table.RowReference;
 import org.sagebionetworks.repo.model.table.TableConstants;
-import org.sagebionetworks.repo.model.table.ViewType;
+import org.sagebionetworks.repo.model.table.ViewTypeMask;
 import org.sagebionetworks.repo.model.table.parser.AllLongTypeParser;
 import org.sagebionetworks.repo.model.table.parser.BooleanParser;
 import org.sagebionetworks.repo.model.table.parser.DoubleParser;
@@ -47,6 +62,10 @@ import com.google.common.collect.Lists;
 public class SQLUtils {
 
 
+	private static final String EMPTY_STRING = "";
+	private static final String ABSTRACT_DOUBLE_ALIAS_PREFIX = "_DBL";
+	private static final String TEMPLATE_MAX_ANNOTATION_SELECT = ", MAX(IF(%1$s.%2$s ='%3$s', %1$s.%4$s, NULL)) AS %5$s%6$s";
+	private static final String TEMPLATE_MAX_ENTITY_SELECT = ", MAX(%1$s.%2$s) AS %2$s";
 	private static final String DROP_TABLE_IF_EXISTS = "DROP TABLE IF EXISTS %1$S";
 	private static final String SELECT_COUNT_FROM_TEMP = "SELECT COUNT(*) FROM ";
 	private static final String SQL_COPY_TABLE_TO_TEMP = "INSERT INTO %1$S SELECT * FROM %2$S ORDER BY "+ROW_ID;
@@ -73,7 +92,7 @@ public class SQLUtils {
 		/**
 		 * The index tables
 		 */
-		INDEX(""),
+		INDEX(EMPTY_STRING),
 		/**
 		 * The status table that tracks the current state of the index table
 		 */
@@ -240,7 +259,7 @@ public class SQLUtils {
 	 * @param builder
 	 */
 	public static void appendDoubleCase(String columnId, StringBuilder builder) {
-		String subName = "";
+		String subName = EMPTY_STRING;
 		builder.append("CASE WHEN ");
 		appendColumnName(TableConstants.DOUBLE_PREFIX, subName, columnId, builder);
 		builder.append(" IS NULL THEN ");
@@ -905,6 +924,14 @@ public class SQLUtils {
 			if(info.isMetadata()){
 				continue;
 			}
+			// do not index blobs.
+			if(MySqlColumnType.MEDIUMTEXT.equals(info.getType())) {
+				// remove the index if it has one
+				if(info.hasIndex()){
+					toRemove.add(info);
+				}
+				continue;
+			}
 			if(indexCount < maxNumberOfIndex){
 				// Still under the max.
 				indexCount++;
@@ -1059,7 +1086,7 @@ public class SQLUtils {
 					if(info.getColumnType() != null){
 						long columnId = getColumnId(info);
 						ColumnModel cm = new ColumnModel();
-						cm.setId(""+columnId);
+						cm.setId(EMPTY_STRING+columnId);
 						cm.setColumnType(info.getColumnType());
 						if(info.getMaxSize() != null){
 							cm.setMaximumSize(info.getMaxSize().longValue());
@@ -1232,7 +1259,7 @@ public class SQLUtils {
 	 * @param currentSchema
 	 * @return
 	 */
-	public static String createSelectInsertFromEntityReplication(String viewId, ViewType viewType,
+	public static String createSelectInsertFromEntityReplication(String viewId, Long viewTypeMask,
 			List<ColumnModel> currentSchema) {
 		List<ColumnMetadata> metadata = translateColumns(currentSchema);
 		StringBuilder builder = new StringBuilder();
@@ -1243,18 +1270,26 @@ public class SQLUtils {
 		builder.append(") SELECT ");
 		buildSelect(builder, metadata);
 		builder.append(" FROM ");
-		builder.append(TableConstants.ENTITY_REPLICATION_TABLE);
+		builder.append(ENTITY_REPLICATION_TABLE);
 		builder.append(" ");
-		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-		buildJoins(metadata, builder);
+		builder.append(ENTITY_REPLICATION_ALIAS);
+		builder.append(" LEFT JOIN ");
+		builder.append(ANNOTATION_REPLICATION_TABLE);
+		builder.append(" ").append(ANNOTATION_REPLICATION_ALIAS);
+		builder.append(" ON(");
+		builder.append(ENTITY_REPLICATION_ALIAS).append(".").append(ENTITY_REPLICATION_COL_ID);
+		builder.append(" = ");
+		builder.append(ANNOTATION_REPLICATION_ALIAS).append(".").append(ANNOTATION_REPLICATION_COL_ENTITY_ID);
+		builder.append(")");
 		builder.append(" WHERE ");
 		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
 		builder.append(".");
-		builder.append(getViewScopeFilterColumnForType(viewType));
+		builder.append(getViewScopeFilterColumnForType(viewTypeMask));
 		builder.append(" IN (:");
 		builder.append(TableConstants.PARENT_ID_PARAMETER_NAME);
 		builder.append(") AND ");
-		builder.append(createViewTypeFilter(viewType));
+		builder.append(createViewTypeFilter(viewTypeMask));
+		builder.append(" GROUP BY ").append(ENTITY_REPLICATION_ALIAS).append(".").append(ENTITY_REPLICATION_COL_ID);
 		return builder.toString();
 	}
 	
@@ -1263,70 +1298,27 @@ public class SQLUtils {
 	 * @param type
 	 * @return
 	 */
-	public static String createViewTypeFilter(ViewType type){
-		ValidateArgument.required(type, "type");
+	public static String createViewTypeFilter(Long viewTypeMask){
+		ValidateArgument.required(viewTypeMask, "viewTypeMask");
 		StringBuilder builder = new StringBuilder();
 		builder.append(TableConstants.ENTITY_REPLICATION_COL_TYPE);
 		builder.append(" IN (");
-		switch(type){
-		case file:
-			builder.append("'");
-			builder.append(EntityType.file.name());
-			builder.append("'");
-			break;
-		case project:
-			builder.append("'");
-			builder.append(EntityType.project.name());
-			builder.append("'");
-			break;
-		case file_and_table:
-			builder.append("'");
-			builder.append(EntityType.file.name());
-			builder.append("'");
-			builder.append(",");
-			builder.append("'");
-			builder.append(EntityType.table.name());
-			builder.append("'");
-			break;
-			default:
-				throw new IllegalArgumentException("Unknown type: "+type.name());
+		// add all types that match the given mask
+		int count = 0;
+		for(ViewTypeMask type: ViewTypeMask.values()) {
+			if((type.getMask() & viewTypeMask) > 0) {
+				if(count > 0) {
+					builder.append(", ");
+				}
+				builder.append("'");
+				builder.append(type.getEntityType().name());
+				builder.append("'");
+				count++;
+			}
 		}
 		builder.append(")");
 		return builder.toString();
 	}
-
-	/**
-	 * Builds the left outer join section of the entity replication insert select.
-	 * @param metadata
-	 * @param builder
-	 */
-	public static void buildJoins(List<ColumnMetadata> metadata,
-			StringBuilder builder) {
-		for(ColumnMetadata meta: metadata){
-			if(meta.getEntityField() == null){
-				builder.append(" LEFT OUTER JOIN ");
-				builder.append(TableConstants.ANNOTATION_REPLICATION_TABLE);
-				builder.append(" ");
-				builder.append(meta.getTableAlias());
-				builder.append(" ON (");
-				builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-				builder.append(".");
-				builder.append(TableConstants.ENTITY_REPLICATION_COL_ID);
-				builder.append(" = ");
-				builder.append(meta.getTableAlias());
-				builder.append(".");
-				builder.append(TableConstants.ANNOTATION_REPLICATION_COL_ENTITY_ID);
-				builder.append(" AND ");
-				builder.append(meta.getTableAlias());
-				builder.append(".");
-				builder.append(TableConstants.ANNOTATION_REPLICATION_COL_KEY);
-				builder.append(" = '");
-				builder.append(meta.getColumnModel().getName());
-				builder.append("')");
-			}
-		}
-	}
-
 	
 	/**
 	 * Build the select clause of the entity replication insert select.
@@ -1335,38 +1327,78 @@ public class SQLUtils {
 	 */
 	public static void buildSelect(StringBuilder builder,
 			List<ColumnMetadata> metadata) {
-		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-		builder.append(".");
-		builder.append(TableConstants.ENTITY_REPLICATION_COL_ID);
-		builder.append(", ");
-		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-		builder.append(".");
-		builder.append(TableConstants.ENTITY_REPLICATION_COL_VERSION);
-		builder.append(", ");
-		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-		builder.append(".");
-		builder.append(TableConstants.ENTITY_REPLICATION_COL_ETAG);
-		builder.append(", ");
-		builder.append(TableConstants.ENTITY_REPLICATION_ALIAS);
-		builder.append(".");
-		builder.append(TableConstants.ENTITY_REPLICATION_COL_BENEFACTOR_ID);
+		// select the standard entity columns.
+		buildEntityReplicationSelectStandardColumns(builder);
 		for(ColumnMetadata meta: metadata){
+			buildSelectMetadata(builder, meta);
+		}
+	}
+	
+	/**
+	 * Build a entity replication select for the given ColumnMetadata.
+	 * 
+	 * @param builder
+	 * @param meta
+	 */
+	public static void buildSelectMetadata(StringBuilder builder, ColumnMetadata meta) {
+		if(meta.getEntityField() != null) {
+			// entity field select
+			buildEntityReplicationSelect(builder, meta.getEntityField().getDatabaseColumnName());
+		}else {
+			// annotation select
 			if (AnnotationType.DOUBLE.equals(meta.getAnnotationType())) {
 				// For doubles, the double-meta columns is also selected.
-				builder.append(", ");
-				builder.append(meta.getTableAlias());
-				builder.append(".");
-				builder.append(TableConstants.ANNOTATION_REPLICATION_COL_DOUBLE_ABSTRACT);
-				builder.append(" AS _DBL");
-				builder.append(meta.getColumnNameForId());
-			} 
-			builder.append(", ");
-			builder.append(meta.getTableAlias());
-			builder.append(".");
-			builder.append(meta.getSelectColumnName());
-			builder.append(" AS ");
-			builder.append(meta.getColumnNameForId());
+				boolean isDoubleAbstract = true;
+				buildAnnotationSelect(builder, meta, isDoubleAbstract);
+			}
+			// select the annotation
+			boolean isDoubleAbstract = false;
+			buildAnnotationSelect(builder, meta, isDoubleAbstract);
 		}
+	}
+	
+	/**
+	 * Build the select including the standard entity columns of, id, version, etag, and benefactor..
+	 * @param builder
+	 */
+	public static void buildEntityReplicationSelectStandardColumns(StringBuilder builder) {
+		builder.append(ENTITY_REPLICATION_ALIAS);
+		builder.append(".");
+		builder.append(ENTITY_REPLICATION_COL_ID);
+		buildEntityReplicationSelect(builder,
+				ENTITY_REPLICATION_COL_VERSION,
+				ENTITY_REPLICATION_COL_ETAG,
+				ENTITY_REPLICATION_COL_BENEFACTOR_ID);
+	}
+	/**
+	 * For each provided name: ', MAX(R.name) AS name'
+	 * @param builder
+	 * @param names
+	 */
+	public static void buildEntityReplicationSelect(StringBuilder builder, String...names) {
+		for(String name: names) {
+			builder.append(String.format(TEMPLATE_MAX_ENTITY_SELECT, ENTITY_REPLICATION_ALIAS, name));
+		}
+	}
+	/**
+	 * If isDoubleAbstract = false then builds: ', MAX(IF(A.ANNO_KEY='keyValue', A.valueColumnName, NULL)) as _columnId_'
+	 * If isDoubleAbstract = true then builds: ', MAX(IF(A.ANNO_KEY='keyValue', A.DOUBLE_ABSTRACT, NULL)) as _DBL_columnId_'
+	 * @param builder
+	 * @param keyName
+	 * @param valueName
+	 * @param alias
+	 */
+	public static void buildAnnotationSelect(StringBuilder builder, ColumnMetadata meta, boolean isDoubleAbstract) {
+		String aliasPrefix =  isDoubleAbstract ? ABSTRACT_DOUBLE_ALIAS_PREFIX: EMPTY_STRING;
+		String valueColumnName = isDoubleAbstract ? ANNOTATION_REPLICATION_COL_DOUBLE_ABSTRACT : meta.getSelectColumnName();
+		builder.append(String.format(TEMPLATE_MAX_ANNOTATION_SELECT,
+				ANNOTATION_REPLICATION_ALIAS,
+				ANNOTATION_REPLICATION_COL_KEY,
+				meta.getColumnModel().getName(),
+				valueColumnName,
+				aliasPrefix,
+				meta.getColumnNameForId()
+		));
 	}
 
 	/**
@@ -1426,9 +1458,9 @@ public class SQLUtils {
 			if(!first){
 				builder.append(", ");
 			}
-			builder.append("'");
+			builder.append("`");
 			builder.append(cm.getName());
-			builder.append("'");
+			builder.append("`");
 			first = false;
 		}
 		builder.append(" FROM ");
@@ -1466,7 +1498,7 @@ public class SQLUtils {
 		for(DatabaseColumnInfo info: currentIndexSchema){
 			if(!info.isMetadata()){
 				if(info.getColumnType() != null){
-					String columnId = ""+getColumnId(info);
+					String columnId = EMPTY_STRING+getColumnId(info);
 					currentColumnIdToInfo.put(columnId, info);
 				}
 			}
@@ -1571,15 +1603,11 @@ public class SQLUtils {
 	 * @param type
 	 * @return
 	 */
-	public static String getViewScopeFilterColumnForType(ViewType type) {
-		switch (type) {
-		case project:
+	public static String getViewScopeFilterColumnForType(Long viewTypeMask) {
+		if(ViewTypeMask.Project.getMask() == viewTypeMask) {
 			return TableConstants.ENTITY_REPLICATION_COL_ID;
-		case file:
-		case file_and_table:
+		}else {
 			return TableConstants.ENTITY_REPLICATION_COL_PARENT_ID;
-		default:
-			throw new IllegalArgumentException("Unknown type: "+type.name());
 		}
 	}
 	
@@ -1590,8 +1618,8 @@ public class SQLUtils {
 	 * @param type
 	 * @return
 	 */
-	public static String getDistinctAnnotationColumnsSql(ViewType type){
-		String filterColumln = getViewScopeFilterColumnForType(type);
+	public static String getDistinctAnnotationColumnsSql(Long viewTypeMask){
+		String filterColumln = getViewScopeFilterColumnForType(viewTypeMask);
 		return String.format(TableConstants.SELECT_DISTINCT_ANNOTATION_COLUMNS_TEMPLATE, filterColumln);
 	}
 	
@@ -1600,9 +1628,9 @@ public class SQLUtils {
 	 * @param type
 	 * @return
 	 */
-	public static String getCalculateCRC32Sql(ViewType type){
-		String typeFilter = createViewTypeFilter(type);
-		String filterColumln = getViewScopeFilterColumnForType(type);
+	public static String getCalculateCRC32Sql(Long viewTypeMask){
+		String typeFilter = createViewTypeFilter(viewTypeMask);
+		String filterColumln = getViewScopeFilterColumnForType(viewTypeMask);
 		return String.format(TableConstants.SQL_ENTITY_REPLICATION_CRC_32_TEMPLATE, typeFilter, filterColumln);
 	}
 	

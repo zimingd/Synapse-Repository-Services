@@ -31,6 +31,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sagebionetworks.StackConfiguration;
+import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
@@ -2701,6 +2702,8 @@ public class NodeDAOImplTest {
 		annos.getAdditionalAnnotations().addAnnotation("aString", "someString");
 		annos.getAdditionalAnnotations().addAnnotation("aLong", 123L);
 		annos.getAdditionalAnnotations().addAnnotation("aDouble", 1.22);
+		//Ensure that primary annotations are not included in the entity replication (PLFM-4601)
+		annos.getPrimaryAnnotations().addAnnotation("primaryString", "primaryTest");
 		nodeDao.updateAnnotations(file.getId(), annos);
 		
 		int maxAnnotationChars = 10;
@@ -2856,7 +2859,7 @@ public class NodeDAOImplTest {
 	}
 
 	private Node createProject(String projectName, String user) throws Exception {
-		return createProject(projectName, user, StackConfiguration.getRootFolderEntityIdStatic());
+		return createProject(projectName, user, StackConfigurationSingleton.singleton().getRootFolderEntityId());
 	}
 
 	private Node createProject(String projectName, String user, String parentId) throws Exception {

@@ -324,31 +324,6 @@ public class SqlConstants {
 	public static final String COL_RESOURCE_ACCESS_TYPE_ELEMENT		= "STRING_ELE";
 	public static final String DDL_FILE_RES_ACCESS_TYPE				= "schema/ResourceAccessType-ddl.sql";
 	
-	// The backup/restore status table
-	public static final String TABLE_BACKUP_STATUS 				= "DAEMON_STATUS";
-	public static final String COL_BACKUP_ID					= "ID";
-	public static final String COL_BACKUP_STATUS				= "STATUS";
-	public static final String COL_BACKUP_TYPE					= "TYPE";
-	public static final String COL_BACKUP_STARTED_BY 			= "STARTED_BY";
-	public static final String COL_BACKUP_STARTED_ON 			= "STARTED_ON";
-	public static final String COL_BACKUP_PROGRESS_MESSAGE		= "PROGRESS_MESSAGE";
-	public static final String COL_BAKUP_PROGRESS_CURRENT		= "PROGRESS_CURRENT";
-	public static final String COL_BACKUP_PROGRESS_TOTAL		= "PROGRESS_TOTAL";
-	public static final String COL_BACKUP_ERORR_MESSAGE			= "ERROR_MESSAGE";
-	public static final String COL_BACKUP_ERROR_DETAILS			= "ERROR_DETAILS";
-	public static final String COL_BACKUP_LOG					= "LOG";
-	public static final String COL_BACKUP_URL					= "BACKUP_URL";
-	public static final String COL_BACKUP_RUNTIME				= "RUN_TIME_MS";
-	public static final String DDL_DAEMON_STATUS				= "schema/DaemonStatus-ddl.sql";
-	// the max size of the error message.
-	public static final int ERROR_MESSAGE_MAX_LENGTH			= 3000;
-	
-	public static final String TABLE_BACKUP_TERMINATE 			= "DAEMON_TERMINATE";
-	public static final String COL_BACKUP_TERM_OWNER			= "BACKUP_OWNER";
-	public static final String COL_BACKUP_FORCE_TERMINATION		= "FORCE_TERMINATION";
-	public static final String DDL_DAEMON_TERMINATE				= "schema/DaemonTerminate-ddl.sql";
-	
-	
 	// Preview blobs.
 	public static final String TABLE_PREVIEW_BLOB				= "PREVIEW_BLOB";
 	public static final String COL_PREVIEW_OWNER_ID				= "OWNER_NODE_ID";
@@ -434,7 +409,7 @@ public class SqlConstants {
 	// Tracks view scope.
 	public static final String TABLE_VIEW_TYPE				= "VIEW_TYPE";
 	public static final String COL_VIEW_TYPE_VIEW_ID		= "VIEW_ID";
-	public static final String COL_VIEW_TYPE_VIEW_TYPE		= "VIEW_TYPE";
+	public static final String COL_VIEW_TYPE_VIEW_TYPE_MASK	= "VIEW_TYPE_MASK";
 	public static final String COL_VIEW_TYPE_ETAG			= "ETAG";
 	public static final String DDL_VIEW_TYPE = "schema/ViewType-ddl.sql";
 	
@@ -560,6 +535,32 @@ public class SqlConstants {
 	public static final String V2_COL_WIKI_OWNERS_ETAG					= "ETAG";
 	public static final String V2_DDL_FILE_WIKI_ONWERS					= "schema/v2-WikiOwners-ddl.sql";
 	
+	// Download list
+	public static final String TABLE_DOWNLOAD_LIST 				= "DOWNLOAD_LIST";
+	public static final String COL_DOWNLOAD_LIST_PRINCIPAL_ID 	= "PRINCIPAL_ID";
+	public static final String COL_DOWNLOAD_LIST_UPDATED_ON		= "UPDATED_ON";
+	public static final String COL_DOWNLOAD_LIST_ETAG			= "ETAG";
+	public static final String DDL_DOWNLOAD_LIST				= "schema/DownloadList-ddl.sql";
+	
+	// Download list item.
+	public static final String TABLE_DOWNLOAD_LIST_ITEM							= "DOWNLOAD_LIST_ITEM";
+	public static final String COL_DOWNLOAD_LIST_ITEM_PRINCIPAL_ID				= "PRINCIPAL_ID";
+	public static final String COL_DOWNLOAD_LIST_ITEM_ASSOCIATED_OBJECT_ID 		= "ASSOCIATED_OBJECT_ID";
+	public static final String COL_DOWNLOAD_LIST_ITEM_ASSOCIATED_OBJECT_TYPE 	= "ASSOCIATED_OBJECT_TYPE";
+	public static final String COL_DOWNLOAD_LIST_ITEM_FILE_HANDLE_ID 			= "FILE_HANDLE_ID";
+	public static final String DDL_DOWNLOAD_LIST_ITEM							= "schema/DownloadListItem-ddl.sql";
+	
+	// Download order
+	public static final String TABLE_DOWNLOAD_ORDER					= "DOWNLOAD_ORDER";
+	public static final String COL_DOWNLOAD_ORDER_ID				= "ORDER_ID";
+	public static final String COL_DOWNLOAD_ORDER_CREATED_BY		= "CREATED_BY";
+	public static final String COL_DOWNLOAD_ORDER_CREATED_ON 		= "CREATED_ON";
+	public static final String COL_DOWNLOAD_ORDER_FILE_NAME			= "FILE_NAME";
+	public static final String COL_DOWNLOAD_ORDER_TOTAL_SIZE_MB 	= "TOTAL_SIZE_MB";
+	public static final String COL_DOWNLOAD_ORDER_TOTAL_NUM_FILES	= "TOTAL_NUM_FILES";
+	public static final String COL_DOWNLOAD_ORDER_FILES_BLOB		= "FILES_BLOB";
+	public static final String DDL_DOWNLOAD_ORDER					= "schema/DownloadOrder-ddl.sql";
+	
 	// The alias used for the dataset table.
 	public static final String NODE_ALIAS					= "nod";
 	public static final String REVISION_ALIAS				= "rev";
@@ -584,6 +585,7 @@ public class SqlConstants {
 	public static final String COL_DOI_OBJECT_VERSION   = "OBJECT_VERSION";
 	public static final String COL_DOI_CREATED_BY       = "CREATED_BY";
 	public static final String COL_DOI_CREATED_ON       = "CREATED_ON";
+	public static final String COL_DOI_UPDATED_BY       = "UPDATED_BY";
 	public static final String COL_DOI_UPDATED_ON       = "UPDATED_ON";
 	public static final String DDL_FILE_DOI = "schema/Doi-ddl.sql";
 

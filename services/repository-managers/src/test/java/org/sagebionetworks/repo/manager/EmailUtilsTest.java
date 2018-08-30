@@ -11,16 +11,41 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import static org.mockito.Mockito.*;
 
+import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.stubbing.Answer;
 import org.sagebionetworks.repo.manager.team.EmailParseUtil;
+import org.sagebionetworks.repo.manager.token.TokenGenerator;
 import org.sagebionetworks.repo.model.JoinTeamSignedToken;
+import org.sagebionetworks.repo.model.SignedTokenInterface;
 import org.sagebionetworks.repo.model.UserProfile;
 import org.sagebionetworks.repo.model.message.NotificationSettingsSignedToken;
-import org.sagebionetworks.repo.util.SignedTokenUtil;
 import org.sagebionetworks.util.SerializationUtils;
 
+@RunWith(MockitoJUnitRunner.class)
 public class EmailUtilsTest {
+	
+	@Mock
+	private TokenGenerator mockTokenGenerator;
+	
+	@Before
+	public void before() {
+		doAnswer(new Answer<SignedTokenInterface>() {
+
+			@Override
+			public SignedTokenInterface answer(InvocationOnMock invocation) throws Throwable {
+				SignedTokenInterface token = (SignedTokenInterface) invocation.getArguments()[0];
+				token.setHmac("signed");
+				return null;
+			}
+		}).when(mockTokenGenerator).signToken(any());
+	}
 	
 	@Test
 	public void testReadMailTemplate() {
@@ -35,6 +60,27 @@ public class EmailUtilsTest {
 				"\r\n" + 
 				"Here are the details of your account:\r\n" + 
 				"User Name: foobar\r\n" + 
+				"Full Name: Foo Bar\r\n" + 
+				"\r\n" + 
+				"If you did not mean to create this account, please contact us at synapseInfo@synapse.org.\r\n" + 
+				"\r\n" + 
+				"Synapse Administrator\r\n";
+		assertEquals(expected, actual);
+	}
+	
+	@Test
+	public void testReadMailTemplateWithNullFieldReplacement() {
+		Map<String,String> fieldValues = new HashMap<String,String>();
+		fieldValues.put("#displayName#", "Foo Bar");
+		fieldValues.put("#domain#", "Synapse");
+		fieldValues.put("#username#", null);
+		String actual = EmailUtils.readMailTemplate("message/WelcomeTemplate.txt", fieldValues);
+		String expected = "Hello Foo Bar,\r\n" + 
+				"\r\n" + 
+				"Welcome to Synapse!\r\n" + 
+				"\r\n" + 
+				"Here are the details of your account:\r\n" + 
+				"User Name: \r\n" + 
 				"Full Name: Foo Bar\r\n" + 
 				"\r\n" + 
 				"If you did not mean to create this account, please contact us at synapseInfo@synapse.org.\r\n" + 
@@ -90,12 +136,12 @@ public class EmailUtilsTest {
 		String memberId = "222";
 		String teamId = "333";
 		Date createdOn = new Date();
-		String link = EmailUtils.createOneClickJoinTeamLink(endpoint, userId, memberId, teamId, createdOn);
+		String link = EmailUtils.createOneClickJoinTeamLink(endpoint, userId, memberId, teamId, createdOn, mockTokenGenerator);
+		verify(mockTokenGenerator).signToken(any());
 		assertTrue(link.startsWith(endpoint));
 		
 		JoinTeamSignedToken token = SerializationUtils.hexDecodeAndDeserialize(
 				link.substring(endpoint.length()), JoinTeamSignedToken.class);
-		SignedTokenUtil.validateToken(token);
 		assertEquals(userId, token.getUserId());
 		assertEquals(memberId, token.getMemberId());
 		assertEquals(teamId, token.getTeamId());
@@ -107,11 +153,11 @@ public class EmailUtilsTest {
 	public void testCreateOneClickUnsubscribeLink() throws Exception {
 		String endpoint = "https://synapse.org/#";
 		String userId = "111";
-		String link = EmailUtils.createOneClickUnsubscribeLink(endpoint, userId);
+		String link = EmailUtils.createOneClickUnsubscribeLink(endpoint, userId, mockTokenGenerator);
+		verify(mockTokenGenerator).signToken(any());
 		assertTrue(link.startsWith(endpoint));
 		NotificationSettingsSignedToken token = SerializationUtils.hexDecodeAndDeserialize(
 				link.substring(endpoint.length()), NotificationSettingsSignedToken.class);
-		SignedTokenUtil.validateToken(token);
 		assertEquals(userId, token.getUserId());
 		assertNotNull(token.getCreatedOn());
 		assertNotNull(token.getHmac());

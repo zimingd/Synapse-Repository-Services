@@ -16,7 +16,6 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.junit.After;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -30,7 +29,6 @@ import org.sagebionetworks.repo.manager.EntityPermissionsManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.asynch.AsynchJobStatusManager;
 import org.sagebionetworks.repo.manager.table.ColumnModelManager;
-import org.sagebionetworks.repo.manager.table.ColumnModelManagerImpl;
 import org.sagebionetworks.repo.manager.table.TableManagerSupport;
 import org.sagebionetworks.repo.manager.table.TableQueryManager;
 import org.sagebionetworks.repo.manager.table.TableViewManager;
@@ -78,7 +76,9 @@ import org.sagebionetworks.repo.model.table.TableUpdateRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateResponse;
 import org.sagebionetworks.repo.model.table.TableUpdateTransactionRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateTransactionResponse;
+import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
+import org.sagebionetworks.repo.model.table.ViewTypeMask;
 import org.sagebionetworks.repo.model.util.AccessControlListUtil;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.table.cluster.ConnectionFactory;
@@ -148,8 +148,6 @@ public class TableViewIntegrationTest {
 	
 	@Before
 	public void before(){
-		// Only run this test if the table feature is enabled.
-		Assume.assumeTrue(config.getTableEnabled());
 		mockProgressCallbackVoid= Mockito.mock(ProgressCallback.class);
 		adminUserInfo = userManager.getUserInfo(BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId());
 		NewUser user = new NewUser();
@@ -193,7 +191,7 @@ public class TableViewIntegrationTest {
 			fileIds.add(fileId);
 		}
 		
-		defaultSchema = tableManagerSupport.getDefaultTableViewColumns(ViewType.file);
+		defaultSchema = tableManagerSupport.getDefaultTableViewColumns(ViewTypeMask.File.getMask());
 		// add an annotation column
 		anno1Column = new ColumnModel();
 		anno1Column.setColumnType(ColumnType.INTEGER);
@@ -253,7 +251,10 @@ public class TableViewIntegrationTest {
 		view.setType(type);
 		String viewId = entityManager.createEntity(adminUserInfo, view, null);
 		view = entityManager.getEntity(adminUserInfo, viewId, EntityView.class);
-		tableViewManager.setViewSchemaAndScope(adminUserInfo, view.getColumnIds(), view.getScopeIds(), view.getType(), viewId);
+		ViewScope viewScope = new ViewScope();
+		viewScope.setScope(view.getScopeIds());
+		viewScope.setViewType(view.getType());
+		tableViewManager.setViewSchemaAndScope(adminUserInfo, view.getColumnIds(), viewScope, viewId);
 		entitiesToDelete.add(view.getId());
 		return viewId;
 	}
@@ -554,7 +555,7 @@ public class TableViewIntegrationTest {
 		FileEntity file = entityManager.getEntity(adminUserInfo, ""+fileId, FileEntity.class);
 		waitForEntityReplication(fileViewId, file.getId());
 		
-		String sql = "select id, parentId, projectId, benefactorId from "+fileViewId+" where id = "+fileId;
+		String sql = "select id, parentId, projectId, benefactorId from "+fileViewId+" where id = '"+fileId+"'";
 		QueryResultBundle results = waitForConsistentQuery(adminUserInfo, sql);
 		List<Row> rows  = extractRows(results);
 		assertEquals(1, rows.size());
@@ -587,8 +588,11 @@ public class TableViewIntegrationTest {
 		stringColumn = columnModelManager.createColumnModel(adminUserInfo,
 				stringColumn);
 		defaultColumnIds.add(stringColumn.getId());
+		ViewScope scope = new ViewScope();
+		scope.setScope(Lists.newArrayList(project.getId()));
+		scope.setViewType(ViewType.file);
 		tableViewManager.setViewSchemaAndScope(adminUserInfo, defaultColumnIds,
-				Lists.newArrayList(project.getId()), ViewType.file, fileViewId);
+				scope, fileViewId);
 
 		// Add an annotation with the same name and a value larger than the size
 		// of the column.
@@ -624,8 +628,11 @@ public class TableViewIntegrationTest {
 		stringColumn = columnModelManager.createColumnModel(adminUserInfo,
 				stringColumn);
 		defaultColumnIds.add(stringColumn.getId());
+		ViewScope scope = new ViewScope();
+		scope.setScope(Lists.newArrayList(project.getId()));
+		scope.setViewTypeMask(ViewTypeMask.File.getMask());
 		tableViewManager.setViewSchemaAndScope(adminUserInfo, defaultColumnIds,
-				Lists.newArrayList(project.getId()), ViewType.file, fileViewId);
+				scope, fileViewId);
 
 		// Add an annotation with a duplicate name as a primary annotation.
 		Annotations annos = entityManager.getAnnotations(adminUserInfo, fileId);
@@ -719,7 +726,7 @@ public class TableViewIntegrationTest {
 		// wait for the view to be available for query
 		waitForEntityReplication(fileViewId, fileViewId);
 		// query for the file that inherits from the folder.
-		String sql = "select * from "+fileViewId+" where benefactorId="+folderId+" and id = "+fileId;
+		String sql = "select * from "+fileViewId+" where benefactorId='"+folderId+"' and id = '"+fileId+"'";
 		int expectedRowCount = 1;
 		QueryResultBundle results = waitForConsistentQuery(adminUserInfo, sql, expectedRowCount);
 		List<Row> rows  = extractRows(results);
@@ -734,7 +741,7 @@ public class TableViewIntegrationTest {
 		entityPermissionsManager.restoreInheritance(folderId, adminUserInfo);
 
 		// Query for the the file with the project as its benefactor.
-		sql = "select * from "+fileViewId+" where benefactorId="+project.getId()+" and id = "+fileId;
+		sql = "select * from "+fileViewId+" where benefactorId='"+project.getId()+"' and id = '"+fileId+"'";
 		expectedRowCount = 1;
 		results = waitForConsistentQuery(adminUserInfo, sql, expectedRowCount);
 		rows  = extractRows(results);
@@ -759,7 +766,7 @@ public class TableViewIntegrationTest {
 		// wait for the view to be available for query
 		waitForEntityReplication(fileViewId, firstFileId);
 		// query the view as a user that does not permission
-		String sql = "select * from "+fileViewId+" where id ="+firstFileId;
+		String sql = "select * from "+fileViewId+" where id ='"+firstFileId+"'";
 		int rowCount = 1;
 		waitForConsistentQuery(adminUserInfo, sql, rowCount);
 		
@@ -791,7 +798,7 @@ public class TableViewIntegrationTest {
 		// wait for the view.
 		waitForEntityReplication(viewId, projectId);
 		// query the view as a user that does not permission
-		String sql = "select * from "+viewId+" where id ="+projectId;
+		String sql = "select * from "+viewId+" where id ='"+projectId+"'";
 		int rowCount = 1;
 		waitForConsistentQuery(adminUserInfo, sql, rowCount);
 		
@@ -1045,7 +1052,7 @@ public class TableViewIntegrationTest {
 	@Test
 	public void testViewWithFilesAndTables() throws Exception{
 		// use the default columns for this type.
-		defaultSchema = tableManagerSupport.getDefaultTableViewColumns(ViewType.file_and_table);
+		defaultSchema = tableManagerSupport.getDefaultTableViewColumns(ViewTypeMask.getMaskForDepricatedType(ViewType.file_and_table));
 		// Add a table to the project
 		TableEntity table = new TableEntity();
 		table.setName("someTable");

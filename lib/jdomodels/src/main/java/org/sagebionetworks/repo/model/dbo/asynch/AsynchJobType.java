@@ -1,6 +1,7 @@
 package org.sagebionetworks.repo.model.dbo.asynch;
 
 import org.sagebionetworks.StackConfiguration;
+import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.repo.model.asynch.AsynchronousRequestBody;
 import org.sagebionetworks.repo.model.asynch.AsynchronousResponseBody;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadRequest;
@@ -28,7 +29,7 @@ import org.sagebionetworks.repo.model.table.UploadToTableResult;
  * @author jmhill
  *
  */
-public enum AsynchJobType {
+public enum AsynchJobType  {
 	
 	TABLE_UPDATE_TRANSACTION(TableUpdateTransactionRequest.class, TableUpdateTransactionResponse.class),
 	
@@ -86,6 +87,6 @@ public enum AsynchJobType {
 	 * @return
 	 */
 	public String getQueueName(){
-		return StackConfiguration.singleton().getAsyncQueueName(this.name());
+		return StackConfigurationSingleton.singleton().getAsyncQueueName(this.name());
 	}
 }

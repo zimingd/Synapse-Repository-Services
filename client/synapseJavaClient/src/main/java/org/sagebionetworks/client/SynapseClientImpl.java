@@ -196,6 +196,7 @@ import org.sagebionetworks.repo.model.search.SearchResults;
 import org.sagebionetworks.repo.model.search.query.SearchQuery;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.subscription.Etag;
+import org.sagebionetworks.repo.model.subscription.SortByType;
 import org.sagebionetworks.repo.model.subscription.SubscriberCount;
 import org.sagebionetworks.repo.model.subscription.SubscriberPagedResults;
 import org.sagebionetworks.repo.model.subscription.Subscription;
@@ -356,7 +357,7 @@ public class SynapseClientImpl extends BaseClientImpl implements SynapseClient {
 
 	protected static final String COLUMN = "/column";
 	protected static final String COLUMN_BATCH = COLUMN + "/batch";
-	protected static final String COLUMN_VIEW_DEFAULT = COLUMN + "/tableview/defaults/";
+	protected static final String COLUMN_VIEW_DEFAULT = COLUMN + "/tableview/defaults";
 	protected static final String TABLE = "/table";
 	protected static final String ROW_ID = "/row";
 	protected static final String ROW_VERSION = "/version";
@@ -3752,7 +3753,15 @@ public class SynapseClientImpl extends BaseClientImpl implements SynapseClient {
 	public List<ColumnModel> getDefaultColumnsForView(ViewType viewType)
 			throws SynapseException {
 		ValidateArgument.required(viewType, "viewType");
-		String url = COLUMN_VIEW_DEFAULT+viewType.name();
+		String url = COLUMN_VIEW_DEFAULT+"/"+viewType.name();
+		return getListOfJSONEntity(getRepoEndpoint(), url, ColumnModel.class);
+	}
+	
+	@Override
+	public List<ColumnModel> getDefaultColumnsForView(Long viewTypeMask)
+			throws SynapseException {
+		ValidateArgument.required(viewTypeMask, "viewTypeMask");
+		String url = COLUMN_VIEW_DEFAULT+"?viewTypeMask="+viewTypeMask;
 		return getListOfJSONEntity(getRepoEndpoint(), url, ColumnModel.class);
 	}
 
@@ -4768,13 +4777,22 @@ public class SynapseClientImpl extends BaseClientImpl implements SynapseClient {
 
 	@Override
 	public SubscriptionPagedResults getAllSubscriptions(
-			SubscriptionObjectType objectType, Long limit, Long offset) throws SynapseException {
+			SubscriptionObjectType objectType, Long limit, Long offset, SortByType sortByType, org.sagebionetworks.repo.model.subscription.SortDirection sortDirection) throws SynapseException {
 		ValidateArgument.required(limit, "limit");
 		ValidateArgument.required(offset, "offset");
 		ValidateArgument.required(objectType, "objectType");
-		String url = SUBSCRIPTION+ALL+"?"+LIMIT+"="+limit+"&"+OFFSET+"="+offset;
-		url += "&"+OBJECT_TYPE_PARAM+"="+objectType.name();
-		return getJSONEntity(getRepoEndpoint(), url, SubscriptionPagedResults.class);
+		StringBuilder builder = new StringBuilder(SUBSCRIPTION+ALL);
+		builder.append("?");
+		builder.append(LIMIT).append("=").append(limit);
+		builder.append("&").append(OFFSET).append("=").append(offset);
+		builder.append("&").append(OBJECT_TYPE_PARAM).append("=").append(objectType.name());
+		if(sortByType != null) {
+			builder.append("&").append("sortBy").append("=").append(sortByType.name());
+		}
+		if(sortDirection != null) {
+			builder.append("&").append("sortDirection").append("=").append(sortDirection.name());
+		}
+		return getJSONEntity(getRepoEndpoint(), builder.toString(), SubscriptionPagedResults.class);
 	}
 
 	@Override

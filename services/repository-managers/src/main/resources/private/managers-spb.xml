@@ -51,6 +51,10 @@
 		<constructor-arg ref="stackConfiguration.oAuth2ORCIDClientSecret" index="1" />
 	</bean>
 
+	<bean id="tokenGenerator"
+		class="org.sagebionetworks.repo.manager.token.TokenGeneratorSingleton"
+		factory-method="singleton"/>
+
 	<bean id="oAuthManager" class="org.sagebionetworks.repo.manager.oauth.OAuthManagerImpl">
 		<property name="providerMap">
 			<map>
@@ -240,22 +244,16 @@
 
 	<bean id="accessApprovalManager" class="org.sagebionetworks.repo.manager.AccessApprovalManagerImpl" />
 
-	<bean id="amazonClientFactory" class="org.sagebionetworks.repo.util.AmazonClientFactoryImpl"
-		scope="singleton" />
-
 	<bean id="userManager" class="org.sagebionetworks.repo.manager.UserManagerImpl" />
 		
 	<bean id="authManager" class="org.sagebionetworks.repo.manager.AuthenticationManagerImpl" />
 	
-	<bean id="amazonSESClient" class="com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClient">
-        <constructor-arg ref="awsCredentials" />
-    </bean>
+	<bean id="amazonSESClient" class="org.sagebionetworks.aws.AwsClientFactory"
+		factory-method="createAmazonSimpleEmailServiceClient"/>
     
 	<bean id="sesClient" class="org.sagebionetworks.repo.manager.principal.SynapseEmailServiceImpl"/>
 			
 	<bean id="messageManager" class="org.sagebionetworks.repo.manager.MessageManagerImpl" />
-	
-	<bean id="backupDriver" class="org.sagebionetworks.repo.manager.backup.daemon.BackupDriverImpl" scope="singleton"/>
 	
 	<bean id="backupFileStream" class="org.sagebionetworks.repo.manager.migration.BackupFileStreamImpl" scope="singleton"/>
 	
@@ -303,6 +301,9 @@
 		
 	<bean id="v2WikiManager" class="org.sagebionetworks.repo.manager.wiki.V2WikiManagerImpl" 
 		scope="singleton" />
+
+	<bean id="doiManager" class="org.sagebionetworks.repo.manager.doi.DoiManagerImpl"
+		  scope="singleton" />
 
 	<bean id="entityDoiManager" class="org.sagebionetworks.repo.manager.doi.EntityDoiManagerImpl" 
 		scope="singleton" />
@@ -416,37 +417,6 @@
 	<bean id="projectStatsManager"
 		class="org.sagebionetworks.repo.manager.ProjectStatsManagerImpl"
 		scope ="singleton" />	
-
-	<!-- The thread pool used by the backup/restore daemons -->
-	<bean id="backupDaemonThreadPool"
-		class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="targetClass">
-			<value>java.util.concurrent.Executors</value>
-		</property>
-		<property name="targetMethod">
-			<value>newFixedThreadPool</value>
-		</property>
-		<property name="arguments"
-			ref="stackConfiguration.backupRestoreThreadPoolMaximum" />
-	</bean>
-
-	<!-- The second thread pool used by the backup/restore daemons -->
-	<bean id="backupDaemonThreadPool2"
-		class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="targetClass">
-			<value>java.util.concurrent.Executors</value>
-		</property>
-		<property name="targetMethod">
-			<value>newFixedThreadPool</value>
-		</property>
-		<property name="arguments"
-			ref="stackConfiguration.backupRestoreThreadPoolMaximum" />
-	</bean>
-
-	<bean id="backupDaemonLauncher"
-		class="org.sagebionetworks.repo.manager.backup.daemon.BackupDaemonLauncherImpl"
-		scope="singleton" >
-	</bean>
 	
 	<!-- Used to read document from repo -->
 	<bean id="searchDocumentDriver"

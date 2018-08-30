@@ -22,7 +22,6 @@ import java.util.concurrent.Callable;
 
 import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -34,7 +33,7 @@ import org.sagebionetworks.client.exceptions.SynapseConflictingUpdateException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseForbiddenException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
-import org.sagebionetworks.client.exceptions.SynapseServerException;
+import org.sagebionetworks.client.exceptions.UnknownSynapseServerException;
 import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.Entity;
 import org.sagebionetworks.repo.model.Folder;
@@ -64,6 +63,7 @@ import org.sagebionetworks.repo.model.table.TableUpdateRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateResponse;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
+import org.sagebionetworks.repo.model.table.ViewTypeMask;
 import org.sagebionetworks.table.cluster.utils.TableModelUtils;
 import org.sagebionetworks.util.Pair;
 import org.sagebionetworks.util.TimeUtils;
@@ -91,13 +91,11 @@ public class IT100TableControllerTest {
 	
 	@BeforeClass 
 	public static void beforeClass() throws Exception {
-		// Only run this test if the table feature is enabled.
-		Assume.assumeTrue(new StackConfiguration().getTableEnabled());
 		// Create a user
 		adminSynapse = new SynapseAdminClientImpl();
 		SynapseClientHelper.setEndpoints(adminSynapse);
-		adminSynapse.setUsername(StackConfiguration.getMigrationAdminUsername());
-		adminSynapse.setApiKey(StackConfiguration.getMigrationAdminAPIKey());
+		adminSynapse.setUsername(StackConfigurationSingleton.singleton().getMigrationAdminUsername());
+		adminSynapse.setApiKey(StackConfigurationSingleton.singleton().getMigrationAdminAPIKey());
 		adminSynapse.clearAllLocks();
 		synapse = new SynapseClientImpl();
 		userToDelete = SynapseClientHelper.createUser(adminSynapse, synapse);
@@ -513,7 +511,20 @@ public class IT100TableControllerTest {
 	
 	@Test
 	public void testgetDefaultColumnsForView() throws SynapseException{
+		// test for the deprecated method.
 		List<ColumnModel> defaults = synapse.getDefaultColumnsForView(ViewType.file);
+		assertNotNull(defaults);
+		assertTrue(defaults.size() > 1);
+		ColumnModel cm = defaults.get(0);
+		assertNotNull(cm);
+		assertNotNull(cm.getName());
+		assertNotNull(cm.getId());
+	}
+	
+	@Test
+	public void testgetDefaultColumnsForViewTypeMask() throws SynapseException{
+		Long mask = ViewTypeMask.File.getMask();
+		List<ColumnModel> defaults = synapse.getDefaultColumnsForView(mask);
 		assertNotNull(defaults);
 		assertTrue(defaults.size() > 1);
 		ColumnModel cm = defaults.get(0);
@@ -665,7 +676,7 @@ public class IT100TableControllerTest {
 		
 		try {
 			synapse.appendRowsToTable(partialSet, MAX_APPEND_TIMEOUT, table.getId());
-		} catch (SynapseServerException e) {
+		} catch (UnknownSynapseServerException e) {
 			// this should result in a 413 "Payload Too Large"
 			assertEquals(413, e.getStatusCode());
 		}
@@ -792,18 +803,32 @@ public class IT100TableControllerTest {
 		annos.addAnnotation("keyC", "45678");
 		synapse.updateAnnotations(folder.getId(), annos);
 		
-		// Now find the columns for this scope
+		// Now find the columns for this scope with mask
 		ViewScope scope = new ViewScope();
 		scope.setScope(Lists.newArrayList(project.getId()));
+		scope.setViewTypeMask(ViewTypeMask.File.getMask());
 		String nextPageToken = null;
 		ColumnModelPage page = waitForColumnModelPage(scope, nextPageToken, 3);
 		assertNotNull(page);
 		assertNotNull(page.getResults());
 		assertNull(page.getNextPageToken());
-		assertEquals(4, page.getResults().size());
+		assertEquals(3, page.getResults().size());
+		
+		// find the scope with the old type
+		// Now find the columns for this scope
+		scope = new ViewScope();
+		scope.setScope(Lists.newArrayList(project.getId()));
+		scope.setViewType(ViewType.file);
+		nextPageToken = null;
+		page = waitForColumnModelPage(scope, nextPageToken, 3);
+		assertNotNull(page);
+		assertNotNull(page.getResults());
+		assertNull(page.getNextPageToken());
+		assertEquals(3, page.getResults().size());
+		
 		// make another call with a next page token.
 		long limit = 1;
-		long offset = 2;
+		long offset = 1;
 		nextPageToken = new NextPageToken(limit, offset).toToken();
 		page = waitForColumnModelPage(scope, nextPageToken, 1);
 		assertNotNull(page);

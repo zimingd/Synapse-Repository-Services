@@ -23,7 +23,6 @@ public class ExpectedStackBeansTest {
 			"stackConfiguration.idGeneratorDatabaseUsername",
 			"stackConfiguration.idGeneratorDatabasePassword",
 			// Repository properties
-			"stackConfiguration.repositoryJDOConfigurationMap",
 			"stackConfiguration.repositoryDatabaseDriver",
 			"stackConfiguration.repositoryDatabaseConnectionUrl",
 			"stackConfiguration.repositoryDatabaseUsername",
@@ -45,7 +44,6 @@ public class ExpectedStackBeansTest {
 
 			"stackConfiguration.tableRowChangeBucketName",
 			"stackConfiguration.tableMaxBytesPerRequest",
-			"stackConfiguration.tableEnabled",
 			"stackConfiguration.tableUpdateQueueName",
 			"stackConfiguration.tableUpdateDeadLetterQueueName",
 			"stackConfiguration.tableCurrentCacheUpdateQueueName",
@@ -60,8 +58,6 @@ public class ExpectedStackBeansTest {
 			"stackConfiguration.semaphoreSharedMaxTimeoutMS",
 			
 			"stackConfiguration.searchEnabled",
-			"stackConfiguration.dynamoEnabled",
-			"stackConfiguration.dynamoTableRowCacheEnabled",
 			
 			"stackConfiguration.fileMultipartUploadDaemonTimeoutMS",
 			"stackConfiguration.fileMultipartUploadDaemonMainMaxThreads",

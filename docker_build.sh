@@ -83,10 +83,10 @@ docker run --name ${rds_container_name} \
 sleep 20
 
 tables_schema_name=${rds_user_name}tables
-docker exec ${rds_container_name} mysql -uroot -pdefault-pw -h${ahost} -sN -e "CREATE SCHEMA ${tables_schema_name};"
-docker exec ${rds_container_name} mysql -uroot -pdefault-pw -h${ahost} -sN -e "GRANT ALL ON ${tables_schema_name}.* TO '${rds_user_name}'@'%' identified by '${rds_password}';"
-docker exec ${rds_container_name} mysql -uroot -pdefault-pw -h${ahost} -sN -e "CREATE SCHEMA ${rds_user_name};"
-docker exec ${rds_container_name} mysql -uroot -pdefault-pw -h${ahost} -sN -e "GRANT ALL ON ${rds_user_name}.* TO '${rds_user_name}'@'%' identified by '${rds_password}';"
+docker exec ${rds_container_name} mysql -udevpzdonguser -pdefault-pw -h${ahost} -sN -e "CREATE SCHEMA ${tables_schema_name};"
+docker exec ${rds_container_name} mysql -udevpzdonguser -pdefault-pw -h${ahost} -sN -e "GRANT ALL ON ${tables_schema_name}.* TO '${rds_user_name}'@'%' identified by '${rds_password}';"
+docker exec ${rds_container_name} mysql -udevpzdonguser -pdefault-pw -h${ahost} -sN -e "CREATE SCHEMA ${rds_user_name};"
+docker exec ${rds_container_name} mysql -udevpzdonguser -pdefault-pw -h${ahost} -sN -e "GRANT ALL ON ${rds_user_name}.* TO '${rds_user_name}'@'%' identified by '${rds_password}';"
 
 # create build container and run build
 docker run -i --rm --name ${build_container_name} \

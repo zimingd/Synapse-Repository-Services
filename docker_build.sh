@@ -76,9 +76,6 @@ docker run --name ${rds_container_name} \
 --network=${network_name} \
 -m 1500M \
 -e MYSQL_ROOT_PASSWORD=default-pw \
--e MYSQL_DATABASE=${rds_user_name} \
--e MYSQL_USER=${rds_user_name} \
--e MYSQL_PASSWORD=${rds_password} \
 -v /etc/localtime:/etc/localtime:ro \
 -d mysql:5.6
 

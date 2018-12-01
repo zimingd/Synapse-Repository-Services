@@ -111,7 +111,7 @@ ${AWS_CREDS} \
 -Dorg.sagebionetworks.developer=${user} \
 -Dorg.sagebionetworks.stack=${stack} \
 -Dorg.sagebionetworks.table.enabled=true \
--Dorg.sagebionetworks.table.cluster.endpoint.0=${rds_container_name} \
+-Dorg.sagebionetworks.table.cluster.endpoint.0=${ahost} \
 -Dorg.sagebionetworks.table.cluster.schema.0=${tables_schema_name} \
 -Dorg.sagebionetworks.search.enabled=${org_sagebionetworks_search_enabled} \
 -Dorg.sagebionetworks.doi.datacite.enabled=${org_sagebionetworks_datacite_enabled} \

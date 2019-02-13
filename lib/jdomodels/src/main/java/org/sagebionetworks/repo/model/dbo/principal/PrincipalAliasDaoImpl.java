@@ -227,7 +227,7 @@ public class PrincipalAliasDaoImpl implements PrincipalAliasDAO {
 		return AliasUtils.createDTOFromDBO(results);
 	}
 
-	@Override
+	@Override //TODO: take AliasType type ... so that it cna take multiple types
 	public List<PrincipalAlias> listPrincipalAliases(Long principalId,
 			AliasType type) {
 		if(principalId == null) throw new IllegalArgumentException("PrincipalId cannot be null");

@@ -146,6 +146,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 		return authManager.hasUserAcceptedTermsOfUse(userId);
 	}
 
+	@Deprecated
 	@Override
 	public Long getUserId(String username) throws NotFoundException {
 		PrincipalAlias pa = userManager.lookupUserForAuthentication(username);
@@ -154,6 +155,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
 	@Override
 	public void sendPasswordEmail(String email) throws NotFoundException {
+		//TODO: using wrong call! filter by type!
 		PrincipalAlias pa = userManager.lookupUserForAuthentication(email);
 		sendPasswordEmail(pa.getPrincipalId());
 	}
@@ -175,7 +177,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 		if(providedInfo.getUsersVerifiedEmail() == null){
 			throw new IllegalArgumentException("OAuthProvider: "+request.getProvider().name()+" did not provide a user email");
 		}
-		// This is the ID of the user within the provider's system.
+		// This is the ID of the user within the provider's system
+		//TODO: filter specificaly by email. getUserForEmail() which filters for email
 		PrincipalAlias emailAlias = userManager.lookupUserForAuthentication(providedInfo.getUsersVerifiedEmail());
 		// Return the user's session token
 		return authManager.getSessionToken(emailAlias.getPrincipalId());
@@ -226,6 +229,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 		ValidateArgument.required(request.getPassword(), "LoginRequest.password");
 		try {
 			// Lookup the user.
+			//TODO: this should lookup for only email and username types. should get other unnecessary types
 			PrincipalAlias pa = userManager.lookupUserForAuthentication(request.getUsername());
 
 			// Fetch the user's session token

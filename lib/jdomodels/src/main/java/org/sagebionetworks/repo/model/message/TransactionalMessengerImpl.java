@@ -3,10 +3,11 @@ package org.sagebionetworks.repo.model.message;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import com.google.common.collect.Maps;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.sagebionetworks.collections.Transform;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.ObservableEntity;
@@ -18,11 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationAdapter;
-
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Maps;
 
 
 /**
@@ -225,17 +221,10 @@ public class TransactionalMessengerImpl implements TransactionalMessenger {
 			Map<MessageKey, Message> currentMessages = getCurrentBoundMessages();
 
 			// filter out modification message, since this only applies to the non-modifcation only messages
-			List<ChangeMessage> list = Transform.toList(Iterables.filter(currentMessages.values(), new Predicate<Message>() {
-				@Override
-				public boolean apply(Message input) {
-					return input instanceof ChangeMessage;
-				}
-			}), new Function<Message, ChangeMessage>() {
-				@Override
-				public ChangeMessage apply(Message input) {
-					return (ChangeMessage) input;
-				}
-			});
+			List<ChangeMessage> list = currentMessages.values().stream()
+					.filter(ChangeMessage.class::isInstance)
+					.map(ChangeMessage.class::cast)
+					.collect(Collectors.toList());
 
 			// Create the list of DBOS
 			List<ChangeMessage> updatedList;

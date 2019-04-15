@@ -14,6 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
 
+import au.com.bytecode.opencsv.CSVReader;
+import au.com.bytecode.opencsv.CSVWriter;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.table.ColumnChange;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -27,13 +31,6 @@ import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.SelectColumn;
 import org.sagebionetworks.repo.model.table.SparseRowDto;
 import org.sagebionetworks.repo.web.NotFoundException;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-
-import au.com.bytecode.opencsv.CSVReader;
-import au.com.bytecode.opencsv.CSVWriter;
 
 /**
  * Utilities for working with Tables and Row data.
@@ -53,13 +50,6 @@ public class TableModelTestUtils {
 	public static List<ColumnModel> createOneOfEachType() {
 		return createOneOfEachType(false);
 	}
-
-	public static final Function<ColumnModel, String> convertToNameFunction = new Function<ColumnModel, String>() {
-		@Override
-		public String apply(ColumnModel input) {
-			return input.getName();
-		}
-	};
 
 	public static List<ColumnModel> createOneOfEachType(boolean hasDefaults) {
 		List<ColumnModel> results = new LinkedList<ColumnModel>();

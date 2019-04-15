@@ -14,11 +14,13 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+import com.google.common.collect.Sets;
+import com.google.common.collect.Sets.SetView;
 import org.apache.commons.lang3.BooleanUtils;
 import org.sagebionetworks.StackConfiguration;
 import org.sagebionetworks.StackConfigurationSingleton;
-import org.sagebionetworks.collections.Transform;
 import org.sagebionetworks.repo.manager.trash.EntityInTrashCanException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.ACLInheritanceException;
@@ -48,10 +50,6 @@ import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Sets;
-import com.google.common.collect.Sets.SetView;
 
 public class EntityPermissionsManagerImpl implements EntityPermissionsManager {
 
@@ -90,14 +88,7 @@ public class EntityPermissionsManagerImpl implements EntityPermissionsManager {
 		AccessControlList acl = aclDAO.get(nodeId, ObjectType.ENTITY);
 		return acl;
 	}
-	
-	private static final Function<ResourceAccess, Long> RESOURCE_ACCESS_TO_PRINCIPAL_TRANSFORMER = new Function<ResourceAccess, Long>() {
-		@Override
-		public Long apply(ResourceAccess input) {
-			return input.getPrincipalId();
-		}
-	};
-		
+
 	@WriteTransaction
 	@Override
 	public AccessControlList updateACL(AccessControlList acl, UserInfo userInfo) throws NotFoundException, DatastoreException, InvalidModelException, UnauthorizedException, ConflictingUpdateException {
@@ -119,11 +110,12 @@ public class EntityPermissionsManagerImpl implements EntityPermissionsManager {
 		// changed, so we can send notifications out.
 		// We only care about principals being added or removed, not what
 		// exactly has happened.
-		Set<Long> oldPrincipals = Transform.toSet(
-				oldAcl.getResourceAccess(),
-				RESOURCE_ACCESS_TO_PRINCIPAL_TRANSFORMER);
-		Set<Long> newPrincipals = Transform.toSet(acl.getResourceAccess(),
-				RESOURCE_ACCESS_TO_PRINCIPAL_TRANSFORMER);
+		Set<Long> oldPrincipals = oldAcl.getResourceAccess().stream()
+				.map(ResourceAccess::getPrincipalId)
+				.collect(Collectors.toSet());
+		Set<Long> newPrincipals = acl.getResourceAccess().stream()
+				.map(ResourceAccess::getPrincipalId)
+				.collect(Collectors.toSet());
 
 		SetView<Long> addedPrincipals = Sets.difference(newPrincipals,
 				oldPrincipals);

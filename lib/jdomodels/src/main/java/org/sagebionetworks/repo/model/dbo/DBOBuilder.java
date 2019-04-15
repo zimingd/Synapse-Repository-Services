@@ -12,16 +12,13 @@ import java.sql.Types;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
-import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
-
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import org.apache.commons.lang3.StringUtils;
+import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 
 public class DBOBuilder<T> {
 
@@ -182,15 +179,13 @@ public class DBOBuilder<T> {
 	}
 
 	public static <T> FieldColumn[] getFields(final Class<T> clazz, final String[] customColumns) {
-		List<FieldColumn> result = Lists.transform(getAnnotatedFields(clazz, Field.class), new Function<Entry<Field>, FieldColumn>() {
-			@Override
-			public FieldColumn apply(Entry<Field> fieldEntry) {
-				return new FieldColumn(fieldEntry.field.getName(), fieldEntry.annotation.name(), fieldEntry.annotation.primary())
-						.withIsBackupId(fieldEntry.annotation.backupId()).withIsEtag(fieldEntry.annotation.etag()
-								).withIsSelfForeignKey(fieldEntry.annotation.isSelfForeignKey());
-			}
-		});
-		return result.toArray(new FieldColumn[result.size()]);
+		return getAnnotatedFields(clazz, Field.class).stream()
+				.map(fieldEntry -> new FieldColumn(fieldEntry.field.getName(), fieldEntry.annotation.name(), fieldEntry.annotation.primary())
+						.withIsBackupId(fieldEntry.annotation.backupId())
+						.withIsEtag(fieldEntry.annotation.etag())
+						.withIsSelfForeignKey(fieldEntry.annotation.isSelfForeignKey())
+				)
+				.toArray(FieldColumn[]::new);
 	}
 
 	private static final Object[][] TYPE_MAP = { { Long.class, "getLong" }, { long.class, "getLong" }, { String.class, "getString" } };
@@ -206,61 +201,57 @@ public class DBOBuilder<T> {
 
 	public static <T> RowMapper[] getFieldMappers(final Class<? extends T> clazz, final String[] customColumns) {
 		List<Entry<Field>> fields = getAnnotatedFieldsWithoutCustomColums(clazz, Field.class, customColumns);
-		List<RowMapper> mappers = Lists.transform(fields, new Function<Entry<Field>, RowMapper>() {
-			@Override
-			public RowMapper apply(Entry<Field> fieldEntry) {
-				Method setterMethod;
-				String setterMethodName = "set" + StringUtils.capitalize(fieldEntry.field.getName());
-				try {
-					setterMethod = clazz.getMethod(setterMethodName, new Class[] { fieldEntry.field.getType() });
-				} catch (NoSuchMethodException e) {
-					throw new IllegalArgumentException("Could not find method '" + setterMethodName + "' on " + clazz.getName());
-				}
-
-				String getMethod = getMethodFromTypeMap(fieldEntry.field.getType());
-				if (getMethod != null) {
-					try {
-						Method mapperMethod = ResultSet.class.getMethod((String) getMethod, new Class[] { String.class });
-						return new AssignmentRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(),
-								mapperMethod);
-					} catch (NoSuchMethodException e) {
-						throw new IllegalArgumentException("Could not find method '" + getMethod + "' on ResultSet");
-					}
-				}
-
-				// enum?
-				if (Enum.class.isAssignableFrom(fieldEntry.field.getType())) {
-					@SuppressWarnings("unchecked")
-					Class<? extends Enum<?>> enumClass = (Class<? extends Enum<?>>) fieldEntry.field.getType();
-					return new EnumRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(), enumClass);
-				}
-
-				if (!StringUtils.isEmpty(fieldEntry.annotation.serialized())) {
-					return new SerializedTypeRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(),
-							fieldEntry.field.getType());
-				}
-
-				if (fieldEntry.field.getType() == byte[].class) {
-					return new BlobRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
-				}
-
-				if (fieldEntry.field.getType() == Date.class) {
-					return new DateRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
-				}
-				
-				if (fieldEntry.field.getType() == Timestamp.class) {
-					return new TimestampRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
-				}
-				
-				if (fieldEntry.field.getType() == Boolean.class) {
-					return new BooleanRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
-				}
-
-
-				throw new IllegalArgumentException("No default mapper for type " + fieldEntry.field.getType());
+		return fields.stream().map(fieldEntry -> {
+			Method setterMethod;
+			String setterMethodName = "set" + StringUtils.capitalize(fieldEntry.field.getName());
+			try {
+				setterMethod = clazz.getMethod(setterMethodName, fieldEntry.field.getType());
+			} catch (NoSuchMethodException e) {
+				throw new IllegalArgumentException("Could not find method '" + setterMethodName + "' on " + clazz.getName());
 			}
-		});
-		return mappers.toArray(new RowMapper[mappers.size()]);
+
+			String getMethod = getMethodFromTypeMap(fieldEntry.field.getType());
+			if (getMethod != null) {
+				try {
+					Method mapperMethod = ResultSet.class.getMethod((String) getMethod, String.class);
+					return new AssignmentRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(),
+							mapperMethod);
+				} catch (NoSuchMethodException e) {
+					throw new IllegalArgumentException("Could not find method '" + getMethod + "' on ResultSet");
+				}
+			}
+
+			// enum?
+			if (Enum.class.isAssignableFrom(fieldEntry.field.getType())) {
+				@SuppressWarnings("unchecked")
+				Class<? extends Enum<?>> enumClass = (Class<? extends Enum<?>>) fieldEntry.field.getType();
+				return new EnumRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(), enumClass);
+			}
+
+			if (!StringUtils.isEmpty(fieldEntry.annotation.serialized())) {
+				return new SerializedTypeRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable(),
+						fieldEntry.field.getType());
+			}
+
+			if (fieldEntry.field.getType() == byte[].class) {
+				return new BlobRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
+			}
+
+			if (fieldEntry.field.getType() == Date.class) {
+				return new DateRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
+			}
+
+			if (fieldEntry.field.getType() == Timestamp.class) {
+				return new TimestampRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
+			}
+
+			if (fieldEntry.field.getType() == Boolean.class) {
+				return new BooleanRowMapper(setterMethod, fieldEntry.annotation.name(), fieldEntry.annotation.nullable());
+			}
+
+
+			throw new IllegalArgumentException("No default mapper for type " + fieldEntry.field.getType());
+		}).toArray(RowMapper[]::new);
 	}
 
 	public static <T> Map<String, DBOBuilder.ParamTypeMapper> getParamTypeMappers(final Class<? extends T> clazz, final String[] customColumns) {
@@ -484,17 +475,14 @@ public class DBOBuilder<T> {
 	private static <T extends Annotation> List<Entry<Field>> getAnnotatedFieldsWithoutCustomColums(Class<?> clazz,
 			Class<Field> annotationType, final String[] customColumns) {
 		// filter out custom columns. They are handled by the caller
-		return Lists.newArrayList(Iterables.filter(getAnnotatedFields(clazz, Field.class), new Predicate<Entry<Field>>() {
-			@Override
-			public boolean apply(Entry<Field> fieldEntry) {
-				// Assumption is that custom columns are rare, and thus a linear search is acceptable
-				for (String customColumn : customColumns) {
-					if (customColumn.equals(fieldEntry.annotation.name())) {
-						return false;
-					}
+		return getAnnotatedFields(clazz, Field.class).stream().filter(fieldEntry -> {
+			// Assumption is that custom columns are rare, and thus a linear search is acceptable
+			for (String customColumn : customColumns) {
+				if (customColumn.equals(fieldEntry.annotation.name())) {
+					return false;
 				}
-				return true;
 			}
-		}));
+			return true;
+		}).collect(Collectors.toList());
 	}
 }

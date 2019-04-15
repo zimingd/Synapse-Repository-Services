@@ -8,7 +8,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
+import com.google.common.base.Predicate;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -36,11 +40,6 @@ import org.sagebionetworks.repo.model.UserBundle;
 import org.sagebionetworks.repo.model.UserProfile;
 import org.sagebionetworks.repo.model.entity.query.SortDirection;
 import org.sagebionetworks.util.TimeUtils;
-
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 
 public class IT970UserProfileController {
 
@@ -221,16 +220,13 @@ public class IT970UserProfileController {
 	}
 
 	private List<ProjectHeader> nullOutLastActivity(List<ProjectHeader> alphabetical) {
-		return Lists.transform(alphabetical, new Function<ProjectHeader, ProjectHeader>() {
-			@Override
-			public ProjectHeader apply(ProjectHeader input) {
-				ProjectHeader output = new ProjectHeader();
-				output.setId(input.getId());
-				output.setName(input.getName());
-				output.setLastActivity(null);
-				return output;
-			}
-		});
+		return alphabetical.stream().map(input -> {
+			ProjectHeader output = new ProjectHeader();
+			output.setId(input.getId());
+			output.setName(input.getName());
+			output.setLastActivity(null);
+			return output;
+		}).collect(Collectors.toList());
 	}
 	
 	@Test

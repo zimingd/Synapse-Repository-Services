@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.sagebionetworks.ids.BatchOfIds;
 import org.sagebionetworks.ids.IdGenerator;
@@ -24,9 +25,6 @@ import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 
 public class DBOProjectStatsDAOImpl implements ProjectStatsDAO {
 
@@ -102,12 +100,9 @@ public class DBOProjectStatsDAOImpl implements ProjectStatsDAO {
 	@Override
 	public List<ProjectStat> getProjectStatsForUser(Long userId) {
 		List<DBOProjectStat> queryResult = jdbcTemplate.query(SQL_GET_STATS_FOR_USER, new Object[] { userId }, rowMapper);
-		return Lists.transform(queryResult, new Function<DBOProjectStat, ProjectStat>() {
-			@Override
-			public ProjectStat apply(DBOProjectStat input) {
-				return new ProjectStat(input.getProjectId(), input.getUserId(), input.getLastAccessed(), input.getEtag());
-			}
-		});
+		return queryResult.stream()
+				.map(input -> new ProjectStat(input.getProjectId(), input.getUserId(), input.getLastAccessed(), input.getEtag()))
+				.collect(Collectors.toList());
 	}
 
 }

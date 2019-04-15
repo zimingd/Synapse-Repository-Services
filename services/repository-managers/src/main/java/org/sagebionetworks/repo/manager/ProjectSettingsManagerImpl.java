@@ -8,6 +8,7 @@ import java.net.URL;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -49,7 +50,6 @@ import org.springframework.util.CollectionUtils;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.model.S3Object;
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 
 public class ProjectSettingsManagerImpl implements ProjectSettingsManager {
@@ -110,12 +110,9 @@ public class ProjectSettingsManagerImpl implements ProjectSettingsManager {
 		if (nodePath.isEmpty()) {
 			throw new DatastoreException("No path for this parentId could be found");
 		}
-		List<Long> nodePathIds = Lists.transform(nodePath, new Function<EntityHeader, Long>() {
-			@Override
-			public Long apply(EntityHeader input) {
-				return KeyFactory.stringToKey(input.getId());
-			}
-		});
+		List<Long> nodePathIds = nodePath.stream()
+				.map(input -> KeyFactory.stringToKey(input.getId()))
+				.collect(Collectors.toList());
 
 		// get the first available project setting of the correct type
 		ProjectSetting projectSetting = projectSettingsDao.get(nodePathIds, type);

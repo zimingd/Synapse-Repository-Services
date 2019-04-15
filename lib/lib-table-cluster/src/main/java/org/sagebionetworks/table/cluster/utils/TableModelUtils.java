@@ -49,7 +49,6 @@ import org.sagebionetworks.table.model.SparseChangeSet;
 import org.sagebionetworks.table.model.SparseRow;
 import org.sagebionetworks.util.ValidateArgument;
 
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -66,13 +65,6 @@ public class TableModelUtils {
 
 	public static final String UTF_8 = "UTF-8";
 
-	public static final Function<Long, String> LONG_TO_STRING = new Function<Long, String>() {
-		@Override
-		public String apply(Long input) {
-			return input.toString();
-		}
-	};
-	
 	private static final String PARTIAL_ROW_KEY_NOT_A_VALID = "PartialRow.value.key: '%s' is not a valid column ID for row ID: %s";
 	
 	public static final String EXCEEDS_MAX_SIZE_TEMPLATE = "Request exceeds the maximum number of bytes per request.  Maximum : %1$s bytes";
@@ -85,20 +77,6 @@ public class TableModelUtils {
 	 */
 	public static final String COLUMN_MODEL_ID_STRING_DELIMITER = ",";
 
-	public static final Function<ColumnModel, Long> COLUMN_MODEL_TO_ID = new Function<ColumnModel, Long>() {
-		@Override
-		public Long apply(ColumnModel cm) {
-			return Long.parseLong(cm.getId());
-		}
-	};
-
-	public static final Function<SelectColumn, Long> SELECT_COLUMN_TO_ID = new Function<SelectColumn, Long>() {
-		@Override
-		public Long apply(SelectColumn sc) {
-			return Long.parseLong(sc.getId());
-		}
-	};
-	
 	/**
 	 * Write a SparseChangeSetDto to the given output stream as GZIP compressed JSON.
 	 * @param set

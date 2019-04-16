@@ -29,8 +29,6 @@ import org.sagebionetworks.util.TimeUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import com.google.common.base.Predicate;
-
 /**
  * Test for the search controller
  * @author John
@@ -64,17 +62,14 @@ public class SearchControllerTest extends AbstractAutowiredControllerTestBase {
 		Assume.assumeTrue(cloudSearchClientProvider.isSearchEnabled());
 
 		// wait for search initialization
-		assertTrue(TimeUtils.waitFor(600000, 1000, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				try {
-					return cloudSearchClientProvider.getCloudSearchClient() != null;
-				} catch (TemporarilyUnavailableException e) {
-					//not ready yet so ignore...
-					return false;
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
+		assertTrue(TimeUtils.waitFor(600000, 1000, null, input -> {
+			try {
+				return cloudSearchClientProvider.getCloudSearchClient() != null;
+			} catch (TemporarilyUnavailableException e) {
+				//not ready yet so ignore...
+				return false;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
 		}));
 
@@ -86,15 +81,12 @@ public class SearchControllerTest extends AbstractAutowiredControllerTestBase {
 		Document doc = documentProvider.formulateSearchDocument(project.getId());
 		searchManager.createOrUpdateSearchDocument(doc);
 		// Wait for it to show up
-		assertTrue(TimeUtils.waitFor(60000, 1000, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				try {
-					System.out.println("Waiting for entity to appear in seach index: " + project.getId() + "...");
-					return searchManager.doesDocumentExist(project.getId(), project.getEtag());
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
+		assertTrue(TimeUtils.waitFor(60000, 1000, null, input -> {
+			try {
+				System.out.println("Waiting for entity to appear in seach index: " + project.getId() + "...");
+				return searchManager.doesDocumentExist(project.getId(), project.getEtag());
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
 		}));
 	}

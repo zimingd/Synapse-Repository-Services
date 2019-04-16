@@ -125,7 +125,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -794,12 +793,7 @@ public class TableWorkerIntegrationTest {
 		repositoryMessagePublisher.publishToTopic(message);
 
 		final TableIndexDAO tableIndexDAO = tableConnectionFactory.getConnection(tableId);
-		assertTrue("Index table was not created", TimeUtils.waitFor(20000, 500, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				return tableIndexDAO.getRowCountForTable(tableId) != null;
-			}
-		}));
+		assertTrue("Index table was not created", TimeUtils.waitFor(20000, 500, null, input -> tableIndexDAO.getRowCountForTable(tableId) != null));
 
 		// now we still should get the index taken care of
 		queryResult = waitForConsistentQuery(adminUserInfo, query, queryOptions);

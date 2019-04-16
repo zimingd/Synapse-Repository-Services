@@ -16,7 +16,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sagebionetworks.aws.SynapseS3Client;
-import org.sagebionetworks.junit.BeforeAll;
 import org.sagebionetworks.repo.manager.SemaphoreManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
@@ -66,11 +65,6 @@ public class PreviewIntegrationTest {
 	
 	private UserInfo adminUserInfo;
 	private List<S3FileHandleInterface> toDelete = new LinkedList<S3FileHandleInterface>();
-	
-	@BeforeAll
-	public void beforeAll() throws Exception {
-		semphoreManager.releaseAllLocksAsAdmin(new UserInfo(true));
-	}
 
 	@Before
 	public void before() throws Exception {

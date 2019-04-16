@@ -52,7 +52,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
-import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
 
 @RunWith(SpringJUnit4ClassRunner.class)
@@ -179,13 +178,10 @@ public class ProjectStatsWorkerIntegrationTest {
 		String folderId = entityManager.createEntity(userInfo, folder, null);
 		toDelete.add(folderId);
 
-		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, new Predicate<ProjectStat>() {
-			@Override
-			public boolean apply(ProjectStat input) {
-				List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
-				assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
-				return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
-			}
+		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, input -> {
+			List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
+			assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
+			return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
 		}));
 
 		// Create an entity
@@ -194,13 +190,10 @@ public class ProjectStatsWorkerIntegrationTest {
 		subFolder.setParentId(folderId);
 		toDelete.add(entityManager.createEntity(userInfo, subFolder, null));
 
-		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, new Predicate<ProjectStat>() {
-			@Override
-			public boolean apply(ProjectStat input) {
-				List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
-				assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
-				return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
-			}
+		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, input -> {
+			List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
+			assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
+			return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
 		}));
 	}
 
@@ -214,13 +207,10 @@ public class ProjectStatsWorkerIntegrationTest {
 		folder.setParentId(KeyFactory.keyToString(projectStat.getProjectId()));
 		entityManager.createEntity(userInfo, folder, null);
 
-		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, new Predicate<ProjectStat>() {
-			@Override
-			public boolean apply(ProjectStat input) {
-				List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
-				assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
-				return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
-			}
+		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, input -> {
+			List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
+			assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
+			return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
 		}));
 	}
 
@@ -284,12 +274,9 @@ public class ProjectStatsWorkerIntegrationTest {
 
 		action.call();
 
-		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, new Predicate<ProjectStat>() {
-			@Override
-			public boolean apply(ProjectStat input) {
-				List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
-				return projectStatsForUser.size() == 1 && projectStatsForUser.get(0).getLastAccessed().after(before);
-			}
+		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, input -> {
+			List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
+			return projectStatsForUser.size() == 1 && projectStatsForUser.get(0).getLastAccessed().after(before);
 		}));
 	}
 
@@ -325,13 +312,10 @@ public class ProjectStatsWorkerIntegrationTest {
 		rootWikikey.setOwnerObjectType(ObjectType.ENTITY);
 		rootWikikey.setWikiPageId(v2RootWiki.getId());
 
-		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, new Predicate<ProjectStat>() {
-			@Override
-			public boolean apply(ProjectStat input) {
-				List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
-				assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
-				return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
-			}
+		assertTrue(TimeUtils.waitFor(WAIT_FOR_STAT_CHANGE_MS, 200L, projectStat, input -> {
+			List<ProjectStat> projectStatsForUser = projectStatsDAO.getProjectStatsForUser(userId);
+			assertEquals("Shouldn't get more than one entry", 1, projectStatsForUser.size());
+			return projectStatsForUser.size() == 1 && !projectStatsForUser.get(0).getEtag().equals(input.getEtag());
 		}));
 	}
 

@@ -39,7 +39,6 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
 import com.amazonaws.services.cloudsearchdomain.model.SearchRequest;
-import com.google.common.base.Predicate;
 
 /**
  * This test validates that entity messages pushed to the topic propagate to the search queue,
@@ -94,17 +93,14 @@ public class SearchWorkerIntegrationTest {
 		// Only run this test if search is enabled
 		Assume.assumeTrue(searchProvider.isSearchEnabled());
 		
-		assertTrue(TimeUtils.waitFor(20000, 500, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				try {
-					return searchProvider.getCloudSearchClient() != null;
-				} catch (TemporarilyUnavailableException e) {
-					//not ready yet so ignore...
-					return false;
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
+		assertTrue(TimeUtils.waitFor(20000, 500, null, input -> {
+			try {
+				return searchProvider.getCloudSearchClient() != null;
+			} catch (TemporarilyUnavailableException e) {
+				//not ready yet so ignore...
+				return false;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
 		}));
 
@@ -112,15 +108,12 @@ public class SearchWorkerIntegrationTest {
 		// wait for the searchindex to become available (we assume the queue is already there and only needs to be
 		// checked once). It should go through within .5 seconds, but if not (aws no ready), it can take 30 seconds for
 		// a retry
-		assertTrue(TimeUtils.waitFor(65000, 100, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				try {
-					searchManager.deleteAllDocuments();
-					return true;
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}
+		assertTrue(TimeUtils.waitFor(65000, 100, null, input -> {
+			try {
+				searchManager.deleteAllDocuments();
+				return true;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
 			}
 		}));
 		

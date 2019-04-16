@@ -1,21 +1,10 @@
 package org.sagebionetworks.util;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
-import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.util.ReflectionUtils;
-
-import com.google.common.base.Predicate;
 
 public class ThreadStepperTest {
 

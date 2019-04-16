@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
 
-import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.junit.After;
@@ -187,16 +186,13 @@ public class IT970UserProfileController {
 		ebc.setEntity(folder);
 		synapse.updateEntityBundle(folder.getId(), ebc);
 
-		TimeUtils.waitFor(MAX_WAIT_MS, 1000, Lists.reverse(projects.getResults()), new Predicate<List<ProjectHeader>>() {
-			@Override
-			public boolean apply(List<ProjectHeader> expected) {
-				try {
-					PaginatedResults<ProjectHeader> projects = synapse.getMyProjects(ProjectListType.MY_PROJECTS, null, null,
-							Integer.MAX_VALUE, 0);
-					return expected.equals(projects.getResults());
-				} catch (SynapseException e) {
-					throw new RuntimeException(e.getMessage(), e);
-				}
+		TimeUtils.waitFor(MAX_WAIT_MS, 1000, Lists.reverse(projects.getResults()), expected -> {
+			try {
+				PaginatedResults<ProjectHeader> projects1 = synapse.getMyProjects(ProjectListType.MY_PROJECTS, null, null,
+						Integer.MAX_VALUE, 0);
+				return expected.equals(projects1.getResults());
+			} catch (SynapseException e) {
+				throw new RuntimeException(e.getMessage(), e);
 			}
 		});
 

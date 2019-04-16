@@ -2,12 +2,12 @@ package org.sagebionetworks.util;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormatterBuilder;
 
-import com.google.common.base.Predicate;
 
 public class TimeUtils {
 	private static final DateTimeFormatter dateParser;
@@ -81,7 +81,7 @@ public class TimeUtils {
 	private static <T> boolean waitForInternal(long maxTimeMillis, long initialCheckIntervalMillis, T input, Predicate<T> condition,
 			boolean exponential) {
 		long startTimeMillis = clock.currentTimeMillis();
-		while (!condition.apply(input)) {
+		while (!condition.test(input)) {
 			long nowMillis = clock.currentTimeMillis();
 			if (nowMillis - startTimeMillis >= maxTimeMillis) {
 				return false;
@@ -97,9 +97,9 @@ public class TimeUtils {
 	private static <T> T waitForInternal(long maxTimeMillis, long initialCheckIntervalMillis, Callable<Pair<Boolean, T>> condition,
 			boolean exponential) throws Exception {
 		long startTimeMillis = clock.currentTimeMillis();
-		for (;;) {
+		while (true) {
 			Pair<Boolean, T> call = condition.call();
-			if (call.getFirst().booleanValue() == true) {
+			if (call.getFirst()) {
 				return call.getSecond();
 			}
 			long nowMillis = clock.currentTimeMillis();

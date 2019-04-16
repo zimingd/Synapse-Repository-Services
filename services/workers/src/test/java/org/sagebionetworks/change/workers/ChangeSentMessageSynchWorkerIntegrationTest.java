@@ -35,8 +35,6 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.google.common.base.Predicate;
-
 @RunWith(SpringJUnit4ClassRunner.class)
 @ContextConfiguration(locations = { "classpath:test-context.xml" })
 public class ChangeSentMessageSynchWorkerIntegrationTest {
@@ -73,7 +71,7 @@ public class ChangeSentMessageSynchWorkerIntegrationTest {
 		objectIdSequence = 0;
 		// We want this test to be deterministic
 		Random mockRandom = Mockito.mock(Random.class);
-		when(mockRandom.nextInt()).thenReturn(new Integer(0));
+		when(mockRandom.nextInt()).thenReturn(0);
 		StackConfiguration mockConfiguration = Mockito.mock(StackConfiguration.class);
 		when(mockConfiguration.getChangeSynchWorkerMinPageSize()).thenReturn(10);
 		when(mockConfiguration.getChangeSynchWorkerSleepTimeMS()).thenReturn(0L);
@@ -165,12 +163,9 @@ public class ChangeSentMessageSynchWorkerIntegrationTest {
 	 * @throws InterruptedException 
 	 */
 	private void waitForSynchState() throws InterruptedException {
-		boolean passed = TimeUtils.waitFor(MAX_PUBLISH_WAIT_MS, 1000, null, new Predicate<Void>() {
-			@Override
-			public boolean apply(Void input) {
-				List<ChangeMessage> notSynchded = changeDao.listUnsentMessages(0, Long.MAX_VALUE, new Timestamp(System.currentTimeMillis()));
-				return notSynchded.isEmpty();
-			}
+		boolean passed = TimeUtils.waitFor(MAX_PUBLISH_WAIT_MS, 1000, null, input -> {
+			List<ChangeMessage> notSynchded = changeDao.listUnsentMessages(0, Long.MAX_VALUE, new Timestamp(System.currentTimeMillis()));
+			return notSynchded.isEmpty();
 		});
 		assertTrue("Timed out waiting for ChangeSentMessageSynchWorker to synchronize",passed);
 	}

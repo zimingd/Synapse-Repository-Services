@@ -5,17 +5,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.util.ReflectionUtils;
-
-import com.google.common.base.Predicate;
 
 public class TimeUtilsTest {
 
@@ -49,12 +44,7 @@ public class TimeUtilsTest {
 	public void testNormal() {
 		long start = clock.currentTimeMillis();
 		final AtomicInteger count = new AtomicInteger(0);
-		boolean result = TimeUtils.waitFor(6000, 1000, "a", new Predicate<String>() {
-			@Override
-			public boolean apply(String input) {
-				return count.incrementAndGet() > 6;
-			}
-		});
+		boolean result = TimeUtils.waitFor(6000, 1000, "a", input -> count.incrementAndGet() > 6);
 		assertTrue(result);
 		assertEquals(start + 6000, clock.currentTimeMillis());
 	}
@@ -63,12 +53,7 @@ public class TimeUtilsTest {
 	public void testExponential() {
 		long start = clock.currentTimeMillis();
 		final AtomicInteger count = new AtomicInteger(0);
-		boolean result = TimeUtils.waitForExponential(6000, 1000, "a", new Predicate<String>() {
-			@Override
-			public boolean apply(String input) {
-				return count.incrementAndGet() > 5;
-			}
-		});
+		boolean result = TimeUtils.waitForExponential(6000, 1000, "a", input -> count.incrementAndGet() > 5);
 		assertTrue(result);
 		assertEquals(start + 1000 * 7.4, clock.currentTimeMillis(), 100);
 	}
@@ -77,12 +62,7 @@ public class TimeUtilsTest {
 	public void testFail() {
 		long start = clock.currentTimeMillis();
 		final AtomicInteger count = new AtomicInteger(0);
-		boolean result = TimeUtils.waitFor(6000, 1000, "a", new Predicate<String>() {
-			@Override
-			public boolean apply(String input) {
-				return count.incrementAndGet() > 7;
-			}
-		});
+		boolean result = TimeUtils.waitFor(6000, 1000, "a", input -> count.incrementAndGet() > 7);
 		assertFalse(result);
 		assertEquals(7, count.get());
 		assertEquals(start + 6000, clock.currentTimeMillis());
@@ -92,12 +72,7 @@ public class TimeUtilsTest {
 	public void testExponentialFail() {
 		long start = clock.currentTimeMillis();
 		final AtomicInteger count = new AtomicInteger(0);
-		boolean result = TimeUtils.waitForExponential(6000, 1000, "a", new Predicate<String>() {
-			@Override
-			public boolean apply(String input) {
-				return count.incrementAndGet() > 6;
-			}
-		});
+		boolean result = TimeUtils.waitForExponential(6000, 1000, "a", input -> count.incrementAndGet() > 6);
 		assertFalse(result);
 		assertEquals(6, count.get());
 		assertEquals(start + 1000 * 7.4, clock.currentTimeMillis(), 100);

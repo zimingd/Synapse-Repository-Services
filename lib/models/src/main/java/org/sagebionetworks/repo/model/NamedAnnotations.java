@@ -18,9 +18,15 @@ public class NamedAnnotations {
 	private Map<String, Annotations> map;
 	
 	public NamedAnnotations(){
-		map = new HashMap<String, Annotations>();
+		map = new HashMap<String, Annotations>(2);
 		map.put(AnnotationNameSpace.PRIMARY.name(), new Annotations());
 		map.put(AnnotationNameSpace.ADDITIONAL.name(), new Annotations());
+	}
+
+	public NamedAnnotations(Annotations primaryAnnotations, Annotations additionalAnnotations){
+		map = new HashMap<String, Annotations>(2);
+		map.put(AnnotationNameSpace.PRIMARY.name(), primaryAnnotations);
+		map.put(AnnotationNameSpace.ADDITIONAL.name(), additionalAnnotations);
 	}
 
 	public boolean isEmpty(){

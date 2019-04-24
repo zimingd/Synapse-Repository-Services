@@ -195,9 +195,9 @@
 				<version>${jackson.version}</version>
 			</dependency>
 
-			<!-- Used for timer triggers (cron-like) Note: spring-context-support 
-				also depends on this libary as an optional dependancy. Since spring-context-support 
-				version 5.1.5.RELEASE uses quartz version 2.3.0 that is the version of quartz 
+			<!-- Used for timer triggers (cron-like) Note: spring-context-support
+				also depends on this libary as an optional dependancy. Since spring-context-support
+				version 5.1.5.RELEASE uses quartz version 2.3.0 that is the version of quartz
 				we are using. See the spring-context-support pom.xml. -->
 			<dependency>
 				<groupId>org.quartz-scheduler</groupId>
@@ -283,7 +283,7 @@
 				<type>jar</type>
 				<scope>compile</scope>
 			</dependency>
-			<!--interface between junit5 and programmatic clients, such as IDEs and 
+			<!--interface between junit5 and programmatic clients, such as IDEs and
 				build tools, for running tests -->
 			<dependency>
 				<groupId>org.junit.platform</groupId>
@@ -291,7 +291,7 @@
 				<version>${junit.platform.version}</version>
 				<scope>test</scope>
 			</dependency>
-			<!--adds a subset of junit5 functionality to tests currently running under 
+			<!--adds a subset of junit5 functionality to tests currently running under
 				junit4. should be REMOVED once fully converted to junit5 -->
 			<dependency>
 				<groupId>org.junit.platform</groupId>
@@ -410,6 +410,11 @@
 				<version>1.7.2</version>
 			</dependency>
 			<!-- Synapse internal dependencies -->
+			<dependency>
+				<groupId>org.sagebionetworks</groupId>
+				<artifactId>synapse-protocol-buffers</artifactId>
+				<version>1.0</version>
+			</dependency>
 			<dependency>
 				<groupId>org.sagebionetworks</groupId>
 				<artifactId>schema-to-pojo-lib</artifactId>
@@ -677,7 +682,7 @@
 			<dependency>
 				<groupId>com.sun</groupId>
 				<artifactId>tools</artifactId>
-				<!-- A copy of the tools.jar from jdk1.8.0_152 was manually added to 
+				<!-- A copy of the tools.jar from jdk1.8.0_152 was manually added to
 					atrifactory to create version 1.8.20171103. -->
 				<version>1.8.20171103</version>
 			</dependency>
@@ -739,7 +744,7 @@
 	<build>
 		<pluginManagement>
 			<plugins>
-				<!-- Tell the eclipse m2e plugin to execute these lifecycle mappings 
+				<!-- Tell the eclipse m2e plugin to execute these lifecycle mappings
 					See: http://wiki.eclipse.org/M2E_plugin_execution_not_covered -->
 				<plugin>
 					<groupId>org.eclipse.m2e</groupId>
@@ -928,11 +933,11 @@
 	</build>
 
 	<!-- Specify hard-coded project properties that should be shared here -->
-	<!-- Note, do not put in custom developer configuration that should not 
+	<!-- Note, do not put in custom developer configuration that should not
 		be shared, esp passwords. Those go in settings.xml -->
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<!-- This is just for "eclipse:eclipse" goal to always attempt downloading 
+		<!-- This is just for "eclipse:eclipse" goal to always attempt downloading
 			sources -->
 		<downloadSources>true</downloadSources>
 		<gwtVersion>2.5.1</gwtVersion>

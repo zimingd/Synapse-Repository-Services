@@ -13,6 +13,7 @@ import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.message.ChangeType;
 import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 
 /**
@@ -116,7 +117,9 @@ public interface NodeDAO {
 	 * @throws DatastoreException 
 	 */
 	public NamedAnnotations getAnnotations(String id) throws NotFoundException, DatastoreException;
-	
+
+	NamedAnnotations getAnnotationsProtoBuf(String id) throws NotFoundException, DatastoreException;
+
 	/**
 	 * Get the annotations for a given version number
 	 * @param id
@@ -126,7 +129,10 @@ public interface NodeDAO {
 	 * @throws DatastoreException
 	 */
 	public NamedAnnotations getAnnotationsForVersion(String id, Long versionNumber) throws NotFoundException, DatastoreException;
-	
+
+	@WriteTransaction
+	void updateAnnotationsUsingProtobuf(String nodeId, NamedAnnotations updatedAnnos) throws NotFoundException, DatastoreException;
+
 	/**
 	 * Get all of the version numbers for this node.
 	 * @param id

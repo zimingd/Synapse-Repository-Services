@@ -13,6 +13,8 @@ import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_OWNER_NODE;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_NODE;
 
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -27,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 
+import org.apache.commons.io.IOUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -79,6 +82,7 @@ import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.jdo.NodeTestUtils;
 import org.sagebionetworks.repo.model.provenance.Activity;
@@ -3684,4 +3688,64 @@ public class NodeDAOImplTest {
 		assertTrue(copy.isEmpty());
 		assertEquals(annos, copy);
 	}
+
+	@Test
+	public void compareAnnotationSerializationMethods() throws IOException {
+		Node nodeXML = nodeDao.createNewNode(privateCreateNew("XMLAnno"));
+		String entityIdXML = nodeXML.getId();
+		System.out.println("XML = " + entityIdXML);
+		Node nodeProto = nodeDao.createNewNode(privateCreateNew("ProtoAnno"));
+		String entityIdProto = nodeProto.getId();
+		System.out.println("proto = " + entityIdProto);
+
+		int maxAnnotationChars = 6;
+//		NamedAnnotations annos = new NamedAnnotations();
+
+		byte[] annoBytes = IOUtils.toByteArray(new FileInputStream("C:\\Users\\Develop\\Documents\\ANNOTATIONS_3"));
+
+		NamedAnnotations annos = JDOSecondaryPropertyUtils.decompressedAnnotations(annoBytes);
+
+		final int iterations = 200;
+
+		long[] xmlData = new long[iterations];
+		long xmldeserialStart;
+
+		for(int i = 0; i < iterations; i++) {
+			changeAnnos(annos, i);
+			xmldeserialStart = System.nanoTime();
+			nodeDao.updateAnnotations(entityIdXML, annos);
+			NamedAnnotations xmlannos = nodeDao.getAnnotations(entityIdXML);
+			xmlData[i] = System.nanoTime()-xmldeserialStart;
+		}
+
+		System.out.println(Arrays.toString(xmlData));
+
+		System.out.println("--------------------------------------------------------------");
+
+		long[] protoData = new long[iterations];
+		long protodeserialstart;
+		for(int i = 0; i < iterations; i++) {
+			changeAnnos(annos, i);
+			protodeserialstart = System.nanoTime();
+			nodeDao.updateAnnotationsUsingProtobuf(entityIdProto, annos);
+			NamedAnnotations deserializedAnnos = nodeDao.getAnnotationsProtoBuf(entityIdProto);
+			protoData[i] = System.nanoTime() - protodeserialstart;
+		}
+		System.out.println(Arrays.toString(protoData));
+	}
+
+	private void changeAnnos(NamedAnnotations annos, int j){
+		int i = (int) (Math.random() * j * 100);
+		annos.getAdditionalAnnotations().addAnnotation("aString", "someString" + i);
+		annos.getAdditionalAnnotations().addAnnotation("aLong", 123L + i);
+		annos.getAdditionalAnnotations().addAnnotation("aDouble", 1.22 + i);
+		annos.getAdditionalAnnotations().addAnnotation("aDate", new Date(444L + i));
+		annos.getAdditionalAnnotations().addAnnotation("aBlob", new byte[]{1,2,3,4,5});
+		annos.getPrimaryAnnotations().addAnnotation("aString", "someString" + i);
+		annos.getPrimaryAnnotations().addAnnotation("aLong", 123L + i);
+		annos.getPrimaryAnnotations().addAnnotation("aDouble", 1.22 + i);
+		annos.getPrimaryAnnotations().addAnnotation("aDate", new Date(444L + i));
+		annos.getPrimaryAnnotations().addAnnotation("aBlob", new byte[]{1,2,3,4,5});
+	}
+
 }

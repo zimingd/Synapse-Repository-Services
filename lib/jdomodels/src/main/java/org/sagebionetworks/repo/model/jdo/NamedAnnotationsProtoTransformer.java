@@ -6,18 +6,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import com.amazonaws.services.dynamodbv2.xspec.L;
-import com.amazonaws.services.dynamodbv2.xspec.S;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import org.sagebionetworks.repo.model.AnnotationNameSpace;
 import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.NamedAnnotations;
-import org.sagebionetworks.repo.model.protobuf.NamedAnnotationsProto;
-import org.sagebionetworks.repo.model.protobuf.NamedAnnotationsProto.NamedAnnotationProto;
 import org.sagebionetworks.repo.model.protobuf.NamedAnnotationsProto.AnnotationProto;
 import org.sagebionetworks.repo.model.protobuf.NamedAnnotationsProto.AnnotationProto.AnnotationValueProto;
-import org.sagebionetworks.repo.model.table.AnnotationType;
+import org.sagebionetworks.repo.model.protobuf.NamedAnnotationsProto.NamedAnnotationProto;
 import org.springframework.util.CollectionUtils;
 
 
@@ -68,7 +64,6 @@ public class NamedAnnotationsProtoTransformer {
 			if(value == null){
 				continue;
 			}
-			//TODO: how do we want to deal with repeated keys?
 			resultMap.put(entry.getKey(), protoCreatorFunction.apply(value));
 		}
 	}

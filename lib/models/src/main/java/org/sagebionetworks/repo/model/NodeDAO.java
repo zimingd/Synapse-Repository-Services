@@ -13,6 +13,7 @@ import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.message.ChangeType;
 import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 
 /**
@@ -541,4 +542,8 @@ public interface NodeDAO {
 	public String touch(Long userId, String nodeId, ChangeType changeType);
 
 
+	NamedAnnotations getAnnotationsOther(String id) throws NotFoundException, DatastoreException;
+
+	@WriteTransaction
+	void updateAnnotationsUsingOtheer(String nodeId, NamedAnnotations updatedAnnos) throws NotFoundException, DatastoreException;
 }

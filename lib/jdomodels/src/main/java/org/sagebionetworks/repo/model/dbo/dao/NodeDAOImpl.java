@@ -94,6 +94,7 @@ import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.jdo.JDORevisionUtils;
 import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
+import org.sagebionetworks.repo.model.jdo.NamedAnnotationsSerializationUtils;
 import org.sagebionetworks.repo.model.message.ChangeType;
 import org.sagebionetworks.repo.model.message.MessageToSend;
 import org.sagebionetworks.repo.model.message.TransactionalMessenger;
@@ -803,8 +804,8 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	public void updateAnnotations(String nodeId, NamedAnnotations updatedAnnos) throws NotFoundException, DatastoreException {
 
 		if(updatedAnnos == null) throw new IllegalArgumentException("Updateded Annotations cannot be null");
-		if(updatedAnnos.getId() == null) throw new IllegalArgumentException("Node ID cannot be null");
-		if(updatedAnnos.getEtag() == null) throw new IllegalArgumentException("Annotations must have a valid eTag");
+//		if(updatedAnnos.getId() == null) throw new IllegalArgumentException("Node ID cannot be null");
+//		if(updatedAnnos.getEtag() == null) throw new IllegalArgumentException("Annotations must have a valid eTag");
 
 		final Long nodeIdLong = KeyFactory.stringToKey(nodeId);
 		final Long currentRevision = getCurrentRevisionNumber(nodeId);
@@ -1854,6 +1855,63 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 		transactionalMessenger.sendMessageAfterCommit(new MessageToSend().withObjectId(nodeIdString)
 				.withObjectType(ObjectType.ENTITY).withChangeType(changeType).withEtag(newEtag).withUserId(userId));
 		return newEtag;
+	}
+
+	private class AnnotationRowMapperOther implements RowMapper<NamedAnnotations>{
+		@Override
+		public NamedAnnotations mapRow(ResultSet rs, int rowNum)	throws SQLException {
+			NamedAnnotations annos = null;
+			Blob blob = rs.getBlob(COL_REVISION_ANNOS_BLOB);
+			if(blob != null){
+				byte[] bytes = blob.getBytes(1, (int) blob.length());
+				try {
+					annos = NamedAnnotationsSerializationUtils.fromBytes(bytes);
+				} catch (IOException e) {
+					throw new DatastoreException(e);
+				}
+			}else{
+				// If there is no annotations blob then create a new one.
+				annos = new NamedAnnotations();
+			}
+			// Pull out the rest of the data.
+			annos.setEtag(rs.getString(COL_NODE_ETAG));
+			annos.setId(KeyFactory.keyToString(rs.getLong(COL_NODE_ID)));
+			return annos;
+		}
+	}
+
+	@Override
+	public NamedAnnotations getAnnotationsOther(String id) throws NotFoundException, DatastoreException {
+		if(id == null) throw new IllegalArgumentException("NodeId cannot be null");
+		// Select just the references, not the entire node.
+		try{
+			return jdbcTemplate.queryForObject(SELECT_ANNOTATIONS_ONLY_PREFIX + " = N." + COL_CURRENT_REV, new AnnotationRowMapperOther(),
+					KeyFactory.stringToKey(id));
+		}catch (EmptyResultDataAccessException e){
+			// Occurs if there are no results
+			throw new NotFoundException(CANNOT_FIND_A_NODE_WITH_ID+id);
+		}
+	}
+
+	@WriteTransaction
+	@Override
+	public void updateAnnotationsUsingOtheer(String nodeId, NamedAnnotations updatedAnnos) throws NotFoundException, DatastoreException {
+
+		if(updatedAnnos == null) throw new IllegalArgumentException("Updateded Annotations cannot be null");
+//		if(updatedAnnos.getId() == null) throw new IllegalArgumentException("Node ID cannot be null");
+//		if(updatedAnnos.getEtag() == null) throw new IllegalArgumentException("Annotations must have a valid eTag");
+
+		final Long nodeIdLong = KeyFactory.stringToKey(nodeId);
+		final Long currentRevision = getCurrentRevisionNumber(nodeId);
+
+		// now update the annotations from the passed values.
+		// Compress the annotations.
+		try {
+			byte[] newAnnos = NamedAnnotationsSerializationUtils.toBytes(updatedAnnos);
+			this.jdbcTemplate.update(SQL_UPDATE_ANNOTATIONS, newAnnos, nodeIdLong, currentRevision);
+		} catch (IOException e) {
+			throw new DatastoreException(e);
+		}
 	}
 
 }

@@ -375,10 +375,47 @@
 			</dependency>
 
 			<dependency>
-				<groupId>com.amazonaws</groupId>
-				<artifactId>aws-java-sdk</artifactId>
-				<version>${com.amazonaws.version}</version>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>cloudsearch</artifactId>
+				<version>${software.amazon.awssdk}</version>
 			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>cloudwatch</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>kms</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>s3</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>ses</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>sns</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>sqs</artifactId>
+				<version>${software.amazon.awssdk}</version>
+			</dependency>
+
 
 			<dependency>
 				<groupId>org.apache.httpcomponents</groupId>
@@ -952,6 +989,7 @@
 		<org.aspectj.version>1.8.11</org.aspectj.version>
 		<schema-to-pojo.version>0.3.21</schema-to-pojo.version>
 		<com.amazonaws.version>1.11.535</com.amazonaws.version>
+		<software.amazon.awssdk>2.5.34</software.amazon.awssdk>
 		<findbugs-maven-plugin.version>2.5.2</findbugs-maven-plugin.version>
 		<org.apache.httpcomponents.version>4.5.7
 		</org.apache.httpcomponents.version>

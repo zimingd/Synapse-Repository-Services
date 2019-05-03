@@ -3,26 +3,11 @@ package org.sagebionetworks.aws;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.cloudsearchdomain.AmazonCloudSearchDomain;
-import com.amazonaws.services.cloudsearchdomain.AmazonCloudSearchDomainClientBuilder;
-import com.amazonaws.services.cloudsearchv2.AmazonCloudSearch;
-import com.amazonaws.services.cloudsearchv2.AmazonCloudSearchClientBuilder;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.AWSKMSAsyncClientBuilder;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.Region;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
-import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
-import com.amazonaws.services.sns.AmazonSNS;
-import com.amazonaws.services.sns.AmazonSNSClientBuilder;
-import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+
 
 /**
  * A factory for creating AWS clients using credential chains.
@@ -44,7 +29,7 @@ public class AwsClientFactory {
 	 * 
 	 * So we have to map in two steps:
 	 */
-	public static Region getS3RegionForAWSRegions(Regions awsRegion) {
+	public static Region getS3RegionForAWSRegions(Region awsRegion) {
 		if (awsRegion==Regions.US_EAST_1) return Region.US_Standard; // string value of Region.US_Standard is null!
 		com.amazonaws.regions.Region regionsRegion = com.amazonaws.regions.Region.getRegion(awsRegion);
 		return Region.fromValue(regionsRegion.getName()); // this wouldn't work for us-east-1
@@ -56,14 +41,14 @@ public class AwsClientFactory {
 	 * @return
 	 */
 	public static SynapseS3Client createAmazonS3Client() {
-		Map<Region, AmazonS3> regionSpecificS3Clients = new HashMap<Region, AmazonS3>();
-		for (Regions region: Regions.values() ) {
-			AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard();
-			builder.withCredentials(SynapseCredentialProviderChain.getInstance());
-			builder.withRegion(region);
-			builder.withPathStyleAccessEnabled(true);
-			builder.withForceGlobalBucketAccessEnabled(true);
-			AmazonS3 amazonS3 = builder.build();
+		Map<Region, S3Client> regionSpecificS3Clients = new HashMap<Region, S3Client>();
+		for (Region region: Region.regions() ) {
+			S3Client amazonS3 = S3Client.builder()
+			.credentialsProvider(SynapseCredentialProviderChain.getInstance())
+			.region(region)
+			.serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+//			TODO: builder.withForceGlobalBucketAccessEnabled(true)
+			.build();
 			regionSpecificS3Clients.put(getS3RegionForAWSRegions(region), amazonS3);
 		}
 		return new SynapseS3ClientImpl(regionSpecificS3Clients);

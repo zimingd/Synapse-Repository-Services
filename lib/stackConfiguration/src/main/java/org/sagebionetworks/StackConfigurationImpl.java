@@ -1110,14 +1110,6 @@ public class StackConfigurationImpl implements StackConfiguration {
 
 	/**
 	 * 
-	 * @return search service endpoint
-	 */
-	public String getSearchServiceEndpoint() {
-		return configuration.getProperty("org.sagebionetworks.searchservice.endpoint");
-	}
-
-	/**
-	 * 
 	 * @return docker service endpoint
 	 */
 	public String getDockerServiceEndpoint() {
@@ -1130,6 +1122,11 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 */
 	public String getDockerRegistryListenerEndpoint() {
 		return configuration.getProperty("org.sagebionetworks.docker.registry.listener.endpoint");
+	}
+
+	@Override
+	public String getElasticSearchEndpoint() {
+		return configuration.getProperty("org.sagebionetworks.repo.search.elasticsearch.endpoint");
 	}
 
 	/**

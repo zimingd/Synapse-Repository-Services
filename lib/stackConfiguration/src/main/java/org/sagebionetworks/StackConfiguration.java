@@ -739,12 +739,6 @@ public interface StackConfiguration {
 
 	/**
 	 * 
-	 * @return search service endpoint
-	 */
-	public String getSearchServiceEndpoint();
-
-	/**
-	 * 
 	 * @return docker service endpoint
 	 */
 	public String getDockerServiceEndpoint();
@@ -754,6 +748,12 @@ public interface StackConfiguration {
 	 * @return the endpoint for the docker registry event listener
 	 */
 	public String getDockerRegistryListenerEndpoint();
+
+	/**
+	 *
+	 * @return the endpoint for ElasticSearch used by search
+	 */
+	public String getElasticSearchEndpoint();
 
 	/**
 	 * Get the decrypted HMAC signing key for a given version.

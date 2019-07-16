@@ -30,6 +30,7 @@ import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.VersionInfo;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
 import org.sagebionetworks.repo.model.entity.EntityLookupRequest;
 import org.sagebionetworks.repo.model.file.FileHandleResults;
@@ -388,19 +389,22 @@ public class EntityServiceImpl implements EntityService {
 		annotations.setId(id); // the NON url-encoded id
 	}
 
+	@Deprecated
 	@Override
 	public Annotations getEntityAnnotations(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return getEntityAnnotations(userInfo, id);
 	}
-	
+
+	@Deprecated
 	@Override
 	public Annotations getEntityAnnotations(UserInfo info, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
 		Annotations annotations = entityManager.getAnnotations(info, id);
 		addServiceSpecificMetadata(id, annotations);
 		return annotations;
 	}
-	
+
+	@Deprecated
 	@Override
 	public Annotations getEntityAnnotationsForVersion(Long userId, String id,
 													  Long versionNumber)
@@ -411,6 +415,7 @@ public class EntityServiceImpl implements EntityService {
 		return annotations;
 	}
 
+	@Deprecated
 	@WriteTransaction
 	@Override
 	public Annotations updateEntityAnnotations(Long userId, String entityId,
@@ -422,6 +427,38 @@ public class EntityServiceImpl implements EntityService {
 		addServiceSpecificMetadata(updatedAnnotations.getId(), annos);
 		return annos;
 	}
+
+
+	@Override
+	public AnnotationsV2 getEntityAnnotationsV2(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		AnnotationsV2 annotations = entityManager.getAnnotations(userInfo, id);
+		addServiceSpecificMetadata(id, annotations);
+		return annotations;
+	}
+
+	@Override
+	public AnnotationsV2 getEntityAnnotationsV2ForVersion(Long userId, String id,
+													  Long versionNumber)
+			throws NotFoundException, DatastoreException, UnauthorizedException {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		AnnotationsV2 annotations = entityManager.getAnnotationsForVersion(userInfo, id, versionNumber);
+		addServiceSpecificMetadata(id, annotations);
+		return annotations;
+	}
+
+	@WriteTransaction
+	@Override
+	public AnnotationsV2 updateEntityAnnotationsV2(Long userId, String entityId,
+											   Annotations updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException {
+		if(updatedAnnotations.getId() == null) throw new IllegalArgumentException("Annotations must have a non-null id");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		entityManager.updateAnnotations(userInfo,entityId, updatedAnnotations);
+		AnnotationsV2 annos = entityManager.getAnnotations(userInfo, updatedAnnotations.getId());
+		addServiceSpecificMetadata(updatedAnnotations.getId(), annos);
+		return annos;
+	}
+
 
 	@WriteTransaction
 	@Override

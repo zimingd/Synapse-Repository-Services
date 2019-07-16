@@ -250,6 +250,7 @@ public interface EntityService {
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 */
+	@Deprecated
 	public Annotations getEntityAnnotations(Long userId, String id) throws NotFoundException,
 			DatastoreException, UnauthorizedException;
 
@@ -264,6 +265,7 @@ public interface EntityService {
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 */
+	@Deprecated
 	public Annotations getEntityAnnotationsForVersion(Long userId, String id,
 													  Long versionNumber)
 			throws NotFoundException, DatastoreException, UnauthorizedException;
@@ -278,9 +280,11 @@ public interface EntityService {
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 */
+	@Deprecated
 	public Annotations getEntityAnnotations(UserInfo info, String id) throws NotFoundException,
 			DatastoreException, UnauthorizedException;
 
+	@Deprecated
 	public Annotations updateEntityAnnotations(Long userId, String entityId,
 											   Annotations updatedAnnotations)
 			throws ConflictingUpdateException, NotFoundException,

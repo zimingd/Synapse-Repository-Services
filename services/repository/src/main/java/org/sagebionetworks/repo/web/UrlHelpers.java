@@ -103,6 +103,13 @@ public class UrlHelpers {
 	 */
 	public static final String ANNOTATIONS = "/annotations";
 
+
+	/**
+	 * URL suffix for entity annotations
+	 *
+	 */
+	public static final String ANNOTATIONS_V2 = "/annotations2";
+
 	/**
 	 * URL suffix for locationable entity S3Token
 	 * 
@@ -288,6 +295,11 @@ public class UrlHelpers {
 	public static final String ENTITY_ANNOTATIONS 	= ENTITY_ID+ANNOTATIONS;
 
 	/**
+	 * All of the base URLs for Synapse objects's Annotations.
+	 */
+	public static final String ENTITY_ANNOTATIONS_V2 	= ENTITY_ID+ANNOTATIONS_V2;
+
+	/**
 	 * All of the base URLs for locationable entity s3Tokens
 	 */
 	public static final String ENTITY_S3TOKEN	= ENTITY_ID+S3TOKEN;
@@ -311,6 +323,11 @@ public class UrlHelpers {
 	 * Get the annotations of a specific version of an entity
 	 */
 	public static final String ENTITY_VERSION_ANNOTATIONS =		ENTITY_VERSION_NUMBER+ANNOTATIONS;
+
+	/**
+	 * Get the annotations of a specific version of an entity
+	 */
+	public static final String ENTITY_VERSION_ANNOTATIONS_V2 =		ENTITY_VERSION_NUMBER+ANNOTATIONS_V2;
 
 	/**
 	 * Get the bundle for a specific version of an entity

@@ -9,6 +9,8 @@ import static org.junit.Assert.fail;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -36,6 +38,9 @@ import org.sagebionetworks.repo.model.NameConflictException;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.RestResourceList;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationV2Utils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2ValueType;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
 import org.sagebionetworks.repo.model.dao.FileHandleDao;
 import org.sagebionetworks.repo.model.file.FileHandle;
@@ -237,6 +242,55 @@ public class EntityControllerTest extends AbstractAutowiredControllerTestBase {
 		assertEquals("A string", value);
 		assertEquals(new Double(Double.NaN), annosClone.getSingleValue("doubleAnno"));
 		
+	}
+
+
+	@Test
+	public void testAnnotationsV2CRUD() throws Exception {
+		Project p = new Project();
+		p.setName("AnnotCrud");
+		Project clone = (Project) entityServletHelper.createEntity(p, adminUserId, null);
+		String id = clone.getId();
+		toDelete.add(id);
+		// Get the annotaions for this entity
+		AnnotationsV2 annos = entityServletHelper.getEntityAnnotationsV2(id, adminUserId);
+		assertNotNull(annos);
+		// Change the values
+		AnnotationV2Utils.putAnnotations(annos, "doubleAnno", Collections.singletonList("45.001"), AnnotationsV2ValueType.DOUBLE);
+		AnnotationV2Utils.putAnnotations(annos, "string", Collections.singletonList("A string"), AnnotationsV2ValueType.STRING);
+
+		// Updte them
+		AnnotationsV2 annosClone = entityServletHelper.updateAnnotationsV2(annos, adminUserId);
+		assertNotNull(annosClone);
+		assertEquals(id, annosClone.getId());
+		assertFalse(annos.getEtag().equals(annosClone.getEtag()));
+		assertEquals("A string", annosClone.getAnnotations().get("string").getValue().get(0));
+		assertEquals("45.001", annosClone.getAnnotations().get("doubleAnno").getValue().get(0));
+
+	}
+
+	@Test
+	public void testNaNAnnotationsV2CRUD() throws Exception {
+		Project p = new Project();
+		p.setName("AnnotCrud");
+		Project clone = (Project) entityServletHelper.createEntity(p, adminUserId, null);
+		String id = clone.getId();
+		toDelete.add(id);
+		// Get the annotaions for this entity
+		AnnotationsV2 annos = entityServletHelper.getEntityAnnotationsV2(id, adminUserId);
+		assertNotNull(annos);
+		// Change the values
+		AnnotationV2Utils.putAnnotations(annos, "doubleAnno", Collections.singletonList("NaN"), AnnotationsV2ValueType.DOUBLE);
+		AnnotationV2Utils.putAnnotations(annos, "string", Collections.singletonList("A string"), AnnotationsV2ValueType.STRING);
+		// Update them
+		AnnotationsV2 annosClone = entityServletHelper.updateAnnotationsV2(annos, adminUserId);
+		assertNotNull(annosClone);
+		assertEquals(id, annosClone.getId());
+		assertFalse(annos.getEtag().equals(annosClone.getEtag()));
+		assertEquals("A string", annosClone.getAnnotations().get("string").getValue().get(0));
+		assertEquals("NaN", annosClone.getAnnotations().get("doubleAnno").getValue().get(0));
+
+
 	}
 	
 	@Test

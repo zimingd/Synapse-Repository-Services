@@ -400,7 +400,7 @@ public class EntityController {
 	}
 
 	/**
-	 * DEPRECATED. Replacement: {@link #getEntityAnnotationsV2(String, Long, HttpServletRequest)}
+	 * DEPRECATED. Replacement: {@link #getEntityAnnotationsV2(String, Long)}
 	 * Get the annotations for an entity.
 	 * <p>
 	 * Note: The caller must be granted the <a
@@ -467,7 +467,7 @@ public class EntityController {
 	}
 
 	/**
-	 * DEPRECATED. Replacement: {@link #updateEntityAnnotationsV2(String, Long, Annotations, HttpServletRequest)}
+	 * DEPRECATED. Replacement: {@link #updateEntityAnnotationsV2(String, Long, AnnotationsV2)}
 	 * Update an entities annotations.
 	 * <p>
 	 * Note: The caller must be granted the <a
@@ -1179,7 +1179,7 @@ public class EntityController {
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		// Pass it along
 		return serviceProvider.getEntityService()
-				.getEntityAnnotationsForVersionV2(userId, id, versionNumber
+				.getEntityAnnotationsV2ForVersion(userId, id, versionNumber
 				);
 	}
 

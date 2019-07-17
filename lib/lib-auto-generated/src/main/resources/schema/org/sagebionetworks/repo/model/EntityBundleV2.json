@@ -1,0 +1,17 @@
+{
+	"description": "Bundle to transport an Entity and related data objects",
+	"properties": {
+		"entity": {
+			"$ref":"org.sagebionetworks.repo.model.Entity"
+		},
+		"entityType": {
+			"$ref": "org.sagebionetworks.repo.model.EntityType"
+		},
+		"anotations": {
+			"$ref": "org.sagebionetworks.repo.model.annotations.v2.AnnotationsV2"
+		},
+		"permissions": {
+
+		}
+	}
+}

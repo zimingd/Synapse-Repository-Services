@@ -35,6 +35,8 @@ import org.sagebionetworks.repo.model.Reference;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.VersionInfo;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Translator;
 import org.sagebionetworks.repo.model.entity.Direction;
 import org.sagebionetworks.repo.model.entity.EntityLookupRequest;
 import org.sagebionetworks.repo.model.entity.SortBy;
@@ -290,6 +292,7 @@ public class EntityManagerImpl implements EntityManager {
 		nodeManager.deleteVersion(userInfo, id, versionNumber);
 	}
 
+	@Deprecated
 	@Override
 	public Annotations getAnnotations(UserInfo userInfo, String entityId)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
@@ -303,6 +306,7 @@ public class EntityManagerImpl implements EntityManager {
 		return annos.getAdditionalAnnotations();
 	}
 
+	@Deprecated
 	@Override
 	public Annotations getAnnotationsForVersion(UserInfo userInfo, String id,
 			Long versionNumber) throws NotFoundException, DatastoreException,
@@ -316,6 +320,7 @@ public class EntityManagerImpl implements EntityManager {
 		return annos.getAdditionalAnnotations();
 	}
 
+	@Deprecated
 	@WriteTransaction
 	@Override
 	public void updateAnnotations(UserInfo userInfo, String entityId,
@@ -331,6 +336,30 @@ public class EntityManagerImpl implements EntityManager {
 		// the following *changes* the passed annotations (specifically the etag) so we just pass a clone
 		nodeManager.updateAnnotations(userInfo, entityId, updatedClone,
 				AnnotationNameSpace.ADDITIONAL);
+	}
+
+	@Override
+	public AnnotationsV2 getAnnotationsV2(UserInfo userInfo, String entityId)
+			throws NotFoundException, DatastoreException, UnauthorizedException {
+		return AnnotationsV2Translator.toAnnotationsV2(getAnnotations(userInfo, entityId));
+	}
+
+	@Override
+	public AnnotationsV2 getAnnotationsV2ForVersion(UserInfo userInfo, String id,
+													Long versionNumber) throws NotFoundException, DatastoreException,
+			UnauthorizedException {
+		return AnnotationsV2Translator.toAnnotationsV2(getAnnotationsForVersion(userInfo, id, versionNumber));
+	}
+
+	@WriteTransaction
+	@Override
+	public void updateAnnotationsV2(UserInfo userInfo, String entityId,
+									AnnotationsV2 annotations) throws ConflictingUpdateException,
+			NotFoundException, DatastoreException, UnauthorizedException,
+			InvalidModelException {
+		ValidateArgument.required(annotations, "annotations");
+
+		updateAnnotations(userInfo, entityId, AnnotationsV2Translator.toAnnotationsV1(annotations));
 	}
 	
 	public static void cloneAnnotations(Annotations src, Annotations dst) {

@@ -432,30 +432,27 @@ public class EntityServiceImpl implements EntityService {
 	@Override
 	public AnnotationsV2 getEntityAnnotationsV2(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		AnnotationsV2 annotations = entityManager.getAnnotations(userInfo, id);
-		addServiceSpecificMetadata(id, annotations);
+		AnnotationsV2 annotations = entityManager.getAnnotationsV2(userInfo, id);
 		return annotations;
 	}
 
 	@Override
 	public AnnotationsV2 getEntityAnnotationsV2ForVersion(Long userId, String id,
-													  Long versionNumber)
+														  Long versionNumber)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		AnnotationsV2 annotations = entityManager.getAnnotationsForVersion(userInfo, id, versionNumber);
-		addServiceSpecificMetadata(id, annotations);
+		AnnotationsV2 annotations = entityManager.getAnnotationsV2ForVersion(userInfo, id, versionNumber);
 		return annotations;
 	}
 
 	@WriteTransaction
 	@Override
 	public AnnotationsV2 updateEntityAnnotationsV2(Long userId, String entityId,
-											   Annotations updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException {
+												   AnnotationsV2 updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException {
 		if(updatedAnnotations.getId() == null) throw new IllegalArgumentException("Annotations must have a non-null id");
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		entityManager.updateAnnotations(userInfo,entityId, updatedAnnotations);
-		AnnotationsV2 annos = entityManager.getAnnotations(userInfo, updatedAnnotations.getId());
-		addServiceSpecificMetadata(updatedAnnotations.getId(), annos);
+		entityManager.updateAnnotationsV2(userInfo,entityId, updatedAnnotations);
+		AnnotationsV2 annos = entityManager.getAnnotationsV2(userInfo, updatedAnnotations.getId());
 		return annos;
 	}
 

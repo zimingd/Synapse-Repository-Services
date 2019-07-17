@@ -20,11 +20,13 @@ import org.sagebionetworks.repo.model.Reference;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.VersionInfo;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
 import org.sagebionetworks.repo.model.entity.EntityLookupRequest;
 import org.sagebionetworks.repo.model.file.FileHandleResults;
 import org.sagebionetworks.repo.model.provenance.Activity;
 import org.sagebionetworks.repo.queryparser.ParseException;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.repo.web.service.metadata.EventType;
 
@@ -289,6 +291,47 @@ public interface EntityService {
 											   Annotations updatedAnnotations)
 			throws ConflictingUpdateException, NotFoundException,
 			DatastoreException, UnauthorizedException, InvalidModelException;
+
+	/**
+	 * Get annotations for the current version of an entity
+	 * @param userId
+	 * @param id
+	 * @return
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws UnauthorizedException
+	 */
+	AnnotationsV2 getEntityAnnotationsV2(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException;
+
+	/**
+	 * Get annotations for a specific version of an entity
+	 * @param userId
+	 * @param id
+	 * @param versionNumber
+	 * @return
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws UnauthorizedException
+	 */
+	AnnotationsV2 getEntityAnnotationsV2ForVersion(Long userId, String id,
+												   Long versionNumber)
+			throws NotFoundException, DatastoreException, UnauthorizedException;
+
+	/**
+	 * Update annotations on the current version of an entity
+	 * @param userId
+	 * @param entityId
+	 * @param updatedAnnotations
+	 * @return
+	 * @throws ConflictingUpdateException
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws UnauthorizedException
+	 * @throws InvalidModelException
+	 */
+	@WriteTransaction
+	AnnotationsV2 updateEntityAnnotationsV2(Long userId, String entityId,
+											AnnotationsV2 updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException;
 
 	/**
 	 * Create a new entity

@@ -7,11 +7,50 @@
 		"entityType": {
 			"$ref": "org.sagebionetworks.repo.model.EntityType"
 		},
-		"anotations": {
-			"$ref": "org.sagebionetworks.repo.model.annotations.v2.AnnotationsV2"
+		"annotations": {
+			"$ref": "org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2"
 		},
 		"permissions": {
-
+			"$ref": "org.sagebionetworks.repo.model.auth.UserEntityPermissions"
+		},
+		"path": {
+			"$ref": "org.sagebionetworks.repo.model.EntityPath"
+		},
+		"hasChildren": {
+			"type": "boolean"
+		},
+		"acl": {
+			"$ref": "org.sagebionetworks.repo.model.AccessControlList"
+		},
+		"fileHandles":{
+			"type": "array",
+			"items": {
+				"$ref":"org.sagebionetworks.repo.model.file.FileHandle",
+			}
+		},
+		"tableBundle": {
+			"$ref": "org.sagebionetworks.repo.model.table.TableBundle"
+		},
+		"rootWikiId": {
+			"type": "string"
+		},
+		"benefactorAcl": {
+			"$ref": "org.sagebionetworks.repo.model.AccessControlList"
+		},
+		"doi": {
+			"$ref": "org.sagebionetworks.repo.model.doi.Doi"
+		},
+		"doiAssociation": {
+			"$ref": "org.sagebionetworks.repo.model.doi.v2.DoiAssociation"
+		},
+		"fileName": {
+			"type": "string"
+		},
+		"threadCount": {
+			"type": "integer"
+		},
+		"restrictionInformation": {
+			"$ref": "org.sagebionetworks.repo.model.RestrictionInformationResponse"
 		}
 	}
 }

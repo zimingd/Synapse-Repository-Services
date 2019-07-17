@@ -49,7 +49,9 @@ public class UrlHelpers {
 	public static final String ACCESS_TYPE_PARAM	= "accessType";
 	
 	public static final String BUNDLE				= "/bundle";
-	
+
+	public static final String BUNDLE_V2			= "/bundle2";
+
 	public static final String GENERATED_BY			= "/generatedBy";
 	
 	public static final String GENERATED			= "/generated";
@@ -205,7 +207,10 @@ public class UrlHelpers {
 	public static final String ENTITY_CHILD = ENTITY+"/child";
 	
 	public static final String ENTITY_BUNDLE = ENTITY+BUNDLE;
+	public static final String ENTITY_BUNDLE_V2 = ENTITY+BUNDLE_V2;
 	public static final String ENTITY_ID_BUNDLE = ENTITY_ID+BUNDLE;
+	public static final String ENTITY_ID_BUNDLE_V2 = ENTITY_ID+BUNDLE_V2;
+
 	public static final String ENTITY_ID_ACL = ENTITY_ID+ACL;
 	public static final String ENTITY_ID_ID_BENEFACTOR = ENTITY_ID+BENEFACTOR;
 
@@ -333,6 +338,11 @@ public class UrlHelpers {
 	 * Get the bundle for a specific version of an entity
 	 */
 	public static final String ENTITY_VERSION_NUMBER_BUNDLE = ENTITY_VERSION_NUMBER+BUNDLE;
+
+	/**
+	 * Get the bundle for a specific version of an entity
+	 */
+	public static final String ENTITY_VERSION_NUMBER_BUNDLE_V2 = ENTITY_VERSION_NUMBER+BUNDLE_V2;
 
 	/**
 	 * Get the generating activity for the current version of an entity

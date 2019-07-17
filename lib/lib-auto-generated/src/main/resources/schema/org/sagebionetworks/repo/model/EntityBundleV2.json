@@ -37,9 +37,6 @@
 		"benefactorAcl": {
 			"$ref": "org.sagebionetworks.repo.model.AccessControlList"
 		},
-		"doi": {
-			"$ref": "org.sagebionetworks.repo.model.doi.Doi"
-		},
 		"doiAssociation": {
 			"$ref": "org.sagebionetworks.repo.model.doi.v2.DoiAssociation"
 		},

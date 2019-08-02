@@ -1,6 +1,10 @@
 package org.sagebionetworks.repo.model.dbo.dao;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,7 +13,6 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 import org.junit.After;
 import org.junit.Before;
@@ -333,13 +336,7 @@ public class DBOUserProfileDAOImplTest {
 	
 	@Test
 	public void testGetPictureFileHandleId() throws NotFoundException{
-		ExternalFileHandle ef = new ExternalFileHandle();
-		ef.setExternalURL("http://google.com");
-		ef.setCreatedBy(principal.getId());
-		ef.setCreatedOn(new Date());
-		ef.setFileName("Some name");
-		ef.setEtag(UUID.randomUUID().toString());
-		ef.setId(idGenerator.generateNewId(IdType.FILE_IDS).toString());
+		ExternalFileHandle ef = TestUtils.createExternalFileHandle(principal.getId(), idGenerator.generateNewId(IdType.FILE_IDS).toString());
 		ef = (ExternalFileHandle) fileHandleDao.createFile(ef);
 		fileHandlesToDelete.add(ef.getId());
 		// Create a new type

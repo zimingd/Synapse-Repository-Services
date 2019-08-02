@@ -2,6 +2,7 @@ package org.sagebionetworks.repo.manager.migration;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -16,19 +17,23 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.sagebionetworks.repo.model.daemon.BackupAliasType;
 import org.sagebionetworks.repo.model.dbo.DatabaseObject;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
 import org.sagebionetworks.repo.model.dbo.migration.MigrationTypeProvider;
 import org.sagebionetworks.repo.model.migration.MigrationType;
+import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.io.StreamException;
 
 public class BackupFileStreamImpl implements BackupFileStream {
+	
+	static private Log log = LogFactory.getLog(BackupFileStreamImpl.class);
 
 	private static final String UTF_8 = "UTF-8";
 	private static final String INPUT_CONTAINED_NO_DATA = "input contained no data";
@@ -111,7 +116,13 @@ public class BackupFileStreamImpl implements BackupFileStream {
 		if (index < 0) {
 			throw new IllegalArgumentException("Unexpected file name: " + name);
 		}
-		return MigrationType.valueOf(name.substring(0, index));
+		String migrationTypeName = name.substring(0, index);
+		try {
+			return MigrationType.valueOf(migrationTypeName);
+		} catch(IllegalArgumentException e) {
+			throw new NotFoundException("Unknown type: "+migrationTypeName,  e);
+		}
+
 	}
 
 	/**
@@ -124,26 +135,6 @@ public class BackupFileStreamImpl implements BackupFileStream {
 	public static String createFileName(MigrationType type, int index) {
 		ValidateArgument.required(type, "MigrationType");
 		return String.format(FILE_NAME_TEMPLATE, type.name(), index);
-	}
-
-	/**
-	 * Get the alias used to read the given MigratableDatabaseObject from an XML
-	 * file.
-	 * 
-	 * @param mdo
-	 * @param backupAliasType
-	 * @return
-	 */
-	public static String getAlias(MigratableDatabaseObject<?, ?> mdo, BackupAliasType backupAliasType) {
-		ValidateArgument.required(mdo, "MigratableDatabaseObject");
-		ValidateArgument.required(backupAliasType, "BackupAliasType");
-		if (backupAliasType == BackupAliasType.TABLE_NAME) {
-			return mdo.getTableMapping().getTableName();
-		} else if (backupAliasType == BackupAliasType.MIGRATION_TYPE_NAME) {
-			return mdo.getMigratableTableType().name();
-		} else {
-			throw new IllegalStateException("Unknown type: " + backupAliasType);
-		}
 	}
 
 	/*
@@ -227,7 +218,6 @@ public class BackupFileStreamImpl implements BackupFileStream {
 	<D extends DatabaseObject<D>, B> void writeBatchToStream(List<MigratableDatabaseObject<?, ?>> currentBatch,
 			MigrationType currentType, BackupAliasType backupAliasType, Writer writer) throws IOException {
 		MigratableDatabaseObject<D, B> mdo = typeProvider.getObjectForType(currentType);
-		String alias = getAlias(mdo, backupAliasType);
 		MigratableTableTranslation<D,B> translator = mdo.getTranslator();
 		
 		// translate to the backup objects
@@ -237,9 +227,7 @@ public class BackupFileStreamImpl implements BackupFileStream {
 			backupObjects.add(backupObject);
 		}
 
-		XStream xstream = new XStream();
-		xstream.alias(alias, mdo.getBackupClass());
-		xstream.toXML(backupObjects, writer);
+		typeProvider.getXStream(backupAliasType).toXML(backupObjects, writer);
 		writer.flush();
 	}
 
@@ -281,19 +269,23 @@ public class BackupFileStreamImpl implements BackupFileStream {
 	 */
 	<D extends DatabaseObject<D>, B> List<MigratableDatabaseObject<?, ?>> readFileFromStream(InputStream input,
 			BackupAliasType backupAliasType, String fileName) throws EmptyFileException {
-		MigrationType type = getTypeFromFileName(fileName);
+		MigrationType type;
+		try {
+			type = getTypeFromFileName(fileName);
+		} catch (NotFoundException e) {
+			// Migration types that have been removed should be ignored. (See PLFM-5682)
+			log.warn("Migration type cannot be found so it will be ignored: "+e.getMessage());
+			throw new EmptyFileException();
+		}
 		// Lookup the object for the type.
 		MigratableDatabaseObject<D, B> mdo = typeProvider.getObjectForType(type);
-		String alias = getAlias(mdo, backupAliasType);
 		MigratableTableTranslation<D, B> translator = mdo.getTranslator();
 
-		XStream xstream = new XStream();
-		xstream.alias(alias, mdo.getBackupClass());
 		List<B> backupObjects;
 		try {
-			backupObjects = (List<B>) xstream.fromXML(input);
+			backupObjects = (List<B>) typeProvider.getXStream(backupAliasType).fromXML(input);
 		} catch (StreamException e) {
-			if (!e.getMessage().contains(INPUT_CONTAINED_NO_DATA)) {
+			if (!(e.getCause() instanceof EOFException && e.getCause().getMessage().contains(INPUT_CONTAINED_NO_DATA))) {
 				throw new RuntimeException(e);
 			}
 			// This file is empty so move to the next file...

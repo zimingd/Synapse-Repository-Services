@@ -1,11 +1,12 @@
 package org.sagebionetworks.repo.manager;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -15,13 +16,9 @@ import java.util.List;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-
-import org.sagebionetworks.repo.manager.AccessRequirementManager;
-import org.sagebionetworks.repo.manager.AccessRequirementManagerImpl;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessRequirement;
@@ -30,7 +27,6 @@ import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityType;
-import org.sagebionetworks.repo.model.EntityWithAnnotations;
 import org.sagebionetworks.repo.model.FileEntity;
 import org.sagebionetworks.repo.model.Folder;
 import org.sagebionetworks.repo.model.InvalidModelException;
@@ -42,8 +38,10 @@ import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.auth.NewUser;
 import org.sagebionetworks.repo.model.file.ExternalFileHandle;
+import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.provenance.Activity;
 import org.sagebionetworks.repo.model.table.EntityView;
+import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
@@ -98,8 +96,8 @@ public class EntityManagerImplAutowireTest {
 		activitiesToDelete = new ArrayList<String>();
 		fileHandlesToDelete = new ArrayList<String>();
 		mockAuth = Mockito.mock(AuthorizationManager.class);
-		when(mockAuth.canAccess((UserInfo)any(), anyString(), any(ObjectType.class), any(ACCESS_TYPE.class))).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
-		when(mockAuth.canCreate((UserInfo)any(), (String)any(), (EntityType)any())).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockAuth.canAccess((UserInfo)any(), anyString(), any(ObjectType.class), any(ACCESS_TYPE.class))).thenReturn(AuthorizationStatus.authorized());
+		when(mockAuth.canCreate((UserInfo)any(), (String)any(), (EntityType)any())).thenReturn(AuthorizationStatus.authorized());
 
 	}
 	
@@ -182,20 +180,17 @@ public class EntityManagerImplAutowireTest {
 		assertNotNull(id);
 		toDelete.add(id);
 		// Get another copy
-		EntityWithAnnotations<Folder> ewa = entityManager.getEntityWithAnnotations(adminUserInfo, id, Folder.class);
-		assertNotNull(ewa);
-		assertNotNull(ewa.getAnnotations());
-		assertNotNull(ewa.getEntity());
+		Folder entity = entityManager.getEntityWithAnnotations(adminUserInfo, id, Folder.class);
+		assertNotNull(entity);
 		Folder fetched = entityManager.getEntity(adminUserInfo, id, Folder.class);
 		assertNotNull(fetched);
-		assertEquals(ewa.getEntity(), fetched);
+		assertEquals(entity, fetched);
 		System.out.println("Original: "+ds.toString());
 		System.out.println("Fetched: "+fetched.toString());
 		assertEquals(ds.getName(), fetched.getName());
 		// Now get the Annotations
 		Annotations annos = entityManager.getAnnotations(adminUserInfo, id);
 		assertNotNull(annos);
-		assertEquals(ewa.getAnnotations(), annos);
 		annos.addAnnotation("someNewTestAnnotation", "someStringValue");
 		// Update
 		entityManager.updateAnnotations(adminUserInfo,id, annos);
@@ -333,10 +328,8 @@ public class EntityManagerImplAutowireTest {
 		ds.setDescription("someDesc");
 		ds.setCreatedBy("magic");
 		ds.setCreatedOn(new Date(1001));
-		ds.setAnnotations("someAnnoUrl");
 		ds.setEtag("110");
 		ds.setId("12");
-		ds.setUri("someUri");
 		return ds;
 	}
 
@@ -363,5 +356,62 @@ public class EntityManagerImplAutowireTest {
 		assertNotNull(viewGet);
 		assertEquals(fileView.getColumnIds(), viewGet.getColumnIds());
 		assertEquals(Lists.newArrayList("4","5"), viewGet.getScopeIds());
+	}
+	
+	/**
+	 * Test added for PLFM-5188
+	 * 
+	 */
+	@Test
+	public void testCreateWithID() {
+		String maxId = KeyFactory.keyToString(Long.MAX_VALUE);
+		Project project = new Project();
+		project.setName(null);
+		project.setId(maxId);
+		String pid = entityManager.createEntity(userInfo, project, null);
+		toDelete.add(pid);
+		// the provided ID must not be used.
+		assertFalse(maxId.equals(pid));
+		project = entityManager.getEntity(userInfo, pid, Project.class);
+		// the name should match the newly issued ID.
+		assertEquals(pid, project.getName());
+	}
+	
+	/**
+	 * Test for PLFM-5702
+	 */
+	@Test
+	public void testUpdateEntityNewVersionTable() {
+		// update a table with newVersion=true;
+		TableEntity table = new TableEntity();
+		table.setName("Table");
+		String id = entityManager.createEntity(userInfo, table, null);
+		table = entityManager.getEntity(adminUserInfo, id, TableEntity.class);
+		toDelete.add(id);
+		boolean newVersion = true;
+		String activityId = null;
+		// call under test
+		boolean wasNewVersionCreated = entityManager.updateEntity(adminUserInfo, table, newVersion, activityId);
+		// should not create a new version.
+		assertFalse(wasNewVersionCreated);
+	}
+	
+	/**
+	 * Test for PLFM-5702
+	 */
+	@Test
+	public void testUpdateEntityNewVersionEntityView() {
+		// update a table with newVersion=true;
+		EntityView view = new EntityView();
+		view.setName("Table");
+		String id = entityManager.createEntity(userInfo, view, null);
+		view = entityManager.getEntity(adminUserInfo, id, EntityView.class);
+		toDelete.add(id);
+		boolean newVersion = true;
+		String activityId = null;
+		// call under test
+		boolean wasNewVersionCreated = entityManager.updateEntity(adminUserInfo, view, newVersion, activityId);
+		// should not create a new version.
+		assertFalse(wasNewVersionCreated);
 	}
 }

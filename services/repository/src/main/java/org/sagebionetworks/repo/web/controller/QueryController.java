@@ -9,11 +9,9 @@ import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.entity.query.EntityQuery;
 import org.sagebionetworks.repo.model.entity.query.EntityQueryResults;
-import org.sagebionetworks.repo.queryparser.ParseException;
+import org.sagebionetworks.repo.web.DeprecatedServiceException;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.repo.web.UrlHelpers;
-import org.sagebionetworks.repo.web.service.ServiceProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,10 +28,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @Deprecated
 @Controller
 @RequestMapping(UrlHelpers.REPO_PATH)
-public class QueryController extends BaseController {
-
-	@Autowired
-	private ServiceProvider serviceProvider;	
+public class QueryController {
 	
 	/**
 	 * Post a structured <a href="${org.sagebionetworks.repo.model.entity.query.EntityQuery}">EntityQuery</a> and get a structured
@@ -54,8 +49,8 @@ public class QueryController extends BaseController {
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestBody EntityQuery query,
 			HttpServletRequest request)
-			throws DatastoreException, ParseException, NotFoundException, UnauthorizedException {
-		return serviceProvider.getNodeQueryService().structuredQuery(userId, query);
+			throws DeprecatedServiceException {
+		throw new DeprecatedServiceException();
 	}
 
 	/**
@@ -77,7 +72,7 @@ public class QueryController extends BaseController {
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestParam(value = ServiceConstants.QUERY_PARAM, required = true) String query,
 			HttpServletRequest request)
-			throws DatastoreException, ParseException, NotFoundException, UnauthorizedException {
-		return serviceProvider.getNodeQueryService().query(userId, query, request);
+			throws DeprecatedServiceException {
+		throw new DeprecatedServiceException();
 	}
 }

@@ -1,11 +1,14 @@
 package org.sagebionetworks.repo.manager;
 
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,10 +22,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.sagebionetworks.repo.model.AuthenticationDAO;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.sagebionetworks.repo.model.auth.AuthenticationDAO;
 import org.sagebionetworks.repo.model.GroupMembersDAO;
-import org.sagebionetworks.repo.model.UnauthenticatedException;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserGroup;
 import org.sagebionetworks.repo.model.UserGroupDAO;
@@ -106,7 +108,7 @@ public class UserManagerImplUnitTest {
 		principalAlias.setAlias(alias);
 		principalAlias.setAliasId(3333L);
 		principalAlias.setType(AliasType.USER_NAME);
-		when(mockPrincipalAliasDAO.findPrincipalWithAlias(alias)).thenReturn(principalAlias);
+		when(mockPrincipalAliasDAO.findPrincipalWithAlias(eq(alias), any())).thenReturn(principalAlias);
 	}
 	
 	@Test
@@ -115,15 +117,37 @@ public class UserManagerImplUnitTest {
 		NewUser nu = new NewUser();
 		nu.setEmail(UUID.randomUUID().toString()+"@testing.com");
 		nu.setUserName(UUID.randomUUID().toString());
-		userManager.createTestUser(admin, nu, null, null);
+		userManager.createOrGetTestUser(admin, nu, null, null);
 		verify(notificationEmailDao).create((PrincipalAlias)any());
 		
 		// Call with a non admin
 		try {
-			userManager.createTestUser(notAdmin, null, null, null);
+			userManager.createOrGetTestUser(notAdmin, null, null, null);
 			fail();
 		} catch (UnauthorizedException e) { }
 		
+	}
+	
+	@Test
+	public void testGetUserAdmin() throws Exception {
+		long principalId=1111L;
+		PrincipalAlias alias = new PrincipalAlias();
+		alias.setPrincipalId(principalId);
+		// Call with an admin
+		NewUser nu = new NewUser();
+		String username = UUID.randomUUID().toString();
+		String email = UUID.randomUUID().toString()+"@testing.com";
+		nu.setUserName(username);
+		nu.setEmail(email);
+		when(mockPrincipalAliasDAO.findPrincipalWithAlias(username)).thenReturn(alias);
+		
+		// method under test
+		UserInfo userInfo = userManager.createOrGetTestUser(admin, nu, null, null);
+		// we get back the principal ID for the existing user
+		assertEquals(principalId, userInfo.getId().longValue());
+		
+		// check that a new user was never created
+		verify(mockUserGroupDAO, never()).create(any());
 	}
 	
 	@Test
@@ -195,32 +219,19 @@ public class UserManagerImplUnitTest {
 	}
 	
 	@Test
-	public void testLookupUserForAuthentication() {
+	public void testLookupUserByUsernameOrEmail() {
 		// call under test
-		PrincipalAlias pa = userManager.lookupUserForAuthentication(alias);
+		PrincipalAlias pa = userManager.lookupUserByUsernameOrEmail(alias);
 		assertEquals(principalAlias, pa);
 	}
 	
 	@Test
-	public void testLookupUserForAuthenticationTeam() {
-		// set the alias as a team alias
-		principalAlias.setType(AliasType.TEAM_NAME);
-		try {
-			// call under test
-			userManager.lookupUserForAuthentication(alias);
-			fail();
-		} catch (UnauthenticatedException e) {
-			assertEquals("Cannot authenticate as team. Only users can authenticate.",e.getMessage());
-		}
-	}
-	
-	@Test
-	public void testLookupUserForAuthenticationNotFound() {
+	public void testLookupUserByUsernameOrEmailNotFound() {
 		// unknown alias
 		alias = "unknown";
 		try {
 			// call under test
-			userManager.lookupUserForAuthentication(alias);
+			userManager.lookupUserByUsernameOrEmail(alias);
 			fail();
 		} catch (NotFoundException e) {
 			assertEquals("Did not find a user with alias: unknown",e.getMessage());

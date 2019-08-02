@@ -1,6 +1,3 @@
-/**
- * 
- */
 package org.sagebionetworks.repo.manager.team;
 
 import static org.sagebionetworks.repo.manager.EmailUtils.TEMPLATE_KEY_DISPLAY_NAME;
@@ -21,18 +18,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.apache.http.entity.ContentType;
 import org.sagebionetworks.manager.util.Validate;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
-import org.sagebionetworks.repo.manager.AuthorizationManagerUtil;
 import org.sagebionetworks.repo.manager.EmailUtils;
 import org.sagebionetworks.repo.manager.MessageToUserAndBody;
 import org.sagebionetworks.repo.manager.ProjectStatsManager;
-import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.UserProfileManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
+import org.sagebionetworks.repo.manager.file.FileHandleUrlRequest;
 import org.sagebionetworks.repo.manager.principal.PrincipalManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
@@ -56,6 +53,7 @@ import org.sagebionetworks.repo.model.RestrictableObjectType;
 import org.sagebionetworks.repo.model.Team;
 import org.sagebionetworks.repo.model.TeamDAO;
 import org.sagebionetworks.repo.model.TeamMember;
+import org.sagebionetworks.repo.model.TeamMemberTypeFilterOptions;
 import org.sagebionetworks.repo.model.TeamMembershipStatus;
 import org.sagebionetworks.repo.model.TeamSortOrder;
 import org.sagebionetworks.repo.model.UnauthorizedException;
@@ -65,6 +63,8 @@ import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.UserProfile;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOUserGroup;
+import org.sagebionetworks.repo.model.dbo.principal.PrincipalPrefixDAO;
+import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.message.MessageToUser;
 import org.sagebionetworks.repo.model.principal.AliasType;
 import org.sagebionetworks.repo.model.principal.BootstrapTeam;
@@ -76,6 +76,7 @@ import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 
 
 /**
@@ -104,11 +105,11 @@ public class TeamManagerImpl implements TeamManager {
 	@Autowired
 	private MembershipRequestDAO membershipRequestDAO;
 	@Autowired
-	private UserManager userManager;
-	@Autowired
 	private AccessRequirementDAO accessRequirementDAO;
 	@Autowired
 	private PrincipalManager principalManager;
+	@Autowired
+	PrincipalPrefixDAO principalPrefixDAO;
 	@Autowired
 	private DBOBasicDao basicDao;
 	@Autowired
@@ -264,8 +265,6 @@ public class TeamManagerImpl implements TeamManager {
 	 * This turns out to be very different from the normal create, bypassing checks for both 
 	 * principal and team creation. Also, it's not transactional.
 	 * @param team
-	 * @param now
-	 * @param teamIdTakesPriority
 	 * @return
 	 */
 	private Team bootstrapCreate(Team team) {
@@ -321,12 +320,63 @@ public class TeamManagerImpl implements TeamManager {
 	}
 
 	@Override
-	public PaginatedResults<TeamMember> listMembers(String teamId, long limit,
+	public PaginatedResults<TeamMember> listMembers(String teamId, TeamMemberTypeFilterOptions memberType, long limit,
 			long offset) throws DatastoreException {
-		List<TeamMember> results = teamDAO.getMembersInRange(teamId, limit, offset);
+		List<TeamMember> results;
+		Set<Long> adminIds = teamDAO.getAdminTeamMemberIds(teamId).stream().map(Long::valueOf).collect(Collectors.toSet());
+		switch (memberType) {
+			case ADMIN:
+				if (adminIds.isEmpty()) { // No team admins is possible at the DAO level
+					return new PaginatedResults<>();
+				}
+				results = teamDAO.getMembersInRange(teamId, adminIds, null, limit, offset);
+				results.forEach(tm -> tm.setIsAdmin(true));
+				break;
+			case MEMBER:
+				results = teamDAO.getMembersInRange(teamId, null, adminIds, limit, offset);
+				results.forEach(tm -> tm.setIsAdmin(false));
+				break;
+			case ALL:
+				results = teamDAO.getMembersInRange(teamId, null, null, limit, offset);
+				results.forEach(tm -> tm.setIsAdmin(adminIds.contains(Long.valueOf(tm.getMember().getOwnerId()))));
+				break;
+			default:
+				throw new IllegalArgumentException("memberType must be one of "
+						+ TeamMemberTypeFilterOptions.ALL.toString() + ", "
+						+ TeamMemberTypeFilterOptions.ADMIN.toString() + ", or "
+						+ TeamMemberTypeFilterOptions.MEMBER.toString() + ".");
+		}
 		return PaginatedResults.createWithLimitAndOffset(results, limit, offset);
 	}
-	
+
+	@Override
+	public PaginatedResults<TeamMember> listMembersForPrefix(String fragment, String teamId,
+															 TeamMemberTypeFilterOptions memberType,
+															 long limit, long offset) throws DatastoreException {
+		List<Long> prefixMemberIds;
+		switch (memberType) {
+			case ADMIN:
+				Set<Long> adminIds = teamDAO.getAdminTeamMemberIds(teamId).stream().map(Long::parseLong).collect(Collectors.toSet());
+				prefixMemberIds = principalPrefixDAO.listCertainTeamMembersForPrefix(fragment, Long.parseLong(teamId),  adminIds,null, limit, offset);
+				break;
+			case MEMBER:
+				adminIds = teamDAO.getAdminTeamMemberIds(teamId).stream().map(Long::parseLong).collect(Collectors.toSet());
+				prefixMemberIds = principalPrefixDAO.listCertainTeamMembersForPrefix(fragment, Long.parseLong(teamId), null, adminIds, limit, offset);
+				break;
+			case ALL:
+				// Do not filter
+				prefixMemberIds = principalPrefixDAO.listTeamMembersForPrefix(fragment, Long.parseLong(teamId), limit, offset);
+				break;
+			default:
+				throw new IllegalArgumentException("memberType must be one of "
+						+ TeamMemberTypeFilterOptions.ALL.toString() + ", "
+						+ TeamMemberTypeFilterOptions.ADMIN.toString() + ", or "
+						+ TeamMemberTypeFilterOptions.MEMBER.toString() + ".");
+		}
+		List<TeamMember> members = teamDAO.listMembers(Collections.singletonList(Long.parseLong(teamId)), prefixMemberIds).getList();
+		return PaginatedResults.createWithLimitAndOffset(members, limit, offset);
+	}
+
 	@Override
 	public Count countMembers(String teamId) throws DatastoreException {
 		ValidateArgument.required(teamId, "teamId");
@@ -383,8 +433,7 @@ public class TeamManagerImpl implements TeamManager {
 	@WriteTransaction
 	public Team put(UserInfo userInfo, Team team) throws InvalidModelException,
 			DatastoreException, UnauthorizedException, NotFoundException {
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(userInfo, team.getId(), ObjectType.TEAM, ACCESS_TYPE.UPDATE));
+		authorizationManager.canAccess(userInfo, team.getId(), ObjectType.TEAM, ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
 		validateForUpdate(team);
 		populateUpdateFields(userInfo, team, new Date());
 		// bind the team name to this principal
@@ -399,19 +448,24 @@ public class TeamManagerImpl implements TeamManager {
 	@WriteTransaction
 	public void delete(UserInfo userInfo, String id) throws DatastoreException,
 			UnauthorizedException, NotFoundException {
+		Team teamToDelete = null;
 		try {
-			teamDAO.get(id);
+			teamToDelete = teamDAO.get(id);
 		} catch (NotFoundException e) {
 			return;
 		}
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(userInfo, id, ObjectType.TEAM, ACCESS_TYPE.DELETE));
+		authorizationManager.canAccess(userInfo, id, ObjectType.TEAM, ACCESS_TYPE.DELETE).checkAuthorizationOrElseThrow();
 		// delete ACL
 		aclDAO.delete(id, ObjectType.TEAM);
 		// delete Team
 		teamDAO.delete(id);
-		// delete userGroup
-		userGroupDAO.delete(id);
+		try {
+			userGroupDAO.delete(id);
+		} catch (DataIntegrityViolationException e) {
+			throw new IllegalArgumentException("Can't delete the team " + teamToDelete.getName() +
+					" (ID: " + id + "), most likely because it is referenced by a submission, or an entity is shared with it. " +
+					"Contact the administrator of the submission queue to delete the submission, or unshare the entity." , e);
+		}
 	}
 	
 	
@@ -437,7 +491,7 @@ public class TeamManagerImpl implements TeamManager {
 		if (hasUnmetAccessRequirements(principalUserInfo, teamId)) return false;
 		String principalId = principalUserInfo.getId().toString();
 		boolean principalIsSelf = userInfo.getId().toString().equals(principalId);
-		boolean amTeamAdmin = authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).getAuthorized();
+		boolean amTeamAdmin = authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).isAuthorized();
 		long now = System.currentTimeMillis();
 		if (principalIsSelf) {
 			// trying to add myself to Team.  
@@ -548,7 +602,7 @@ public class TeamManagerImpl implements TeamManager {
 		if (userInfo.isAdmin()) return true;
 		boolean principalIsSelf = userInfo.getId().toString().equals(principalId);
 		if (principalIsSelf) return true;
-		boolean amTeamAdmin = authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).getAuthorized();
+		boolean amTeamAdmin = authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).isAuthorized();
 		if (amTeamAdmin) return true;
 		return false;
 	}
@@ -583,8 +637,7 @@ public class TeamManagerImpl implements TeamManager {
 	@Override
 	public AccessControlList getACL(UserInfo userInfo, String teamId)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.READ));
+		authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.READ).checkAuthorizationOrElseThrow();
 		return aclDAO.get(teamId, ObjectType.TEAM);
 	}
 
@@ -594,18 +647,25 @@ public class TeamManagerImpl implements TeamManager {
 	@Override
 	public AccessControlList updateACL(UserInfo userInfo, AccessControlList acl)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(userInfo, acl.getId(), ObjectType.TEAM, ACCESS_TYPE.UPDATE));
+		authorizationManager.canAccess(userInfo, acl.getId(), ObjectType.TEAM, ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
 		aclDAO.update(acl, ObjectType.TEAM);
 		return aclDAO.get(acl.getId(), ObjectType.TEAM);
 	}
 
 	@Override
-	public String getIconURL(String teamId) throws NotFoundException {
+	public String getIconURL(UserInfo userInfo, String teamId) throws NotFoundException {
 		Team team = teamDAO.get(teamId);
-		String handleId = team.getIcon();
-		if (handleId==null) throw new NotFoundException("Team "+teamId+" has no icon file handle.");
-		return fileHandleManager.getRedirectURLForFileHandle(handleId);
+		
+		String fileHandleId = team.getIcon();
+		
+		if (fileHandleId == null) {
+			throw new NotFoundException("Team " + teamId + " has no icon file handle.");
+		}
+		
+		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(userInfo, fileHandleId)
+				.withAssociation(FileHandleAssociateType.TeamAttachment, teamId);
+		
+		return fileHandleManager.getRedirectURLForFileHandle(urlRequest);
 	}
 
 	@Override
@@ -619,8 +679,7 @@ public class TeamManagerImpl implements TeamManager {
 	public void setPermissions(UserInfo userInfo, String teamId,
 			String principalId, boolean isAdmin) throws DatastoreException,
 			UnauthorizedException, NotFoundException {
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.UPDATE));
+		authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
 		AccessControlList acl = aclDAO.get(teamId, ObjectType.TEAM);
 		// first, remove the principal's entries from the ACL
 		removeFromACL(acl, principalId);
@@ -639,7 +698,7 @@ public class TeamManagerImpl implements TeamManager {
 	public boolean isMembershipApprovalRequired(UserInfo principalUserInfo, String teamId) throws DatastoreException, NotFoundException {
 		boolean userIsSynapseAdmin = principalUserInfo.isAdmin();
 		if (userIsSynapseAdmin) return false;
-		boolean userIsTeamAdmin = authorizationManager.canAccess(principalUserInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).getAuthorized();
+		boolean userIsTeamAdmin = authorizationManager.canAccess(principalUserInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).isAuthorized();
 		if (userIsTeamAdmin) return false;
 		Team team = teamDAO.get(teamId);
 		boolean publicCanJoinTeam = team.getCanPublicJoin()!=null && team.getCanPublicJoin()==true;
@@ -664,7 +723,7 @@ public class TeamManagerImpl implements TeamManager {
 		tms.setCanJoin(canAddTeamMember(userInfo, teamId, principalUserInfo, isMember));
 		tms.setHasUnmetAccessRequirement(hasUnmetAccessRequirements(principalUserInfo, teamId));
 		tms.setMembershipApprovalRequired(isMembershipApprovalRequired(principalUserInfo, teamId));
-		tms.setCanSendEmail(authorizationManager.canAccess(principalUserInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.SEND_MESSAGE).getAuthorized());
+		tms.setCanSendEmail(authorizationManager.canAccess(principalUserInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.SEND_MESSAGE).isAuthorized());
 		return tms;
 	}
 

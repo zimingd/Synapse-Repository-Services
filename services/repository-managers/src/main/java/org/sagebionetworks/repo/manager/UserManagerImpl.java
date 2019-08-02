@@ -8,13 +8,12 @@ import java.util.Set;
 
 import org.sagebionetworks.repo.manager.principal.NewUserUtils;
 import org.sagebionetworks.repo.manager.team.TeamConstants;
-import org.sagebionetworks.repo.model.AuthenticationDAO;
+import org.sagebionetworks.repo.model.auth.AuthenticationDAO;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.AuthorizationUtils;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.GroupMembersDAO;
 import org.sagebionetworks.repo.model.NameConflictException;
-import org.sagebionetworks.repo.model.UnauthenticatedException;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserGroup;
 import org.sagebionetworks.repo.model.UserGroupDAO;
@@ -29,20 +28,18 @@ import org.sagebionetworks.repo.model.dbo.persistence.DBOTermsOfUseAgreement;
 import org.sagebionetworks.repo.model.principal.AliasType;
 import org.sagebionetworks.repo.model.principal.PrincipalAlias;
 import org.sagebionetworks.repo.model.principal.PrincipalAliasDAO;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.securitytools.HMACUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.sagebionetworks.repo.transactions.WriteTransaction;
 
 import com.google.common.collect.Lists;
 
 public class UserManagerImpl implements UserManager {
-	
-	public static final String MESSAGE_CANNOT_AUTHENTICATE_AS_TEAM = "Cannot authenticate as team. Only users can authenticate.";
 
 	@Autowired
 	private UserGroupDAO userGroupDAO;
-	
+
 	@Autowired
 	private UserProfileManager userProfileManger;
 	
@@ -61,7 +58,7 @@ public class UserManagerImpl implements UserManager {
 	/**
 	 * Testing purposes only
 	 * Do NOT use in non-test code
-	 * i.e. {@link #createTestUser(UserInfo, String, UserProfile, DBOCredential)}
+	 * i.e. {@link #createOrGetTestUser(UserInfo, String, UserProfile, DBOCredential)}
 	 */
 	@Autowired
 	private DBOBasicDao basicDAO;
@@ -144,36 +141,42 @@ public class UserManagerImpl implements UserManager {
 
 	@WriteTransaction
 	@Override
-	public UserInfo createTestUser(UserInfo adminUserInfo, NewUser user, DBOCredential credential,
+	public UserInfo createOrGetTestUser(UserInfo adminUserInfo, NewUser user, DBOCredential credential,
 			DBOTermsOfUseAgreement touAgreement) throws NotFoundException {
-		return createTestUser(adminUserInfo, user, credential, touAgreement, null);
+		return createOrGetTestUser(adminUserInfo, user, credential, touAgreement, null);
 	}
 
 	@WriteTransaction
 	@Override
-	public UserInfo createTestUser(UserInfo adminUserInfo, NewUser user, DBOCredential credential,
+	public UserInfo createOrGetTestUser(UserInfo adminUserInfo, NewUser user, DBOCredential credential,
 			DBOTermsOfUseAgreement touAgreement, DBOSessionToken token) throws NotFoundException {
 		if (!adminUserInfo.isAdmin()) {
 			throw new UnauthorizedException("Must be an admin to use this service");
 		}
 		// Create the user
-		Long principalId = createUser(user);
-		
-		// Update the credentials
-		if (credential == null) {
-			credential = new DBOCredential();
-		}
-		credential.setPrincipalId(principalId);
-		credential.setSecretKey(HMACUtils.newHMACSHA1Key());
-		basicDAO.update(credential);
-		
-		if (touAgreement != null) {
-			touAgreement.setPrincipalId(principalId);
-			basicDAO.createOrUpdate(touAgreement);
-		}
-		if (token != null) {
-			token.setPrincipalId(principalId);
-			basicDAO.createOrUpdate(token);
+		Long principalId;
+		PrincipalAlias alias = principalAliasDAO.findPrincipalWithAlias(user.getUserName());
+		if (alias==null) {
+			principalId = createUser(user);
+
+			// Update the credentials
+			if (credential == null) {
+				credential = new DBOCredential();
+			}
+			credential.setPrincipalId(principalId);
+			credential.setSecretKey(HMACUtils.newHMACSHA1Key());
+			basicDAO.update(credential);
+
+			if (touAgreement != null) {
+				touAgreement.setPrincipalId(principalId);
+				basicDAO.createOrUpdate(touAgreement);
+			}
+			if (token != null) {
+				token.setPrincipalId(principalId);
+				basicDAO.createOrUpdate(token);
+			}
+		} else {
+			principalId = alias.getPrincipalId();
 		}
 		return getUserInfo(principalId);
 	}
@@ -238,14 +241,11 @@ public class UserManagerImpl implements UserManager {
 	}
 
 	@Override
-	public PrincipalAlias lookupUserForAuthentication(String alias) {
+	public PrincipalAlias lookupUserByUsernameOrEmail(String alias) {
 		// Lookup the user
-		PrincipalAlias pa = this.principalAliasDAO.findPrincipalWithAlias(alias);
+		PrincipalAlias pa = this.principalAliasDAO.findPrincipalWithAlias(alias, AliasType.USER_EMAIL, AliasType.USER_NAME);
 		if(pa == null) {
 			throw new NotFoundException("Did not find a user with alias: "+alias);
-		}
-		if(AliasType.TEAM_NAME.equals(pa.getType())) {
-			throw new UnauthenticatedException(MESSAGE_CANNOT_AUTHENTICATE_AS_TEAM);
 		}
 		return pa;
 	}

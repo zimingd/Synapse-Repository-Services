@@ -302,16 +302,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 			HttpServletRequest request, String accessType)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		return evaluationPermissionsManager.hasAccess(userInfo, id, ACCESS_TYPE.valueOf(accessType)).getAuthorized();
-	}
-
-	@Override
-	public AccessControlList createAcl(Long userId, AccessControlList acl)
-			throws NotFoundException, DatastoreException,
-			InvalidModelException, UnauthorizedException,
-			ConflictingUpdateException {
-		UserInfo userInfo = userManager.getUserInfo(userId);
-		return evaluationPermissionsManager.createAcl(userInfo, acl);
+		return evaluationPermissionsManager.hasAccess(userInfo, id, ACCESS_TYPE.valueOf(accessType)).isAuthorized();
 	}
 
 	@Override
@@ -321,15 +312,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 			ConflictingUpdateException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return evaluationPermissionsManager.updateAcl(userInfo, acl);
-	}
-
-	@Override
-	public void deleteAcl(Long userId, String evalId)
-			throws NotFoundException, DatastoreException,
-			InvalidModelException, UnauthorizedException,
-			ConflictingUpdateException {
-		UserInfo userInfo = userManager.getUserInfo(userId);
-		evaluationPermissionsManager.deleteAcl(userInfo, evalId);
 	}
 
 	@Override

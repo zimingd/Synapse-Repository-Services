@@ -13,7 +13,6 @@ import org.sagebionetworks.workers.util.aws.message.MessageDrivenRunner;
 import org.sagebionetworks.workers.util.aws.message.RecoverableMessageException;
 
 import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.model.CreateQueueResult;
 import com.amazonaws.services.sqs.model.Message;
 
 /**
@@ -35,9 +34,7 @@ public class ChangeMessageBatchProcessor implements MessageDrivenRunner {
 	public ChangeMessageBatchProcessor(AmazonSQS awsSQSClient,
 			String queueName, ChangeMessageRunner runner) {
 		this.awsSQSClient = awsSQSClient;
-		// create the queue if it does not exist.
-		CreateQueueResult result = awsSQSClient.createQueue(queueName);
-		this.queueUrl = result.getQueueUrl();
+		this.queueUrl = awsSQSClient.getQueueUrl(queueName).getQueueUrl();
 		this.runner = runner;
 	}
 
@@ -65,7 +62,9 @@ public class ChangeMessageBatchProcessor implements MessageDrivenRunner {
 			throws RecoverableMessageException, Exception {
 		try{
 			batchRunner.run(progressCallback, batch);
-		} catch (RecoverableMessageException e) {
+		} catch (Exception e) {
+			//if part of the batch fails for any reason, put everything back onto the queue as individual batched messages and retry later
+
 			if (batch.size() == 1) {
 				// Let the container handle retry for single messages.
 				throw e;

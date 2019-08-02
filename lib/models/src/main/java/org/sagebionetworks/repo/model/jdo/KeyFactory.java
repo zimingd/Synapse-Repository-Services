@@ -2,14 +2,11 @@ package org.sagebionetworks.repo.model.jdo;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
 import org.sagebionetworks.repo.model.DatastoreException;
-import org.sagebionetworks.repo.model.EntityId;
-import org.sagebionetworks.repo.model.EntityIdList;
 import org.sagebionetworks.util.ValidateArgument;
 
 /**
@@ -111,5 +108,19 @@ public class KeyFactory {
 		}
 		// ignore syn for the final equals
 		return KeyFactory.stringToKey(idOne).equals(KeyFactory.stringToKey(idTwo));
+	}
+	
+	/**
+	 * Compare two keys.  Handles null comparisons.
+	 * 
+	 * @param one
+	 * @param two
+	 * @return
+	 */
+	public static int compare(String one, String two) {
+		if(one == null) {
+			return two == null ? 0 : -1;
+		}
+		return two == null ? 1 : KeyFactory.stringToKey(one).compareTo(KeyFactory.stringToKey(two));
 	}
 }

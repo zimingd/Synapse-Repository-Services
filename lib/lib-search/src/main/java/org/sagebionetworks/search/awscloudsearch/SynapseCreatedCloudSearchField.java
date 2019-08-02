@@ -1,15 +1,16 @@
 package org.sagebionetworks.search.awscloudsearch;
 
-import com.amazonaws.services.cloudsearchv2.model.IndexField;
-import com.amazonaws.services.cloudsearchv2.model.IndexFieldType;
-import org.sagebionetworks.util.ValidateArgument;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.Function;
+
+import org.sagebionetworks.util.ValidateArgument;
+
+import com.amazonaws.services.cloudsearchv2.model.IndexField;
+import com.amazonaws.services.cloudsearchv2.model.IndexFieldType;
 
 /**
  * Wrapper for IndexFields defined in CloudSearch.
@@ -70,6 +71,11 @@ class SynapseCreatedCloudSearchField implements CloudSearchField{
 	@Override
 	public boolean isReturned() {
 		return isReturned;
+	}
+
+	@Override
+	public IndexFieldType getType() {
+		return IndexFieldType.fromValue(this.indexField.getIndexFieldType());
 	}
 
 	IndexField getIndexField() {

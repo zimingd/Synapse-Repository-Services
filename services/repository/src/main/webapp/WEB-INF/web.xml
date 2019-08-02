@@ -217,6 +217,10 @@
 			<param-name>detectAllHandlerMappings</param-name>
 			<param-value>true</param-value>
 		</init-param>
+		<init-param>
+			<param-name>throwExceptionIfNoHandlerFound</param-name>
+			<param-value>true</param-value>
+		</init-param>
 		<load-on-startup>1</load-on-startup>
 	</servlet>
 
@@ -224,18 +228,6 @@
 		<servlet-name>singleton</servlet-name>
 		<url-pattern>/*</url-pattern>
 	</servlet-mapping>
-
-	<servlet>
-		<servlet-name>tomcatDefaultServlet</servlet-name>
-		<servlet-class>org.apache.catalina.servlets.DefaultServlet</servlet-class>
-	</servlet>
-
-
-	<servlet-mapping>
-		<servlet-name>tomcatDefaultServlet</servlet-name>
-		<url-pattern>/auth/v1/synapseTermsOfUse.html</url-pattern>
-	</servlet-mapping>
-
 
 	<!-- This filter will look for the session token as a cookie, if it finds 
 		it, the token will be added to the header of the request -->
@@ -268,6 +260,11 @@
 		<filter-class>org.sagebionetworks.auth.CloudMailInAcceptPlainTextFilter</filter-class>
 	</filter>
 
+	<filter>
+		<filter-name>cloudMailInContentTypeFilter</filter-name>
+		<filter-class>org.sagebionetworks.auth.CloudMailInCharacterEncodingFilter</filter-class>
+	</filter>
+
     <!--  Note we tried applying the filter to both /cloudMailInMessage and /cloudMailInAuthorization,
     but CloudMailIn doesn't seem to pass the BasicAuthentication credentials when it calls the latter
     service.   -->
@@ -277,10 +274,17 @@
 	</filter-mapping>
 
 	<filter-mapping>
+		<filter-name>cloudMailInContentTypeFilter</filter-name>
+		<url-pattern>/repo/v1/cloudMailInMessage/*</url-pattern>
+	</filter-mapping>
+
+	<filter-mapping>
 		<filter-name>cloudMailInAcceptPlainTextFilter</filter-name>
 		<url-pattern>/repo/v1/cloudMailInMessage/*</url-pattern>
 		<url-pattern>/repo/v1/cloudMailInAuthorization/*</url-pattern>
 	</filter-mapping>
+
+
 
 	<!-- appends a new sessionId cookie to the response if the user did not provide one in their request -->
 	<filter>

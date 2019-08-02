@@ -1,9 +1,7 @@
 package org.sagebionetworks.repo.web.controller;
 
 import org.sagebionetworks.repo.model.AuthorizationConstants;
-import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.ServiceConstants;
-import org.sagebionetworks.repo.model.subscription.Etag;
 import org.sagebionetworks.repo.model.subscription.SortByType;
 import org.sagebionetworks.repo.model.subscription.SortDirection;
 import org.sagebionetworks.repo.model.subscription.SubscriberCount;
@@ -37,7 +35,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @ControllerInfo(displayName = "Subscription Services", path = "repo/v1")
 @Controller
 @RequestMapping(UrlHelpers.REPO_PATH)
-public class SubscriptionController extends BaseController{
+public class SubscriptionController{
 
 	@Autowired
 	ServiceProvider serviceProvider;
@@ -165,22 +163,6 @@ public class SubscriptionController extends BaseController{
 	public void deleteAll(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) {
 		serviceProvider.getSubscriptionService().deleteAll(userId);
-	}
-
-	/**
-	 * This API is used to retrieve the etag of a subscribable object.
-	 * The client could use this method to check if an object has changed.
-	 * 
-	 * @param objectId - The ID of the given object
-	 * @param objectType - The type of the given object
-	 * @return
-	 */
-	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = UrlHelpers.OBJECT_ID_TYPE_ETAG, method = RequestMethod.GET)
-	public @ResponseBody Etag getEtag(
-			@PathVariable String objectId,
-			@PathVariable String objectType) {
-		return serviceProvider.getSubscriptionService().getEtag(objectId, ObjectType.valueOf(objectType));
 	}
 
 	/**

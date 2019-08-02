@@ -2,7 +2,7 @@ package org.sagebionetworks.table.query.util;
 
 import static org.sagebionetworks.repo.model.table.TableConstants.NULL_VALUE_KEYWORD;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.FacetColumnRangeRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnRequest;
@@ -107,7 +107,9 @@ public class FacetRequestColumnModel {
 		builder.append("\"");
 		builder.append(facetRange.getColumnName());
 		builder.append("\"");
-		if(min == null){ //only max exists
+		if (NULL_VALUE_KEYWORD.equals(min) || NULL_VALUE_KEYWORD.equals(max)){
+			builder.append(" IS NULL");
+		} else if(min == null){ //only max exists
 			builder.append("<=");
 			appendValueToStringBuilder(builder, max);
 		}else if (max == null){ //only min exists

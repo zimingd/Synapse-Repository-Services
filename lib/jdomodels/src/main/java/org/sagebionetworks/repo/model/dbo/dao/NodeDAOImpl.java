@@ -1,6 +1,7 @@
 package org.sagebionetworks.repo.model.dbo.dao;
 
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_CURRENT_REV;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_FILES_BUCKET_NAME;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_FILES_CONTENT_MD5;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_FILES_CONTENT_SIZE;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_FILES_ID;
@@ -19,6 +20,7 @@ import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_ANNOS_BLOB;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_COLUMN_MODEL_IDS;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_COMMENT;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_ENTITY_PROPERTY_ANNOTATIONS_BLOB;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_FILE_HANDLE_ID;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_LABEL;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_MODIFIED_BY;
@@ -27,6 +29,7 @@ import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_OWNER_NODE;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_REF_BLOB;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_SCOPE_IDS;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_REVISION_USER_ANNOTATIONS_V1_BLOB;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.CONSTRAINT_UNIQUE_ALIAS;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.CONSTRAINT_UNIQUE_CHILD_NAME;
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.FUNCTION_GET_ENTITY_BENEFACTOR_ID;
@@ -39,7 +42,6 @@ import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_PROJEC
 import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_REVISION;
 
 import java.io.IOException;
-import java.sql.Blob;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -55,13 +57,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import org.apache.commons.lang.NotImplementedException;
-import org.sagebionetworks.StackConfiguration;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import org.apache.commons.lang3.NotImplementedException;
 import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.model.Annotations;
-import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityType;
@@ -70,7 +72,6 @@ import org.sagebionetworks.repo.model.IdAndEtag;
 import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.LimitExceededException;
 import org.sagebionetworks.repo.model.NameConflictException;
-import org.sagebionetworks.repo.model.NamedAnnotations;
 import org.sagebionetworks.repo.model.Node;
 import org.sagebionetworks.repo.model.NodeConstants;
 import org.sagebionetworks.repo.model.NodeDAO;
@@ -88,21 +89,27 @@ import org.sagebionetworks.repo.model.dbo.persistence.NodeMapper;
 import org.sagebionetworks.repo.model.entity.Direction;
 import org.sagebionetworks.repo.model.entity.SortBy;
 import org.sagebionetworks.repo.model.entity.query.SortDirection;
+import org.sagebionetworks.repo.model.file.ChildStatsRequest;
+import org.sagebionetworks.repo.model.file.ChildStatsResponse;
+import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
+import org.sagebionetworks.repo.model.file.FileHandleAssociation;
+import org.sagebionetworks.repo.model.jdo.AnnotationUtils;
 import org.sagebionetworks.repo.model.jdo.JDORevisionUtils;
-import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.message.ChangeType;
+import org.sagebionetworks.repo.model.message.MessageToSend;
 import org.sagebionetworks.repo.model.message.TransactionalMessenger;
 import org.sagebionetworks.repo.model.query.jdo.QueryUtils;
 import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.model.table.SnapshotRequest;
 import org.sagebionetworks.repo.transactions.MandatoryWriteTransaction;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
-import org.sagebionetworks.repo.transactions.WriteTransactionReadCommitted;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.SerializationUtils;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -110,9 +117,6 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 
 /**
  * This is a basic implementation of the NodeDAO.
@@ -122,6 +126,25 @@ import com.google.common.collect.Sets;
  */
 public class NodeDAOImpl implements NodeDAO, InitializingBean {
 
+	private static final String SQL_CREATE_SNAPSHOT_VERSION = "UPDATE " + TABLE_REVISION + " SET "
+			+ COL_REVISION_COMMENT + " = ?, " + COL_REVISION_LABEL + " = ?, " + COL_REVISION_ACTIVITY_ID + " = ?, "
+			+ COL_REVISION_MODIFIED_BY + " = ?, " + COL_REVISION_MODIFIED_ON + " = ? WHERE " + COL_REVISION_OWNER_NODE
+			+ " = ? AND " + COL_REVISION_NUMBER + " = ?";
+
+	private static final String UPDATE_REVISION = "UPDATE " + TABLE_REVISION + " SET " + COL_REVISION_ACTIVITY_ID
+			+ " = ?, " + COL_REVISION_COMMENT + " = ?, " + COL_REVISION_LABEL + " = ?, " + COL_REVISION_FILE_HANDLE_ID
+			+ " = ?, " + COL_REVISION_COLUMN_MODEL_IDS + " = ?, " + COL_REVISION_SCOPE_IDS + " = ?, "
+			+ COL_REVISION_REF_BLOB + " = ? WHERE " + COL_REVISION_OWNER_NODE + " = ? AND " + COL_REVISION_NUMBER + " = ?";
+	
+	private static final String UPDATE_NODE = "UPDATE " + TABLE_NODE + " SET " + COL_NODE_NAME + " = ?, "
+			+ COL_NODE_PARENT_ID + " = ?, " + COL_NODE_ALIAS + " = ? WHERE " + COL_NODE_ID + " = ?";
+	
+	private static final String SQL_UPDATE_ANNOTATIONS_FORMAT = "UPDATE " + TABLE_REVISION + " SET %s"
+			+ " = ? WHERE " + COL_REVISION_OWNER_NODE + " = ? AND " + COL_REVISION_NUMBER + " = ?";
+	private static final String SQL_TOUCH_REVISION = "UPDATE " + TABLE_REVISION + " SET " + COL_REVISION_MODIFIED_BY
+			+ " = ?, " + COL_REVISION_MODIFIED_ON + " = ? WHERE " + COL_REVISION_OWNER_NODE + " = ? AND "
+			+ COL_REVISION_NUMBER + " = ?";
+	private static final String SQL_TOUCH_ETAG = "UPDATE "+TABLE_NODE+" SET "+COL_NODE_ETAG+" = ? WHERE "+COL_NODE_ID+" = ?";
 	private static final String MAXIMUM_NUMBER_OF_IDS_EXCEEDED = "Maximum number of IDs exceeded";
 	private static final String SQL_SELECT_GET_ENTITY_BENEFACTOR_ID = "SELECT "+FUNCTION_GET_ENTITY_BENEFACTOR_ID+"(?)";
 	private static final String BIND_NODE_IDS =  "bNodeIds";
@@ -133,11 +156,18 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	
 	private static final String SQL_SELECT_CHILD_CRC32 = 
 			"SELECT "+COL_NODE_PARENT_ID+","
-					+ " SUM(CRC32(CONCAT("+COL_NODE_ID+",\"-\","+COL_NODE_ETAG+"))) AS 'CRC'"
-							+ " FROM "+TABLE_NODE+" WHERE "+COL_NODE_PARENT_ID+" IN(:"+BIND_PARENT_ID+") GROUP BY "+COL_NODE_PARENT_ID;
+					+ " SUM(CRC32(CONCAT("+COL_NODE_ID
+					+",'-',"+COL_NODE_ETAG
+					+",'-',"+FUNCTION_GET_ENTITY_BENEFACTOR_ID+"("+COL_NODE_ID+")"
+							+ "))) AS 'CRC'"
+							+ " FROM "+TABLE_NODE+" WHERE "+COL_NODE_PARENT_ID+" IN(:"+BIND_PARENT_ID+")"
+									+ " GROUP BY "+COL_NODE_PARENT_ID;
 	
 	private static final String SQL_SELECT_CHILDREN_ID_AND_ETAG = 
-			"SELECT "+COL_NODE_ID+", "+COL_NODE_ETAG+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_PARENT_ID+" = ?";
+			"SELECT "+COL_NODE_ID
+			+", "+COL_NODE_ETAG
+			+", "+FUNCTION_GET_ENTITY_BENEFACTOR_ID+"("+COL_NODE_ID+")"
+			+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_PARENT_ID+" = ?";
 
 	private static final String SQL_SELECT_CHILD = "SELECT "+COL_NODE_ID
 			+ " FROM "+TABLE_NODE
@@ -213,18 +243,36 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 			+ " FROM "+TABLE_NODE+" N"
 			+ " WHERE N."+COL_NODE_ID+" IN (:"+BIND_NODE_IDS+")";
 	
-	private static final String ENTITY_HEADER_SELECT = "SELECT N."+COL_NODE_ID+", R."+COL_REVISION_LABEL+", N."+COL_NODE_NAME+", N."+COL_NODE_TYPE+", "+SQL_SELECT_BENEFACTOR_N+", R."+COL_REVISION_NUMBER;
+	private static final String ENTITY_HEADER_SELECT = "SELECT N." + COL_NODE_ID + ", R." + COL_REVISION_LABEL + ", N."
+			+ COL_NODE_NAME + ", N." + COL_NODE_TYPE + ", " + SQL_SELECT_BENEFACTOR_N + ", R." + COL_REVISION_NUMBER
+			+ ", N." + COL_NODE_CREATED_BY + ", N." + COL_NODE_CREATED_ON + ", R." + COL_REVISION_MODIFIED_BY + ", R."
+			+ COL_REVISION_MODIFIED_ON;
+	
+	private static final String JOIN_NODE_REVISION = TABLE_NODE+" N"+
+			" JOIN "+TABLE_REVISION+" R"+
+			" ON (N."+COL_NODE_ID+" = R."+COL_REVISION_OWNER_NODE+" AND N."+COL_CURRENT_REV+" = R."+COL_REVISION_NUMBER+")";
+	private static final String JOIN_NODE_REVISION_FILES = JOIN_NODE_REVISION+ " LEFT JOIN "
+			+ TABLE_FILES + " F ON (R." + COL_REVISION_FILE_HANDLE_ID + " = F." + COL_FILES_ID + " )";
 	
 	private static final String SQL_SELECT_CHIDREN_TEMPLATE =
 			ENTITY_HEADER_SELECT+
-				" FROM "+TABLE_NODE+" N"+
-				" JOIN "+TABLE_REVISION+" R"+
-					" ON (N."+COL_NODE_ID+" = R."+COL_REVISION_OWNER_NODE+" AND N."+COL_CURRENT_REV+" = R."+COL_REVISION_NUMBER+")"+
+				" FROM "+JOIN_NODE_REVISION+
 				" WHERE N."+COL_NODE_PARENT_ID+" = :"+BIND_PARENT_ID+
 						" %1$s"+
 						" AND N."+COL_NODE_TYPE+" IN (:"+BIND_NODE_TYPES+")"+
 						" ORDER BY %2$s %3$s"+
 						" LIMIT :"+BIND_LIMIT+" OFFSET :"+BIND_OFFSET;
+	
+	private static final String SQL_SELECT_CHIDREN_STATS =
+			"SELECT COUNT(*), SUM(F."+COL_FILES_CONTENT_SIZE+")"+
+				" FROM "+TABLE_NODE+" N"+
+				" JOIN "+TABLE_REVISION+" R"+
+					" ON (N."+COL_NODE_ID+" = R."+COL_REVISION_OWNER_NODE+" AND N."+COL_CURRENT_REV+" = R."+COL_REVISION_NUMBER+")"+
+				" LEFT JOIN "+TABLE_FILES+" F"+
+					" ON (R."+COL_REVISION_FILE_HANDLE_ID+" = F."+COL_FILES_ID+")"+
+				" WHERE N."+COL_NODE_PARENT_ID+" = :"+BIND_PARENT_ID+
+						" %1$s"+
+						" AND N."+COL_NODE_TYPE+" IN (:"+BIND_NODE_TYPES+")";
 	
 	public static final String N_NAME = "N."+COL_NODE_NAME;
 	public static final String N_CREATED_ON = "N."+COL_NODE_CREATED_ON;
@@ -256,34 +304,38 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 						+ " ORDER BY "+COL_NODE_ID+" ASC LIMIT :"+BIND_LIMIT;
 
 	private static final String SQL_SELECT_REV_FILE_HANDLE_ID = "SELECT "+COL_REVISION_FILE_HANDLE_ID+" FROM "+TABLE_REVISION+" WHERE "+COL_REVISION_OWNER_NODE+" = ? AND "+COL_REVISION_NUMBER+" = ?";
-	private static final String SELECT_REVISIONS_ONLY = "SELECT R."+COL_REVISION_REF_BLOB+" FROM  "+TABLE_NODE+" N, "+TABLE_REVISION+" R WHERE N."+COL_NODE_ID+" = ? AND R."+COL_REVISION_OWNER_NODE+" = N."+COL_NODE_ID+" AND R."+COL_REVISION_NUMBER+" = N."+COL_CURRENT_REV;
-	private static final String SELECT_ANNOTATIONS_ONLY_PREFIX = "SELECT N."+COL_NODE_ID+", N."+COL_NODE_ETAG+", N."+COL_NODE_CREATED_ON+", N."+COL_NODE_CREATED_BY+", R."+COL_REVISION_ANNOS_BLOB+" FROM  "+TABLE_NODE+" N, "+TABLE_REVISION+" R WHERE N."+COL_NODE_ID+" = ? AND R."+COL_REVISION_OWNER_NODE+" = N."+COL_NODE_ID+" AND R."+COL_REVISION_NUMBER;
+	private static final String SELECT_ANNOTATIONS_ONLY_SELECT_CLAUSE_PREFIX = "SELECT N."+COL_NODE_ID+", N."+COL_NODE_ETAG+", N."+COL_NODE_CREATED_ON+", N."+COL_NODE_CREATED_BY+", R.";
+
+	private static final String SELECT_ANNOTATIONS_ONLY_FROM_AND_WHERE_CLAUSE_PREFIX = " FROM  "+TABLE_NODE+" N, "+TABLE_REVISION+" R WHERE N."+COL_NODE_ID+" = ? AND R."+COL_REVISION_OWNER_NODE+" = N."+COL_NODE_ID+" AND R."+COL_REVISION_NUMBER + "=";
 	private static final String CANNOT_FIND_A_NODE_WITH_ID = "Cannot find a node with id: ";
 	private static final String ERROR_RESOURCE_NOT_FOUND = "The resource you are attempting to access cannot be found";
 	private static final String GET_CURRENT_REV_NUMBER_SQL = "SELECT "+COL_CURRENT_REV+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID+" = ?";
 	private static final String GET_NODE_TYPE_SQL = "SELECT "+COL_NODE_TYPE+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID+" = ?";
 	private static final String GET_REV_ACTIVITY_ID_SQL = "SELECT "+COL_REVISION_ACTIVITY_ID+" FROM "+TABLE_REVISION+" WHERE "+COL_REVISION_OWNER_NODE+" = ? AND "+ COL_REVISION_NUMBER +" = ?";
 	private static final String GET_NODE_CREATED_BY_SQL = "SELECT "+COL_NODE_CREATED_BY+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID+" = ?";
-	private static final String UPDATE_ETAG_SQL = "UPDATE "+TABLE_NODE+" SET "+COL_NODE_ETAG+" = ? WHERE "+COL_NODE_ID+" = ?";
 	private static final String SQL_SELECT_PARENT_TYPE_NAME = "SELECT "+COL_NODE_ID+", "+COL_NODE_PARENT_ID+", "+COL_NODE_TYPE+", "+COL_NODE_NAME+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID+" = ?";
 	private static final String SQL_GET_ALL_CHILDREN_IDS = "SELECT "+COL_NODE_ID+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_PARENT_ID+" = ? ORDER BY "+COL_NODE_ID;
 	private static final String NODE_IDS_LIST_PARAM_NAME = "NODE_IDS";
 	
+	private static final String SELECT_CURRENT_VERSION_FILE_HANDLES = "SELECT N." + COL_NODE_ID + ", R."
+			+ COL_REVISION_FILE_HANDLE_ID + " FROM " + TABLE_NODE + " N JOIN " + TABLE_REVISION + " R ON (N."
+			+ COL_NODE_ID + " = R." + COL_REVISION_OWNER_NODE + " AND N." + COL_CURRENT_REV + " = R."
+			+ COL_REVISION_NUMBER + ") WHERE N." + COL_NODE_TYPE + " = '" + EntityType.file + "' AND N." + COL_NODE_ID
+			+ " IN (:" + NODE_IDS_LIST_PARAM_NAME + ")";
+	
 	public static final String BENEFACTOR_FUNCTION_ALIAS = FUNCTION_GET_ENTITY_BENEFACTOR_ID+"(N."+COL_NODE_ID+")";
 	public static final String PROJECT_FUNCTION_ALIAS = FUNCTION_GET_ENTITY_PROJECT_ID+"(N."+COL_NODE_ID+")";
 	
-	private static final String SQL_SELECT_ENTITY_DTO = "SELECT N."
-			+ COL_NODE_ID + ", N."+COL_CURRENT_REV+", N." + COL_NODE_CREATED_BY + ", N."
-			+ COL_NODE_CREATED_ON + ", N." + COL_NODE_ETAG + ", N."
-			+ COL_NODE_NAME + ", N." + COL_NODE_TYPE + ", N."
-			+ COL_NODE_PARENT_ID + ", " + BENEFACTOR_FUNCTION_ALIAS + ", "
-			+ PROJECT_FUNCTION_ALIAS + ", R." + COL_REVISION_MODIFIED_BY + ", R."
-			+ COL_REVISION_MODIFIED_ON + ", R." + COL_REVISION_FILE_HANDLE_ID
-			+ ", R." + COL_REVISION_ANNOS_BLOB + " FROM " + TABLE_NODE + " N, "
-			+ TABLE_REVISION + " R WHERE N." + COL_NODE_ID + " = R."
-			+ COL_REVISION_OWNER_NODE + " AND N." + COL_CURRENT_REV + " = R."
-			+ COL_REVISION_NUMBER + " AND N." + COL_NODE_ID + " IN(:"
-			+ NODE_IDS_LIST_PARAM_NAME + ")";
+	private static final String SQL_SELECT_ENTITY_DTO = "SELECT N." + COL_NODE_ID + ", N." + COL_CURRENT_REV + ", N."
+			+ COL_NODE_CREATED_BY + ", N." + COL_NODE_CREATED_ON + ", N." + COL_NODE_ETAG + ", N." + COL_NODE_NAME
+			+ ", N." + COL_NODE_TYPE + ", N." + COL_NODE_PARENT_ID + ", " + BENEFACTOR_FUNCTION_ALIAS + ", "
+			+ PROJECT_FUNCTION_ALIAS + ", R." + COL_REVISION_MODIFIED_BY + ", R." + COL_REVISION_MODIFIED_ON + ", R."
+			+ COL_REVISION_FILE_HANDLE_ID + ", R." + COL_REVISION_USER_ANNOTATIONS_V1_BLOB
+			+ ", F." + COL_FILES_CONTENT_SIZE +
+			", F." + COL_FILES_BUCKET_NAME
+			+ " FROM " + JOIN_NODE_REVISION_FILES+" WHERE N."
+			+ COL_NODE_ID + " IN(:" + NODE_IDS_LIST_PARAM_NAME + ") ORDER BY N."+COL_NODE_ID+" ASC";
+	
 	private static final String SQL_GET_CURRENT_VERSIONS = "SELECT "+COL_NODE_ID+","+COL_CURRENT_REV+" FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID+" IN ( :"+NODE_IDS_LIST_PARAM_NAME + " )";
 	private static final String OWNER_ID_PARAM_NAME = "OWNER_ID";
 
@@ -300,7 +352,7 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 		" ORDER BY " + LAST_ACCESSED_OR_CREATED;
 
 	private static final String SELECT_NAME_ORDER =
-		" ORDER BY n." + COL_NODE_NAME + " COLLATE 'latin1_general_ci'";
+		" ORDER BY n." + COL_NODE_NAME ;
 
 	/**
 	 * To determine if a node has children we fetch the first child ID.
@@ -331,7 +383,7 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 
 	// Track the trash folder.
 	public static final Long TRASH_FOLDER_ID = Long.parseLong(StackConfigurationSingleton.singleton().getTrashFolderEntityId());
-	
+
 	private static final RowMapper<EntityHeader> ENTITY_HEADER_ROWMAPPER = new RowMapper<EntityHeader>() {
 		@Override
 		public EntityHeader mapRow(ResultSet rs, int rowNum) throws SQLException {
@@ -344,6 +396,10 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 			header.setVersionNumber(rs.getLong(COL_REVISION_NUMBER));
 			header.setVersionLabel(rs.getString(COL_REVISION_LABEL));
 			header.setBenefactorId(rs.getLong(BENEFACTOR_ALIAS));
+			header.setCreatedBy(rs.getString(COL_NODE_CREATED_BY));
+			header.setCreatedOn(new Date(rs.getLong(COL_NODE_CREATED_ON)));
+			header.setModifiedBy(rs.getString(COL_REVISION_MODIFIED_BY));
+			header.setModifiedOn(new Date(rs.getLong(COL_REVISION_MODIFIED_ON)));
 			return header;
 		}
 	};
@@ -377,9 +433,6 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	// Used to determine if a node id already exists
 	private static final String SQL_COUNT_NODE_ID = "SELECT COUNT("+COL_NODE_ID+") FROM "+TABLE_NODE+" WHERE "+COL_NODE_ID +" = :"+BIND_ID_KEY;
 	private static final String SQL_COUNT_REVISON_ID = "SELECT COUNT("+COL_REVISION_OWNER_NODE+") FROM "+TABLE_REVISION+" WHERE "+COL_REVISION_OWNER_NODE +" = ? AND "+COL_REVISION_NUMBER+" = ?";
-	private static final String SQL_COUNT_REVISONS = "SELECT COUNT("
-			+ COL_REVISION_NUMBER+ ") FROM " + TABLE_REVISION + " WHERE "
-			+ COL_REVISION_OWNER_NODE + " = ?";
 
 	private static final String SQL_GET_FILE_HANDLE_IDS =
 			"SELECT DISTINCT "+COL_REVISION_FILE_HANDLE_ID
@@ -397,56 +450,64 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	
 	@WriteTransaction
 	@Override
-	public Node createNewNode(Node dto) throws NotFoundException, DatastoreException, InvalidModelException {
-		if(dto == null) throw new IllegalArgumentException("Node cannot be null");
-		DBORevision rev = new DBORevision();
-		// Set the default label
-		if(dto.getVersionLabel() == null){
-			rev.setLabel(NodeConstants.DEFAULT_VERSION_LABEL);
+	public Node bootstrapNode(Node node, long id) {
+		ValidateArgument.required(node, "Entity");
+		// ensure the ID is reserved.
+		idGenerator.reserveId(id, IdType.ENTITY_ID);
+		node.setId(KeyFactory.keyToString(id));
+		return create(node);
+	}
+	
+	@WriteTransaction
+	@Override
+	public Node createNewNode(Node node) throws NotFoundException, DatastoreException, InvalidModelException {
+		ValidateArgument.required(node, "Entity");
+		// issue a new ID for this node.
+		long newId = idGenerator.generateNewId(IdType.ENTITY_ID);
+		node.setId(KeyFactory.keyToString(newId));
+		return create(node);
+	}
+	
+	/**
+	 * Create a new node with an ID.
+	 * s
+	 * @param dto
+	 * @return
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 */
+	private Node create(Node dto) throws NotFoundException, DatastoreException, InvalidModelException {
+		ValidateArgument.required(dto, "Entity");
+		ValidateArgument.required(dto.getCreatedByPrincipalId(), "Entity.createdBy");
+		ValidateArgument.required(dto.getCreatedOn(), "Entity.createdOn");
+		ValidateArgument.required(dto.getNodeType(), "Entity.type");
+		ValidateArgument.required(dto.getModifiedByPrincipalId(), "Entity.modifiedBy");
+		ValidateArgument.required(dto.getModifiedOn(), "Entity.modifiedOn");
+		ValidateArgument.required(dto.getId(), "Entity.id");
+		if(dto.getName() == null) {
+			dto.setName(dto.getId());
 		}
-		if(dto.getVersionNumber() == null || dto.getVersionNumber().longValue() < 1){
-			rev.setRevisionNumber(NodeConstants.DEFAULT_VERSION_NUMBER);
-		}else{
-			rev.setRevisionNumber(dto.getVersionNumber());
-		}
-		DBONode node = new DBONode();
-		node.setCurrentRevNumber(rev.getRevisionNumber());
-		NodeUtils.updateFromDto(dto, node, rev, shouldDeleteActivityId(dto));
-		// If an id was not provided then create one
-		if(node.getId() == null){
-			node.setId(idGenerator.generateNewId(IdType.ENTITY_ID));
-		}else{
-			// If an id was provided then it must not exist
-			if(doesNodeExist(node.getId())) throw new IllegalArgumentException("The id: "+node.getId()+" already exists, so a node cannot be created using that id.");
-			// Make sure the ID generator has reserved this ID.
-			idGenerator.reserveId(node.getId(), IdType.ENTITY_ID);
-		}
-		// Look up this type
-		if(dto.getNodeType() == null) throw new IllegalArgumentException("Node type cannot be null");
-		node.setType(dto.getNodeType().name());
 
-		DBONode parent = null;
-		// Set the parent and benefactor
-		if(dto.getParentId() != null){
-			// Get the parent
-			parent = getNodeById(KeyFactory.stringToKey(dto.getParentId()));
-			node.setParentId(parent.getId());
-		}
+		DBORevision dboRevision = NodeUtils.transalteNodeToDBORevision(dto);
+		dboRevision.setRevisionNumber(NodeConstants.DEFAULT_VERSION_NUMBER);
+		DBONode dboNode = NodeUtils.translateNodeToDBONode(dto);
+		dboNode.setCurrentRevNumber(dboRevision.getRevisionNumber());
 
 		// Start it with a new e-tag
-		node.seteTag(UUID.randomUUID().toString());
-		transactionalMessenger.sendMessageAfterCommit(node, ChangeType.CREATE);
+		dboNode.seteTag(UUID.randomUUID().toString());
+		transactionalMessenger.sendMessageAfterCommit(new MessageToSend().withObservableEntity(dboNode).withChangeType(ChangeType.CREATE).withUserId(dboNode.getCreatedBy()));
 
 		// Now create the revision
-		rev.setOwner(node.getId());
+		dboRevision.setOwner(dboNode.getId());
 		// Now save the node and revision
 		try{
-			dboBasicDao.createNew(node);
+			dboBasicDao.createNew(dboNode);
 		}catch(IllegalArgumentException e){
-			checkExceptionDetails(node.getName(), node.getAlias(), KeyFactory.keyToString(node.getParentId()), e);
+			checkExceptionDetails(dboNode.getName(), dboNode.getAlias(), KeyFactory.keyToString(dboNode.getParentId()), e);
 		}
-		dboBasicDao.createNew(rev);		
-		return getNode(""+node.getId());
+		dboBasicDao.createNew(dboRevision);		
+		return getNode(""+dboNode.getId());
 	}
 
 	/**
@@ -522,7 +583,7 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 		return dboBasicDao.deleteObjectByPrimaryKey(DBONode.class, prams);
 	}
 	
-	@WriteTransactionReadCommitted
+	@WriteTransaction
 	@Override
 	public int delete(List<Long> ids) throws DatastoreException{
 		ValidateArgument.required(ids, "ids");
@@ -621,108 +682,91 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	}
 
 	@Override
-	public NamedAnnotations getAnnotations(String id) throws NotFoundException, DatastoreException {
-		if(id == null) throw new IllegalArgumentException("NodeId cannot be null");
+	public Annotations getUserAnnotationsV1(final String id) throws NotFoundException, DatastoreException {
+		ValidateArgument.requiredNotEmpty(id, "id");
+		return getAnnotations(id, null, COL_REVISION_USER_ANNOTATIONS_V1_BLOB);
+	}
+
+	@Override
+	public Annotations getUserAnnotationsV1ForVersion(final String id, Long versionNumber) throws NotFoundException, DatastoreException {
+		ValidateArgument.requiredNotEmpty(id, "id");
+		ValidateArgument.required(versionNumber, "versionNumber");
+		return getAnnotations(id, versionNumber, COL_REVISION_USER_ANNOTATIONS_V1_BLOB);
+	}
+
+	@Override
+	public Annotations getEntityPropertyAnnotations(final String id) throws NotFoundException, DatastoreException {
+		ValidateArgument.requiredNotEmpty(id, "id");
+		return getAnnotations(id, null, COL_REVISION_ENTITY_PROPERTY_ANNOTATIONS_BLOB);
+	}
+
+	@Override
+	public Annotations getEntityPropertyAnnotationsForVersion(final String id, Long versionNumber) throws NotFoundException, DatastoreException {
+		ValidateArgument.requiredNotEmpty(id, "id");
+		ValidateArgument.required(versionNumber, "versionNumber");
+		return getAnnotations(id, versionNumber, COL_REVISION_ENTITY_PROPERTY_ANNOTATIONS_BLOB);
+	}
+	private Annotations getAnnotations(final String id, Long version, final String annotationsColumnName){
+		final Long idLong = KeyFactory.stringToKey(id);
+
+		StringBuilder sql = new StringBuilder(SELECT_ANNOTATIONS_ONLY_SELECT_CLAUSE_PREFIX);
+		sql.append(annotationsColumnName);
+		sql.append(SELECT_ANNOTATIONS_ONLY_FROM_AND_WHERE_CLAUSE_PREFIX);
+		Object[] args;
+		if(version == null){
+			sql.append("N." + COL_CURRENT_REV);
+			args = new Object[]{idLong};
+		}else {
+			sql.append("?");
+			args = new Object[]{idLong, version};
+		}
 		// Select just the references, not the entire node.
 		try{
-			return jdbcTemplate.queryForObject(SELECT_ANNOTATIONS_ONLY_PREFIX + " = N." + COL_CURRENT_REV, new AnnotationRowMapper(),
-					KeyFactory.stringToKey(id));
+			Annotations annos =  jdbcTemplate.queryForObject(sql.toString(), new AnnotationsRowMapper(annotationsColumnName), args);
+			// Remove the eTags when version is specified (See PLFM-1420)
+			if(annos != null && version != null){
+					annos.setEtag(NodeConstants.ZERO_E_TAG);
+			}
+			return annos;
 		}catch (EmptyResultDataAccessException e){
 			// Occurs if there are no results
 			throw new NotFoundException(CANNOT_FIND_A_NODE_WITH_ID+id);
 		}
 	}
 
-	@Override
-	public NamedAnnotations getAnnotationsForVersion(final String id, Long versionNumber) throws NotFoundException, DatastoreException {
-		if(id == null) throw new IllegalArgumentException("NodeId cannot be null");
-		if(versionNumber == null) throw new IllegalArgumentException("VersionNumber cannot be null");
-		// Select just the references, not the entire node.
-		try{
-			NamedAnnotations namedAnnos = jdbcTemplate.queryForObject(
-					SELECT_ANNOTATIONS_ONLY_PREFIX + " = ?",
-					new AnnotationRowMapper(), KeyFactory.stringToKey(id), versionNumber);
-			// Remove the eTags (See PLFM-1420)
-			if (namedAnnos != null) {
-				namedAnnos.setEtag(NodeConstants.ZERO_E_TAG);
-			}
-			Annotations primaryAnnos = namedAnnos.getPrimaryAnnotations();
-			if (primaryAnnos != null) {
-				primaryAnnos.setEtag(NodeConstants.ZERO_E_TAG);
-			}
-			Annotations additionalAnnos = namedAnnos.getAdditionalAnnotations();
-			if (additionalAnnos != null) {
-				additionalAnnos.setEtag(NodeConstants.ZERO_E_TAG);
-			}
-			return namedAnnos;
-		}catch (EmptyResultDataAccessException e){
-			// Occurs if there are no results
-			throw new NotFoundException(CANNOT_FIND_A_NODE_WITH_ID+id);
-		}
-	}
-	
 	/**
-	 * A RowMapper that extracts NamedAnnotations from a result set.
+	 * A RowMapper that extracts Annotation from a result set.
 	 * The result set must COL_REVISION_ANNOS_BLOB, COL_NODE_ETAG, COL_NODE_CREATED_ON, COL_NODE_ID, COL_NODE_CREATED_BY
 	 *
 	 */
-	private class AnnotationRowMapper implements RowMapper<NamedAnnotations>{
+
+	private static class AnnotationsRowMapper implements RowMapper<Annotations> {
+
+		private String annotationColumnName;
+
+		private AnnotationsRowMapper(String annotationColumnName){
+			this.annotationColumnName = annotationColumnName;
+		}
+
 		@Override
-		public NamedAnnotations mapRow(ResultSet rs, int rowNum)	throws SQLException {
-			NamedAnnotations annos = null;
-			Blob blob = rs.getBlob(COL_REVISION_ANNOS_BLOB);
-			if(blob != null){
-				byte[] bytes = blob.getBytes(1, (int) blob.length());
+		public Annotations mapRow(ResultSet rs, int rowNum) throws SQLException {
+			Annotations annos = null;
+			byte[] bytes = rs.getBytes(annotationColumnName);
+			if(bytes != null){
 				try {
-					annos = JDOSecondaryPropertyUtils.decompressedAnnotations(bytes);
+					annos = AnnotationUtils.decompressedAnnotationsV1(bytes);
 				} catch (IOException e) {
 					throw new DatastoreException(e);
 				}
 			}else{
 				// If there is no annotations blob then create a new one.
-				annos = new NamedAnnotations();
+				annos = new Annotations();
 			}
 			// Pull out the rest of the data.
 			annos.setEtag(rs.getString(COL_NODE_ETAG));
-			annos.setCreationDate(new Date(rs.getLong(COL_NODE_CREATED_ON)));
 			annos.setId(KeyFactory.keyToString(rs.getLong(COL_NODE_ID)));
-			annos.setCreatedBy(rs.getLong(COL_NODE_CREATED_BY));
 			return annos;
 		}
-	}
-	
-	@Override
-	public Reference getNodeReference(String nodeId)	throws NotFoundException, DatastoreException {
-		if(nodeId == null) throw new IllegalArgumentException("NodeId cannot be null");
-		// Select just the references, not the entire node.
-		try{
-			return jdbcTemplate.queryForObject(SELECT_REVISIONS_ONLY, new RowMapper<Reference>() {
-				@Override
-				public Reference mapRow(ResultSet rs, int rowNum)	throws SQLException {
-					Blob blob = rs.getBlob(COL_REVISION_REF_BLOB);
-					if(blob != null){
-						byte[] bytes = blob.getBytes(1, (int) blob.length());
-						try {
-							return JDOSecondaryPropertyUtils.decompressedReference(bytes);
-						} catch (IOException e) {
-							throw new DatastoreException(e);
-						}
-					}
-					return null;
-				}
-			}, KeyFactory.stringToKey(nodeId));
-		}catch (EmptyResultDataAccessException e){
-			// Occurs if there are no results
-			throw new NotFoundException(CANNOT_FIND_A_NODE_WITH_ID+nodeId);
-		}
-	}
-	
-	@Override
-	public Set<String> getChildrenIds(String id) throws NotFoundException, DatastoreException {
-		if(id == null) throw new IllegalArgumentException("Id cannot be null");
-		// Get all of the children of this node
-		List<String> ids = this.getChildrenIdsAsList(id);
-		return new HashSet<String>(ids);
 	}
 	
 	@Override
@@ -735,62 +779,10 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 		}
 	}
 
-	/**
-	 * Note: You cannot call this method outside of a transaction.
-	 * @throws NotFoundException 
-	 * @throws DatastoreException 
-	 */
 	@MandatoryWriteTransaction
 	@Override
-	public String lockNodeAndIncrementEtag(String id, String eTag)
-			throws NotFoundException, ConflictingUpdateException, DatastoreException {
-		return lockNodeAndIncrementEtag(id, eTag, ChangeType.UPDATE);
-	}
-
-	/**
-	 * Note: You cannot call this method outside of a transaction.
-	 * @throws NotFoundException 
-	 * @throws DatastoreException 
-	 */
-	@MandatoryWriteTransaction
-	@Override
-	public String lockNodeAndIncrementEtag(String id, String eTag, ChangeType changeType)
-			throws NotFoundException, ConflictingUpdateException, DatastoreException {
-
-		if (id == null) {
-			throw new IllegalArgumentException("id cannot be null");
-		}
-		if (eTag == null) {
-			throw new IllegalArgumentException("eTag cannot be null");
-		}
-		if (changeType == null) {
-			throw new IllegalArgumentException("changeType cannot be null");
-		}
-
-		// Create a Select for update query
-		final Long longId = KeyFactory.stringToKey(id);
-		String currentTag = lockNode(longId);
-
-		// Check the e-tags
-		if(!currentTag.equals(eTag)){
-			throw new ConflictingUpdateException("Node: "+id+" was updated since you last fetched it, retrieve it again and re-apply the update");
-		}
-		// Get a new e-tag
-		DBONode node = getNodeById(longId);
-		node.seteTag(UUID.randomUUID().toString());
-		transactionalMessenger.sendMessageAfterCommit(node, changeType);
-		currentTag = node.geteTag();
-		// Update the e-tag
-		int updated = jdbcTemplate.update(UPDATE_ETAG_SQL, currentTag, longId);
-		if(updated != 1) throw new ConflictingUpdateException("Failed to lock Node: "+longId);
-		
-		// Return the new tag
-		return currentTag;
-	}
-
-	@MandatoryWriteTransaction
-	@Override
-	public String lockNode(final Long longId) {
+	public String lockNode(final String nodeIdString) {
+		Long longId = KeyFactory.stringToKey(nodeIdString);
 		String currentTag = jdbcTemplate.queryForObject(SQL_ETAG_FOR_UPDATE, String.class, longId);
 		return currentTag;
 	}
@@ -798,49 +790,73 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 	@WriteTransaction
 	@Override
 	public void updateNode(Node updatedNode) throws NotFoundException, DatastoreException, InvalidModelException {
-		if(updatedNode == null) throw new IllegalArgumentException("Node to update cannot be null");
-		if(updatedNode.getId() == null) throw new IllegalArgumentException("Node to update cannot have a null ID");
+		if (updatedNode == null) {
+			throw new IllegalArgumentException("Node to update cannot be null");
+		}
+		if (updatedNode.getId() == null) {
+			throw new IllegalArgumentException("Node to update cannot have a null ID");
+		}
 		Long nodeId = KeyFactory.stringToKey(updatedNode.getId());
-		DBONode jdoToUpdate = getNodeById(nodeId);
-		DBORevision revToUpdate = getCurrentRevision(jdoToUpdate);
-		// Update is as simple as copying the values from the passed node.		
-		NodeUtils.updateFromDto(updatedNode, jdoToUpdate, revToUpdate, shouldDeleteActivityId(updatedNode));	
+
+		String newName = updatedNode.getName();
+		Long newParentId = NodeUtils.translateNodeId(updatedNode.getParentId());
+		String newAlias = NodeUtils.translateAlias(updatedNode.getAlias());
 
 		// Update the node.
-		try{
-			dboBasicDao.update(jdoToUpdate);
-		}catch(IllegalArgumentException e){
+		try {
+			this.jdbcTemplate.update(UPDATE_NODE, newName, newParentId, newAlias, nodeId);
+		} catch (DataIntegrityViolationException e) {
 			// Check to see if this is a duplicate name exception.
-			checkExceptionDetails(updatedNode.getName(), updatedNode.getAlias(), updatedNode.getParentId(), e);
+			checkExceptionDetails(updatedNode.getName(), updatedNode.getAlias(), updatedNode.getParentId(),
+					new IllegalArgumentException(e));
 		}
-		
-		dboBasicDao.update(revToUpdate);
+		// update the revision
+		long currentRevision = getCurrentRevisionNumber(updatedNode.getId());
+		Long newActivity = NodeUtils.translateActivityId(updatedNode.getActivityId());
+		String newComment = NodeUtils.translateVersionComment(updatedNode.getVersionComment());
+		String newLabel = NodeUtils.translateVersionLabel(updatedNode.getVersionLabel());
+		Long newFileHandleId = NodeUtils.translateFileHandleId(updatedNode.getFileHandleId());
+		byte[] newColumns = NodeUtils.createByteForIdList(updatedNode.getColumnModelIds());
+		byte[] newScope = NodeUtils.createByteForIdList(updatedNode.getScopeIds());
+		byte[] newReferences = NodeUtils.compressReference(updatedNode.getReference());
+		// Update the revision
+		this.jdbcTemplate.update(UPDATE_REVISION, newActivity, newComment, newLabel, newFileHandleId, newColumns,
+				newScope, newReferences, nodeId, currentRevision);
+	}
+	
+
+	@WriteTransaction
+	@Override
+	public void updateUserAnnotationsV1(String nodeId, Annotations updatedAnnos) throws NotFoundException, DatastoreException {
+		updateAnnotations(nodeId, updatedAnnos, COL_REVISION_USER_ANNOTATIONS_V1_BLOB);
 	}
 
 	@WriteTransaction
 	@Override
-	public void updateAnnotations(String nodeId, NamedAnnotations updatedAnnos) throws NotFoundException, DatastoreException {
+	public void updateEntityPropertyAnnotations(String nodeId, Annotations updatedAnnos) throws NotFoundException, DatastoreException {
+		updateAnnotations(nodeId, updatedAnnos, COL_REVISION_ENTITY_PROPERTY_ANNOTATIONS_BLOB);
+	}
+
+	@WriteTransaction
+	void updateAnnotations(String nodeId, Annotations updatedAnnos, String annotationColumnName) throws NotFoundException, DatastoreException {
 
 		if(updatedAnnos == null) throw new IllegalArgumentException("Updateded Annotations cannot be null");
 		if(updatedAnnos.getId() == null) throw new IllegalArgumentException("Node ID cannot be null");
 		if(updatedAnnos.getEtag() == null) throw new IllegalArgumentException("Annotations must have a valid eTag");
 
-		Long nodeIdLong = KeyFactory.stringToKey(nodeId);
-		DBONode jdo =  getNodeById(nodeIdLong);
-		DBORevision rev = getCurrentRevision(jdo);
+		final Long nodeIdLong = KeyFactory.stringToKey(nodeId);
+		final Long currentRevision = getCurrentRevisionNumber(nodeId);
 
 		// now update the annotations from the passed values.
 		try {
 			// Compress the annotations.
-			byte[] newAnnos = JDOSecondaryPropertyUtils.compressAnnotations(updatedAnnos);
-			rev.setAnnotations(newAnnos);
-			// Save the change
-			dboBasicDao.update(rev);
+			byte[] newAnnos = AnnotationUtils.compressAnnotationsV1(updatedAnnos);
+			this.jdbcTemplate.update(String.format(SQL_UPDATE_ANNOTATIONS_FORMAT, annotationColumnName), newAnnos, nodeIdLong, currentRevision);
 		} catch (IOException e) {
 			throw new DatastoreException(e);
-		} 
+		}
 	}
-	
+
 	@Override
 	public List<Long> getVersionNumbers(String id) throws NotFoundException, DatastoreException {
 		List<Long> list = new ArrayList<Long>();
@@ -850,36 +866,6 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 			list.add(revId);
 		}
 		return list;
-	}
-
-	@WriteTransaction
-	@Override
-	public void replaceVersion(String nodeId, Long versionNumber, NamedAnnotations updatedAnnos, String fileHandleId)
-			throws NotFoundException, DatastoreException {
-		Long nodeIdLong = KeyFactory.stringToKey(nodeId);
-		DBORevision rev = getNodeRevisionById(nodeIdLong, versionNumber);
-		// now update the annotations from the passed values.
-		try {
-			// Compress the annotations.
-			byte[] newAnnos = JDOSecondaryPropertyUtils.compressAnnotations(updatedAnnos);
-			rev.setAnnotations(newAnnos);
-			if(fileHandleId != null){
-				rev.setFileHandleId(Long.parseLong(fileHandleId));
-			}else{
-				rev.setFileHandleId(null);
-			}
-			// Save the change
-			dboBasicDao.update(rev);
-		} catch (IOException e) {
-			throw new DatastoreException(e);
-		} 
-		
-	}
-	
-	@Override
-	public long getVersionCount(String entityId) throws NotFoundException,
-			DatastoreException {
-		return jdbcTemplate.queryForObject(SQL_COUNT_REVISONS, Long.class, KeyFactory.stringToKey(entityId));
 	}
 
 	@Override
@@ -1372,15 +1358,34 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 			return null;
 		}
 	}
+	
+	public List<FileHandleAssociation> getFileHandleAssociationsForCurrentVersion(List<String> entityIds){
+		if(entityIds.isEmpty()) {
+			return new LinkedList<>();
+		}
+		MapSqlParameterSource parameters = new MapSqlParameterSource();
+		parameters.addValue(NODE_IDS_LIST_PARAM_NAME, KeyFactory.stringToKey(entityIds));
+		return namedParameterJdbcTemplate.query(
+				SELECT_CURRENT_VERSION_FILE_HANDLES,
+				parameters, new RowMapper<FileHandleAssociation>() {
+
+			@Override
+			public FileHandleAssociation mapRow(ResultSet rs, int rowNum) throws SQLException {
+				FileHandleAssociation fha = new FileHandleAssociation();
+				fha.setAssociateObjectId(rs.getString(1));
+				fha.setAssociateObjectType(FileHandleAssociateType.FileEntity);
+				fha.setFileHandleId(rs.getString(2));
+				return fha;
+			}
+		});
+	}
+	
+	
 
 	@Override
 	public List<Reference> getCurrentRevisionNumbers(List<String> nodeIds) {
-		List<Long> longIds = new ArrayList<Long>();
-		for(String nodeId : nodeIds) {
-			longIds.add(KeyFactory.stringToKey(nodeId));
-		}
 		MapSqlParameterSource parameters = new MapSqlParameterSource();
-		parameters.addValue(NODE_IDS_LIST_PARAM_NAME, longIds);
+		parameters.addValue(NODE_IDS_LIST_PARAM_NAME, KeyFactory.stringToKey(nodeIds));
 		List<Reference> refs = this.namedParameterJdbcTemplate.query(SQL_GET_CURRENT_VERSIONS, parameters, new RowMapper<Reference>() {
 			@Override
 			public Reference mapRow(ResultSet rs, int rowNum)
@@ -1486,27 +1491,6 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 				return header;
 			}
 		});
-	}
-
-	@MandatoryWriteTransaction
-	@Override
-	public List<String> lockNodes(List<String> nodeStringIds) {
-		ValidateArgument.required(nodeStringIds, "nodeIds");
-		if(nodeStringIds.isEmpty()){
-			return new LinkedList<String>();
-		}
-		List<Long> nodeIds = new LinkedList<Long>();
-		for(String stringId: nodeStringIds){
-			Long id = KeyFactory.stringToKey(stringId);
-			nodeIds.add(id);
-		}
-		Collections.sort(nodeIds);
-		List<String> etags = new LinkedList<String>();
-		for(Long id: nodeIds){
-			String etag = lockNode(id);
-			etags.add(etag);
-		}
-		return etags;
 	}
 
 	/*
@@ -1659,12 +1643,19 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 				if(rs.wasNull()){
 					dto.setFileHandleId(null);
 				}
-				Blob blob = rs.getBlob(COL_REVISION_ANNOS_BLOB);
-				if(blob != null){
-					byte[] bytes = blob.getBytes(1, (int) blob.length());
+				dto.setFileSizeBytes(rs.getLong(COL_FILES_CONTENT_SIZE));
+				if(rs.wasNull()) {
+					dto.setFileSizeBytes(null);
+				}
+				dto.setIsInSynapseStorage(NodeUtils.isBucketSynapseStorage(rs.getString(COL_FILES_BUCKET_NAME)));
+				if (rs.wasNull()) {
+					dto.setIsInSynapseStorage(null);
+				}
+				byte[] bytes = rs.getBytes(COL_REVISION_USER_ANNOTATIONS_V1_BLOB);
+				if(bytes != null){
 					try {
-						NamedAnnotations annos = JDOSecondaryPropertyUtils.decompressedAnnotations(bytes);
-						dto.setAnnotations(JDOSecondaryPropertyUtils.translate(entityId, annos, maxAnnotationSize));
+						Annotations annos = AnnotationUtils.decompressedAnnotationsV1(bytes);
+						dto.setAnnotations(AnnotationUtils.translate(entityId, annos, maxAnnotationSize));
 					} catch (IOException e) {
 						throw new DatastoreException(e);
 					}
@@ -1694,6 +1685,45 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 				getFragmentSortColumn(sortBy),
 				sortDirection.name());
 		return namedParameterJdbcTemplate.query(sql,parameters,ENTITY_HEADER_ROWMAPPER);
+	}
+	
+	@Override
+	public ChildStatsResponse getChildernStats(ChildStatsRequest request) {
+		ValidateArgument.required(request, "request");
+		ValidateArgument.required(request.getParentId(), "parentId");
+		ValidateArgument.required(request.getIncludeTypes(), "includeTypes");
+		ValidateArgument.requirement(!request.getIncludeTypes().isEmpty(),
+				"Must have at least one type for includeTypes");
+		// null defaults to false
+		final boolean includeCount = request.getIncludeTotalChildCount() != null ? request.getIncludeTotalChildCount()
+				: false;
+		// null defaults to false
+		final boolean includeSumSizes = request.getIncludeSumFileSizes() != null ? request.getIncludeSumFileSizes()
+				: false;
+		// nothing to do if both are false
+		if (!includeCount && !includeSumSizes) {
+			return new ChildStatsResponse();
+		}
+		Map<String, Object> parameters = new HashMap<String, Object>(1);
+		parameters.put(BIND_PARENT_ID, KeyFactory.stringToKey(request.getParentId()));
+		parameters.put(BIND_NODE_TYPES, getTypeNames(request.getIncludeTypes()));
+		parameters.put(BIND_NODE_IDS, request.getChildIdsToExclude());
+		// build the SQL from the template
+		String sql = String.format(SQL_SELECT_CHIDREN_STATS, getFragmentExcludeNodeIds(request.getChildIdsToExclude()));
+		return namedParameterJdbcTemplate.queryForObject(sql, parameters, new RowMapper<ChildStatsResponse>() {
+
+			@Override
+			public ChildStatsResponse mapRow(ResultSet rs, int rowNum) throws SQLException {
+				ChildStatsResponse response = new ChildStatsResponse();
+				if (includeCount) {
+					response.withTotalChildCount(rs.getLong(1));
+				}
+				if (includeSumSizes) {
+					response.withSumFileSizesBytes(rs.getLong(2));
+				}
+				return response;
+			}
+		});
 	}
 	
 	/**
@@ -1808,7 +1838,11 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 					throws SQLException {
 				Long id = rs.getLong(COL_NODE_ID);
 				String etag = rs.getString(COL_NODE_ETAG);
-				return new IdAndEtag(id, etag);
+				Long benefactorId = rs.getLong(3);
+				if(rs.wasNull()) {
+					benefactorId = null;
+				}
+				return new IdAndEtag(id, etag, benefactorId);
 			}}, parentId);
 	}
 
@@ -1831,6 +1865,50 @@ public class NodeDAOImpl implements NodeDAO, InitializingBean {
 				}
 			}});
 		return results;
+	}
+
+	@WriteTransaction
+	@Override
+	public String touch(Long userId, String nodeIdString) {
+		ChangeType changeType = ChangeType.UPDATE;
+		return touch(userId, nodeIdString, changeType);
+	}
+
+	@WriteTransaction
+	@Override
+	public String touch(Long userId, String nodeIdString, ChangeType changeType) {
+		ValidateArgument.required(userId, "UserId");
+		ValidateArgument.required(nodeIdString, "nodeId");
+		ValidateArgument.required(changeType, "ChangeType");
+		String newEtag = UUID.randomUUID().toString();
+		long nodeId = KeyFactory.stringToKey(nodeIdString);
+		// change the etag first to lock the node row.
+		this.jdbcTemplate.update(SQL_TOUCH_ETAG, newEtag, nodeId);
+		// update the latest revision.
+		Long revisionNumber = this.getCurrentRevisionNumber(nodeIdString);
+		long currentTime = System.currentTimeMillis();
+		this.jdbcTemplate.update(SQL_TOUCH_REVISION, userId, currentTime, nodeId, revisionNumber);
+		transactionalMessenger.sendMessageAfterCommit(new MessageToSend().withObjectId(nodeIdString)
+				.withObjectType(ObjectType.ENTITY).withChangeType(changeType).withUserId(userId));
+		return newEtag;
+	}
+	
+	@WriteTransaction
+	@Override
+	public long snapshotVersion(Long userId, String nodeIdString, SnapshotRequest request) {
+		ValidateArgument.required(userId, "userId");
+		ValidateArgument.required(nodeIdString, "nodeId");
+		if(request == null) {
+			request = new SnapshotRequest();
+		}
+		ValidateArgument.required(request, "SnapshotRequest");
+		long nodeId = KeyFactory.stringToKey(nodeIdString);
+		long modifiedOn = System.currentTimeMillis();
+		Long revisionNumber = this.getCurrentRevisionNumber(nodeIdString);
+		String label = request.getSnapshotLabel() != null ? request.getSnapshotLabel() : revisionNumber.toString();
+		this.jdbcTemplate.update(SQL_CREATE_SNAPSHOT_VERSION, request.getSnapshotComment(), label,
+				request.getSnapshotActivityId(), userId, modifiedOn, nodeId, revisionNumber);
+		return revisionNumber;
 	}
 
 }

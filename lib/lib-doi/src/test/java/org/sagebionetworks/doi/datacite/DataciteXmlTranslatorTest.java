@@ -1,23 +1,38 @@
 package org.sagebionetworks.doi.datacite;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.xerces.jaxp.DocumentBuilderFactoryImpl;
-import org.junit.Before;
-import org.junit.Test;
-import org.sagebionetworks.repo.model.doi.v2.*;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.xml.sax.InputSource;
+import static org.junit.Assert.assertEquals;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.CREATOR;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAME_IDENTIFIER;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.getSchemeUri;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getCreator;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getCreators;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getNameIdentifier;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getPublicationYear;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getResourceType;
+import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.getTitles;
 
-import javax.xml.parsers.DocumentBuilder;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.assertEquals;
-import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.*;
-import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.getSchemeUri;
-import static org.sagebionetworks.doi.datacite.DataciteXmlTranslatorImpl.*;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.xerces.jaxp.DocumentBuilderFactoryImpl;
+import org.junit.Before;
+import org.junit.Test;
+import org.sagebionetworks.repo.model.doi.v2.DataciteMetadata;
+import org.sagebionetworks.repo.model.doi.v2.Doi;
+import org.sagebionetworks.repo.model.doi.v2.DoiCreator;
+import org.sagebionetworks.repo.model.doi.v2.DoiNameIdentifier;
+import org.sagebionetworks.repo.model.doi.v2.DoiResourceType;
+import org.sagebionetworks.repo.model.doi.v2.DoiResourceTypeGeneral;
+import org.sagebionetworks.repo.model.doi.v2.DoiTitle;
+import org.sagebionetworks.repo.model.doi.v2.NameIdentifierScheme;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
 
 public class DataciteXmlTranslatorTest {
 
@@ -34,8 +49,10 @@ public class DataciteXmlTranslatorTest {
 
 	@Before
 	public void before() throws Exception {
+		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+		dbf.setNamespaceAware(true);
 		// Create a new document builder for each test
-		documentBuilder = DocumentBuilderFactoryImpl.newInstance().newDocumentBuilder();
+		documentBuilder = dbf.newDocumentBuilder();
 
 		// Create expected metadata to compare to results
 		expectedMetadata = new Doi();
@@ -153,4 +170,27 @@ public class DataciteXmlTranslatorTest {
 		DataciteMetadata metadata = translator.translate(xml);
 		assertEquals(expectedMetadata, metadata);
 	}
+
+	@Test
+	public void translateBlankDocumentTest_PLFM5403() {
+		// Load the resource containing XML
+		String xml = "";
+
+		DataciteXmlTranslatorImpl translator = new DataciteXmlTranslatorImpl();
+		// Unit under test
+		DataciteMetadata metadata = translator.translate(xml);
+		assertEquals(new Doi(), metadata);
+	}
+
+	@Test
+	public void translateWithNamespaces_PLFM5403() throws Exception {
+		ClassLoader loader = this.getClass().getClassLoader();
+		String xml = IOUtils.toString(loader.getResourceAsStream("DataciteSampleWithNamespaces.xml"));
+
+		DataciteXmlTranslatorImpl translator = new DataciteXmlTranslatorImpl();
+		// Unit under test
+		DataciteMetadata metadata = translator.translate(xml);
+		assertEquals(expectedMetadata, metadata);
+	}
+
 }

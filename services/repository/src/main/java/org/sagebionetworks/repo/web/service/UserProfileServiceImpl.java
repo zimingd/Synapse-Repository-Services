@@ -14,7 +14,6 @@ import org.sagebionetworks.repo.manager.UserProfileManagerUtils;
 import org.sagebionetworks.repo.manager.team.TeamConstants;
 import org.sagebionetworks.repo.manager.team.TeamManager;
 import org.sagebionetworks.repo.manager.token.TokenGenerator;
-import org.sagebionetworks.repo.manager.token.TokenGeneratorSingleton;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
@@ -220,7 +219,7 @@ public class UserProfileServiceImpl implements UserProfileService {
 	public EntityHeader addFavorite(Long userId, String entityId)
 			throws DatastoreException, InvalidModelException, NotFoundException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		if(!entityPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, userInfo).getAuthorized()) 
+		if(!entityPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, userInfo).isAuthorized())
 			throw new UnauthorizedException("READ access denied to id: "+ entityId +". Favorite not added.");
 		Favorite favorite = userProfileManager.addFavorite(userInfo, entityId);
 		return entityManager.getEntityHeader(userInfo, favorite.getEntityId(), null); // current version
@@ -285,8 +284,9 @@ public class UserProfileServiceImpl implements UserProfileService {
 	 * @see org.sagebionetworks.repo.web.service.UserProfileService#getUserProfileImage(java.lang.String)
 	 */
 	@Override
-	public String getUserProfileImage(String profileId) throws NotFoundException {
-		return userProfileManager.getUserProfileImageUrl(profileId);
+	public String getUserProfileImage(Long userId, String profileId) throws NotFoundException {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return userProfileManager.getUserProfileImageUrl(userInfo, profileId);
 	}
 
 	/*
@@ -294,8 +294,9 @@ public class UserProfileServiceImpl implements UserProfileService {
 	 * @see org.sagebionetworks.repo.web.service.UserProfileService#getUserProfileImagePreview(java.lang.String)
 	 */
 	@Override
-	public String getUserProfileImagePreview(String profileId) throws NotFoundException {
-		return userProfileManager.getUserProfileImagePreviewUrl(profileId);
+	public String getUserProfileImagePreview(Long userId, String profileId) throws NotFoundException {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return userProfileManager.getUserProfileImagePreviewUrl(userInfo, profileId);
 	}
 	
 	@Override

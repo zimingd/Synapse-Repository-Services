@@ -1,5 +1,8 @@
 package org.sagebionetworks.repo.web.filter;
 
+import java.io.IOException;
+import java.util.UUID;
+
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -9,10 +12,6 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
-
-import java.io.IOException;
-import java.util.UUID;
 
 import org.sagebionetworks.repo.web.HttpRequestIdentifierUtils;
 
@@ -28,8 +27,6 @@ public class SessionIdCookieSetterFilter implements Filter {
 		if (requestSessionId == null){
 			//add cookie to the response
 			Cookie sessionIdCookie = new Cookie(HttpRequestIdentifierUtils.SESSION_ID_COOKIE_NAME, UUID.randomUUID().toString());
-			sessionIdCookie.setHttpOnly(true);
-			sessionIdCookie.setSecure(true);
 			((HttpServletResponse) response).addCookie(sessionIdCookie);
 		}
 

@@ -43,9 +43,6 @@
 
 	<!-- The Entity Service -->
 	<bean id="entityService" class="org.sagebionetworks.repo.web.service.EntityServiceImpl" />
-
-	<!-- The Node Query Service -->
-	<bean id="nodeQueryService" class="org.sagebionetworks.repo.web.service.NodeQueryServiceImpl" />
 	
 	<!-- The Messaging Service -->
 	<bean id="messageService" class="org.sagebionetworks.repo.web.service.MessageServiceImpl" />
@@ -93,7 +90,7 @@
 		class="org.sagebionetworks.repo.web.service.EvaluationServiceImpl" />
 
 	<!-- The DOI Service -->
-	<bean id="doiService" class="org.sagebionetworks.repo.web.service.DoiServiceImpl" />
+	<bean id="doiServiceV2" class="org.sagebionetworks.repo.web.service.DoiServiceV2Impl" />
 
 	<bean id="certifiedUserService" class="org.sagebionetworks.repo.web.service.CertifiedUserServiceImpl" />
 	

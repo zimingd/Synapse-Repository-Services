@@ -31,20 +31,17 @@ import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.query.QueryTableResults;
 import org.sagebionetworks.repo.queryparser.ParseException;
-import org.sagebionetworks.repo.util.ControllerUtil;
+import org.sagebionetworks.repo.web.DeprecatedServiceException;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
-import org.sagebionetworks.schema.adapter.org.json.JSONObjectAdapterImpl;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -93,7 +90,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @ControllerInfo(displayName="Evaluation Services", path="repo/v1")
 @Controller
 @RequestMapping(UrlHelpers.REPO_PATH)
-public class EvaluationController extends BaseController {
+public class EvaluationController {
 
 	@Autowired
 	ServiceProvider serviceProvider;
@@ -113,8 +110,6 @@ public class EvaluationController extends BaseController {
 	 * </p>
 	 * 
 	 * @param userId
-	 * @param header
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws InvalidModelException
@@ -126,13 +121,9 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	Evaluation createEvaluation(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestHeader HttpHeaders header,
-			HttpServletRequest request
-			) throws DatastoreException, InvalidModelException, NotFoundException, JSONObjectAdapterException
+			@RequestBody Evaluation evaluation) throws DatastoreException, InvalidModelException, NotFoundException, JSONObjectAdapterException
 	{
-		String requestBody = ControllerUtil.getRequestBodyAsString(request);
-		Evaluation eval = new Evaluation(new JSONObjectAdapterImpl(requestBody));
-		return serviceProvider.getEvaluationService().createEvaluation(userId, eval);
+		return serviceProvider.getEvaluationService().createEvaluation(userId, evaluation);
 	}
 	
 	/**
@@ -173,7 +164,7 @@ public class EvaluationController extends BaseController {
 	 * >ACCESS_TYPE.READ</a> on the specified Evaluations.
 	 * </p>
 	 * 
-	 * @param projectId - the ID of the Project.
+	 * @param id - the ID of the Project.
 	 */
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_CONTENT_SOURCE, method = RequestMethod.GET)
@@ -205,7 +196,6 @@ public class EvaluationController extends BaseController {
 	 * @param limit
 	 *            Limits the number of entities that will be fetched for this
 	 *            page. When null it will default to 10.
-	 * @param loginRequest
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
@@ -284,7 +274,6 @@ public class EvaluationController extends BaseController {
 	 * </p>
 	 * 
 	 * @param name - the name of the desired Evaluation.
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -296,9 +285,8 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	Evaluation findEvaluation(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String name,
-			HttpServletRequest request
-			) throws DatastoreException, UnauthorizedException, NotFoundException, UnsupportedEncodingException 
+			@PathVariable String name
+			) throws DatastoreException, UnauthorizedException, NotFoundException, UnsupportedEncodingException
 	{
 		String decodedName = URLDecoder.decode(name, "UTF-8");
 		return serviceProvider.getEvaluationService().findEvaluation(userId, decodedName);
@@ -326,8 +314,6 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * @param evalId - the ID of the Evaluation being updated
 	 * @param userId
-	 * @param header
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -342,14 +328,11 @@ public class EvaluationController extends BaseController {
 	Evaluation updateEvaluation(
 			@PathVariable String evalId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestHeader HttpHeaders header,
-			HttpServletRequest request) throws DatastoreException, UnauthorizedException, InvalidModelException, ConflictingUpdateException, NotFoundException, JSONObjectAdapterException
+			@RequestBody Evaluation evaluation) throws DatastoreException, UnauthorizedException, InvalidModelException, ConflictingUpdateException, NotFoundException, JSONObjectAdapterException
 	{
-		String requestBody = ControllerUtil.getRequestBodyAsString(request);
-		Evaluation eval = new Evaluation(new JSONObjectAdapterImpl(requestBody));
-		if (!evalId.equals(eval.getId()))
+		if (!evalId.equals(evaluation.getId()))
 			throw new IllegalArgumentException("Evaluation ID does not match requested ID: " + evalId);
-		return serviceProvider.getEvaluationService().updateEvaluation(userId, eval);
+		return serviceProvider.getEvaluationService().updateEvaluation(userId, evaluation);
 	}
 	
 	/**
@@ -363,8 +346,6 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * @param evalId - the ID of the requested Evaluation
 	 * @param userId
-	 * @param header
-	 * @param request
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
@@ -374,9 +355,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	void deleteEvaluation(
 			@PathVariable String evalId,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestHeader HttpHeaders header,
-			HttpServletRequest request) throws DatastoreException, UnauthorizedException, NotFoundException 
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
 		serviceProvider.getEvaluationService().deleteEvaluation(userId, evalId);
 	}
@@ -389,7 +368,6 @@ public class EvaluationController extends BaseController {
 	 * /evaluation/submission</a>)
 	 * @param userId
 	 * @param evalId
-	 * @param teamId
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
@@ -442,7 +420,6 @@ public class EvaluationController extends BaseController {
 	 * A signed, serialized token is appended to create the complete URL:
 	 * <a href="${org.sagebionetworks.repo.model.message.NotificationSettingsSignedToken}">NotificationSettingsSignedToken</a>.
 	 * In normal operation, this parameter should be omitted.
-	 * @param header
 	 * @param request
 	 * @return
 	 * @throws DatastoreException
@@ -462,19 +439,25 @@ public class EvaluationController extends BaseController {
 			@RequestParam(value = AuthorizationConstants.SUBMISSION_ELIGIBILITY_HASH_PARAM, required = false) String submissionEligibilityHash,
 			@RequestParam(value = AuthorizationConstants.CHALLENGE_ENDPOINT_PARAM, defaultValue = ServiceConstants.CHALLENGE_ENDPOINT) String challengeEndpoint,
 			@RequestParam(value = AuthorizationConstants.NOTIFICATION_UNSUBSCRIBE_ENDPOINT_PARAM, defaultValue = ServiceConstants.NOTIFICATION_UNSUBSCRIBE_ENDPOINT) String notificationUnsubscribeEndpoint,
-			@RequestHeader HttpHeaders header,
+			@RequestBody Submission submission,
 			HttpServletRequest request
 			) throws DatastoreException, InvalidModelException, NotFoundException, JSONObjectAdapterException, UnauthorizedException, ACLInheritanceException, ParseException
 	{
-		String requestBody = ControllerUtil.getRequestBodyAsString(request);
-		Submission sub = new Submission(new JSONObjectAdapterImpl(requestBody));
 		return serviceProvider.getEvaluationService().createSubmission(
-				userId, sub, entityEtag, submissionEligibilityHash, request, challengeEndpoint, notificationUnsubscribeEndpoint);
+				userId, submission, entityEtag, submissionEligibilityHash, request, challengeEndpoint, notificationUnsubscribeEndpoint);
 	}
-	
+
+	@Deprecated
+	@ResponseStatus(HttpStatus.GONE)
+	@RequestMapping(value = UrlHelpers.SUBMISSION_CONTRIBUTOR, method = RequestMethod.POST)
+	public @ResponseBody
+	String addSubmissionContributor() {
+		return "This endpoint has been removed. The service has been moved to " + UrlHelpers.ADMIN + UrlHelpers.SUBMISSION_CONTRIBUTOR + " and is only accessible to Synapse administrators";
+	}
+
 	/**
 	 * Add a contributor to an existing Submission.  This service is available to administrators only.
-	 * 
+	 *
 	 * @param userId
 	 * @param subId
 	 * @param submissionContributor
@@ -484,7 +467,7 @@ public class EvaluationController extends BaseController {
 	 * @throws NotFoundException
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = UrlHelpers.SUBMISSION_CONTRIBUTOR, method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.ADMIN + UrlHelpers.SUBMISSION_CONTRIBUTOR, method = RequestMethod.POST)
 	public @ResponseBody
 	SubmissionContributor addSubmissionContributor(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
@@ -493,7 +476,7 @@ public class EvaluationController extends BaseController {
 			) throws DatastoreException, InvalidModelException, NotFoundException {
 		return serviceProvider.getEvaluationService().addSubmissionContributor(userId, subId, submissionContributor);
 	}
-	
+
 	/**
 	 * Gets a Submission.
 	 * 
@@ -505,7 +488,6 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * @param subId
 	 * @param userId
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -516,9 +498,8 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	Submission getSubmission(
 			@PathVariable String subId,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
-			) throws DatastoreException, UnauthorizedException, NotFoundException 
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId
+			) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
 		return serviceProvider.getEvaluationService().getSubmission(userId, subId);
 	}
@@ -535,9 +516,20 @@ public class EvaluationController extends BaseController {
 	 * >ACCESS_TYPE.READ_PRIVATE_SUBMISSION</a> to see all 
 	 * data marked as "private" in the SubmissionStatus.	 * 
 	 * </p>
-	 * 
+	 * <p>
+	 * <b>Service Limits</b>
+	 * <table border="1">
+	 * <tr>
+	 * <th>resource</th>
+	 * <th>limit</th>
+	 * </tr>
+	 * <tr>
+	 * <td>The maximum frequency this method can be called</td>
+	 * <td>1 calls per second</td>
+	 * </tr>
+	 * </table>
+	 * </p>
 	 * @param subId - the ID of the requested SubmissionStatus.
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -548,9 +540,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	SubmissionStatus getSubmissionStatus(
 			@PathVariable String subId,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
-			) throws DatastoreException, UnauthorizedException, NotFoundException 
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
 		return serviceProvider.getEvaluationService().getSubmissionStatus(userId, subId);
 	}
@@ -574,11 +564,22 @@ public class EvaluationController extends BaseController {
 	 * href="${org.sagebionetworks.repo.model.ACCESS_TYPE}"
 	 * >ACCESS_TYPE.UPDATE_SUBMISSION</a> on the specified Evaluation.
 	 * </p>
-	 * 
+	 * </p>
+	 * <p>
+	 * <b>Service Limits</b>
+	 * <table border="1">
+	 * <tr>
+	 * <th>resource</th>
+	 * <th>limit</th>
+	 * </tr>
+	 * <tr>
+	 * <td>The maximum frequency this method can be called</td>
+	 * <td>1 calls per second</td>
+	 * </tr>
+	 * </table>
+	 * </p>
 	 * @param subId - the ID of the SubmissionStatus being updated.
 	 * @param userId
-	 * @param header
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -593,13 +594,10 @@ public class EvaluationController extends BaseController {
 	SubmissionStatus updateSubmissionStatus(
 			@PathVariable String subId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestHeader HttpHeaders header,
-			HttpServletRequest request) 
+			@RequestBody SubmissionStatus status)
 			throws DatastoreException, UnauthorizedException, InvalidModelException, 
 			ConflictingUpdateException, NotFoundException, JSONObjectAdapterException
 	{
-		String requestBody = ControllerUtil.getRequestBodyAsString(request);
-		SubmissionStatus status = new SubmissionStatus(new JSONObjectAdapterImpl(requestBody));
 		if (!subId.equals(status.getId()))
 			throw new IllegalArgumentException("Submission ID does not match requested ID: " + subId);
 		return serviceProvider.getEvaluationService().updateSubmissionStatus(userId, status);
@@ -628,8 +626,6 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * @param evalId the ID of the Evaluation to which the SubmissionSatus objects belong.
 	 * @param userId
-	 * @param header
-	 * @param loginRequest
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
@@ -663,8 +659,6 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * @param subId - the ID of the Submission to be deleted.
 	 * @param userId
-	 * @param header
-	 * @param request
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
@@ -674,9 +668,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	void deleteSubmission(
 			@PathVariable String subId,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestHeader HttpHeaders header,
-			HttpServletRequest request) throws DatastoreException, UnauthorizedException, NotFoundException 
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
 		serviceProvider.getEvaluationService().deleteSubmission(userId, subId);
 	}
@@ -892,7 +884,6 @@ public class EvaluationController extends BaseController {
 	 * >ACCESS_TYPE.READ_PRIVATE_SUBMISSION</a> on the specified Evaluation.
 	 * </p>
 	 * 
-	 * @param userInfo
 	 * @param submissionId - the ID of the specified Submission.
 	 * @param fileHandleId - the ID of the requested FileHandle contained in the Submission.
 	 * @return
@@ -922,7 +913,6 @@ public class EvaluationController extends BaseController {
 	 * </p>
 	 * 
 	 * @param evalId - the ID of the specified Evaluation.
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
@@ -932,9 +922,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody
 	long getSubmissionCount(
 			@PathVariable String evalId,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
-			) throws DatastoreException, NotFoundException
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, NotFoundException
 	{
 		return serviceProvider.getEvaluationService().getSubmissionCount(userId, evalId);
 	}
@@ -966,25 +954,20 @@ public class EvaluationController extends BaseController {
 	}
 
 	/**
+	 * This method is deprecated and should be removed from future versions of the API.
 	 * Creates a new access control list (ACL) for an evaluation.
-	 * The <a href="${org.sagebionetworks.repo.model.AccessControlList}">ACL</a>
-	 * to be created should have the ID of the evaluation. The user must be an owner of
-	 * the evaluation to create the ACL.
 	 *
-	 * @param userId  The user creating the ACL.
-	 * @param acl     The ACL to be created.
 	 * @return        The ACL created.
 	 */
+	@Deprecated
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ACL, method = RequestMethod.POST)
 	public @ResponseBody AccessControlList
-	createAcl(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody AccessControlList acl,
-			HttpServletRequest request)
-			throws NotFoundException, DatastoreException, InvalidModelException,
-			UnauthorizedException, ConflictingUpdateException {
-		return serviceProvider.getEvaluationService().createAcl(userId, acl);
+	createAcl()
+			throws DeprecatedServiceException {
+		throw new DeprecatedServiceException("You cannot create an ACL for an evaluation. " +
+				"ACLs for evaluations are created when the evaluation is created. " +
+				"To update an existing ACL, see PUT /evaluation/acl");
 	}
 
 	/**
@@ -1003,30 +986,26 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody AccessControlList
 	updateAcl(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody AccessControlList acl,
-			HttpServletRequest request)
+			@RequestBody AccessControlList acl)
 			throws NotFoundException, DatastoreException, InvalidModelException,
 			UnauthorizedException, ConflictingUpdateException {
 		return serviceProvider.getEvaluationService().updateAcl(userId, acl);
 	}
 
 	/**
+	 * This method is deprecated and should be removed from future versions of the API.
 	 * Deletes the ACL (access control list) of the specified evaluation. The user should have the proper
 	 * <a href="${org.sagebionetworks.evaluation.model.UserEvaluationPermissions}">permissions</a>
 	 * to delete the ACL.
 	 *
-	 * @param userId  The user deleting the ACL.
-	 * @param evalId  The ID of the evaluation whose ACL is being removed.
 	 */
+	@Deprecated
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ID_ACL, method = RequestMethod.DELETE)
-	public void deleteAcl(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String evalId,
-			HttpServletRequest request)
-			throws NotFoundException, DatastoreException, InvalidModelException,
-			UnauthorizedException, ConflictingUpdateException {
-		serviceProvider.getEvaluationService().deleteAcl(userId, evalId);
+	public void deleteAcl()
+			throws DeprecatedServiceException {
+		throw new DeprecatedServiceException("You cannot delete an ACL for an evaluation. " +
+				"To update an existing ACL, see PUT /evaluation/acl");
 	}
 
 	/**
@@ -1043,8 +1022,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody AccessControlList
 	getAcl(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String evalId,
-			HttpServletRequest request)
+			@PathVariable String evalId)
 			throws NotFoundException, DatastoreException, ACLInheritanceException {
 		return serviceProvider.getEvaluationService().getAcl(userId, evalId);
 	}
@@ -1062,13 +1040,13 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody UserEvaluationPermissions
 	getUserPermissionsForEvaluation(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String evalId,
-			HttpServletRequest request)
+			@PathVariable String evalId)
 			throws NotFoundException, DatastoreException {
 		return serviceProvider.getEvaluationService().getUserPermissionsForEvaluation(userId, evalId);
 	}
 	
 	/**
+	 * 
 	 * Executes a user-defined query over the Submissions of a specific Evaluation. Queries have the following form:
 	 * 
 	 * <p/>
@@ -1125,7 +1103,20 @@ public class EvaluationController extends BaseController {
 	 * 
 	 * <p/>
 	 * The query is to be URL encoded in the submitted request.
-	 * 
+	 * </p>
+	 * <p>
+	 * <b>Service Limits</b>
+	 * <table border="1">
+	 * <tr>
+	 * <th>resource</th>
+	 * <th>limit</th>
+	 * </tr>
+	 * <tr>
+	 * <td>The maximum frequency this method can be called</td>
+	 * <td>1 calls per second</td>
+	 * </tr>
+	 * </table>
+	 * </p> 
 	 * @throws JSONObjectAdapterException
 	 * @throws ParseException 
 	 * @throws  
@@ -1135,8 +1126,7 @@ public class EvaluationController extends BaseController {
 	public @ResponseBody 
 	QueryTableResults query(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = ServiceConstants.QUERY_PARAM, required = true) String query,
-			HttpServletRequest request)
+			@RequestParam(value = ServiceConstants.QUERY_PARAM, required = true) String query)
 			throws NotFoundException, DatastoreException, ParseException, 
 			JSONObjectAdapterException {
 		return serviceProvider.getEvaluationService().query(query, userId);

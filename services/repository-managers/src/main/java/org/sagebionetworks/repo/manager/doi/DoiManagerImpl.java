@@ -1,10 +1,12 @@
 package org.sagebionetworks.repo.manager.doi;
 
+import java.sql.Timestamp;
+import java.util.UUID;
+
+import org.joda.time.DateTime;
 import org.sagebionetworks.StackConfiguration;
 import org.sagebionetworks.doi.datacite.DataciteClient;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
-import org.sagebionetworks.repo.manager.AuthorizationManagerUtil;
-import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DoiAssociationDao;
@@ -12,21 +14,18 @@ import org.sagebionetworks.repo.model.NotReadyException;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.doi.v2.DataciteMetadata;
-import org.sagebionetworks.repo.model.doi.v2.DataciteRegistrationStatus;
 import org.sagebionetworks.repo.model.doi.v2.Doi;
 import org.sagebionetworks.repo.model.doi.v2.DoiAssociation;
-import org.sagebionetworks.repo.transactions.WriteTransactionReadCommitted;
-import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.ServiceUnavailableException;
 import org.sagebionetworks.workers.util.aws.message.RecoverableMessageException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 
 public class DoiManagerImpl implements DoiManager {
 
 	@Autowired
 	private StackConfiguration stackConfiguration;
-	@Autowired
-	private UserManager userManager;
 	@Autowired
 	private AuthorizationManager authorizationManager;
 	@Autowired
@@ -35,12 +34,14 @@ public class DoiManagerImpl implements DoiManager {
 	private DataciteClient dataciteClient;
 
 	public static final String ENTITY_URL_PREFIX = "#!Synapse:";
-	public static final String RESOURCE_PATH = "/doi/locate";
+	public static final String LOCATE_RESOURCE_PATH = "/doi/locate";
+	public static final String OBJECT_ID_PATH_PARAM = "id";
+	public static final String OBJECT_TYPE_PATH_PARAM = "type";
+	public static final String OBJECT_VERSION_PATH_PARAM = "version";
 
-	public Doi getDoi(final Long userId, final String objectId, final ObjectType objectType, final Long versionNumber) throws ServiceUnavailableException {
+	public Doi getDoi(final String objectId, final ObjectType objectType, final Long versionNumber) throws ServiceUnavailableException {
 		// Retrieve our record of the DOI/object association.
-		// Authorization is determined in the retrieval method
-		DoiAssociation association = getDoiAssociation(userId, objectId, objectType, versionNumber);
+		DoiAssociation association = getDoiAssociation(objectId, objectType, versionNumber);
 
 		// Get the metadata from DataCite. If their API is down, this may fail with NotReadyException/ServiceUnavailableException
 		DataciteMetadata metadata = null;
@@ -52,10 +53,7 @@ public class DoiManagerImpl implements DoiManager {
 		return mergeMetadataAndAssociation(metadata, association);
 	}
 
-	public DoiAssociation getDoiAssociation(final Long userId, final String objectId, final ObjectType objectType, final Long versionNumber) {
-		if (userId == null) {
-			throw new IllegalArgumentException("User ID cannot be null or empty.");
-		}
+	public DoiAssociation getDoiAssociation(final String objectId, final ObjectType objectType, final Long versionNumber) {
 		if (objectId == null) {
 			throw new IllegalArgumentException("Object ID cannot be null or empty.");
 		}
@@ -63,23 +61,15 @@ public class DoiManagerImpl implements DoiManager {
 			throw new IllegalArgumentException("Object type cannot be null or empty.");
 		}
 
-		// Ensure the user is authorized to view the object that we are retrieving
-		UserInfo currentUser = userManager.getUserInfo(userId);
-		UserInfo.validateUserInfo(currentUser);
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(currentUser, objectId, objectType, ACCESS_TYPE.READ));
-
+		// No need to check authorization, DOIs are public
 		DoiAssociation association = doiAssociationDao.getDoiAssociation(objectId, objectType, versionNumber);
 		association.setDoiUri(generateDoiUri(objectId, objectType, versionNumber));
 		association.setDoiUrl(generateLocationRequestUrl(objectId, objectType, versionNumber));
 		return association;
 	}
 
-	@WriteTransactionReadCommitted
-	public Doi createOrUpdateDoi(final Long userId, final Doi dto) throws RecoverableMessageException {
-		if (userId == null) {
-			throw new IllegalArgumentException("User name cannot be null or empty.");
-		}
+	@WriteTransaction
+	public Doi createOrUpdateDoi(final UserInfo user, final Doi dto) throws RecoverableMessageException {
 		if (dto.getObjectId() == null) {
 			throw new IllegalArgumentException("Object ID cannot be null");
 		}
@@ -88,10 +78,13 @@ public class DoiManagerImpl implements DoiManager {
 		}
 
 		// Ensure the user is authorized to update the object that we are minting a DOI for
-		UserInfo currentUser = userManager.getUserInfo(userId);
-		UserInfo.validateUserInfo(currentUser);
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(currentUser, dto.getObjectId(), dto.getObjectType(), ACCESS_TYPE.UPDATE));
+		UserInfo.validateUserInfo(user);
+		authorizationManager.canAccess(user, dto.getObjectId(), dto.getObjectType(), ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
+
+		// Set updated fields
+		dto.setUpdatedBy(user.getId().toString());
+		// MySQL TIMESTAMP only keeps seconds (not ms)
+		dto.setUpdatedOn(new Timestamp(DateTime.now().getMillis() / 1000L * 1000L));
 
 		DoiAssociation association = createOrUpdateAssociation(dto);
 		dto.setDoiUri(generateDoiUri(dto.getObjectId(), dto.getObjectType(), dto.getObjectVersion()));
@@ -102,23 +95,33 @@ public class DoiManagerImpl implements DoiManager {
 
 	DoiAssociation createOrUpdateAssociation(DoiAssociation dto) throws RecoverableMessageException {
 		DoiAssociation association;
-		try {
-			// Check if the DOI exists by checking to make sure eTags match
-			// (We will get a NotFoundException if it doesn't exist).
-			if (!doiAssociationDao.getEtagForUpdate(dto.getObjectId(), dto.getObjectType(), dto.getObjectVersion()).equals(dto.getEtag())) {
-				throw new ConflictingUpdateException("eTags do not match.");
+		DoiAssociation existing = doiAssociationDao.getDoiAssociationForUpdate(dto.getObjectId(), dto.getObjectType(), dto.getObjectVersion());
+		if (existing != null) {
+			if (!existing.getEtag().equals(dto.getEtag())) {
+				// We say "cannot create" because the client may have called "createOrUpdate" before discovering that
+				// another client created a DOI
+				throw new ConflictingUpdateException("Cannot create or update the DOI because the submitted eTag does not match the existing eTag.");
 			}
+
+			// Set fields from the old object that the client cannot change
+			dto.setAssociationId(existing.getAssociationId());
+			dto.setAssociatedBy(existing.getAssociatedBy());
+			dto.setAssociatedOn(existing.getAssociatedOn());
+			dto.setEtag(UUID.randomUUID().toString());
 			association = doiAssociationDao.updateDoiAssociation(dto);
-		} catch (NotFoundException e1) { // The DOI does not already exist (exception was thrown by getEtag)
+		} else { // The DOI does not already exist
 			try {
+				dto.setAssociatedBy(dto.getUpdatedBy());
+				dto.setAssociatedOn(dto.getUpdatedOn());
+				dto.setEtag(UUID.randomUUID().toString());
 				association = doiAssociationDao.createDoiAssociation(dto); // Create
-			} catch (IllegalArgumentException e2) {
-				/*
-				 * This exception indicates there was a race condition where two callers attempted to create a DOI on the
-				 * same object at the same time. The loser of this race will see this exception. However, since the
-				 * winner might also fail before completion, we send this caller back to the beginning to retry.
-				 */
-				throw new RecoverableMessageException(e2);
+			} catch (DuplicateKeyException e2) {
+					/*
+					 * This exception indicates there was a race condition where two callers attempted to create a DOI on the
+					 * same object at the same time. The loser of this race will see this exception. However, since the
+					 * winner might also fail before completion, we send this caller back to the beginning to retry.
+					 */
+					throw new RecoverableMessageException(e2);
 			}
 		}
 		return association;
@@ -131,16 +134,10 @@ public class DoiManagerImpl implements DoiManager {
 		if (dto.getDoiUrl() == null) {
 			throw new IllegalArgumentException("DOI URL cannot be null");
 		}
-		if (dto.getStatus() == null) { // null status defaults to FINDABLE
-			dto.setStatus(DataciteRegistrationStatus.FINDABLE);
-		}
 
 		try {
 			dataciteClient.registerMetadata(dto, dto.getDoiUri());
 			dataciteClient.registerDoi(dto.getDoiUri(), dto.getDoiUrl());
-			if (dto.getStatus() == DataciteRegistrationStatus.REGISTERED) {
-				dataciteClient.deactivate(dto.getDoiUri());
-			}
 			return dataciteClient.get(dto.getDoiUri());
 		} catch (NotReadyException | ServiceUnavailableException e) {
 			/*
@@ -151,10 +148,7 @@ public class DoiManagerImpl implements DoiManager {
 		}
 	}
 
-	public void deactivateDoi(final Long userId, final String objectId, final ObjectType objectType, final Long versionNumber) throws RecoverableMessageException {
-		if (userId == null) {
-			throw new IllegalArgumentException("User name cannot be null or empty.");
-		}
+	public void deactivateDoi(final UserInfo user, final String objectId, final ObjectType objectType, final Long versionNumber) throws RecoverableMessageException {
 		if (objectId == null) {
 			throw new IllegalArgumentException("Object ID cannot be null");
 		}
@@ -163,10 +157,8 @@ public class DoiManagerImpl implements DoiManager {
 		}
 
 		// Ensure the user is authorized to update the object with the DOI (should verify that the object exists)
-		UserInfo currentUser = userManager.getUserInfo(userId);
-		UserInfo.validateUserInfo(currentUser);
-		AuthorizationManagerUtil.checkAuthorizationAndThrowException(
-				authorizationManager.canAccess(currentUser, objectId, objectType, ACCESS_TYPE.UPDATE));
+		UserInfo.validateUserInfo(user);
+		authorizationManager.canAccess(user, objectId, objectType, ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
 
 		// Retrieve the DOI (verify that it has been minted)
 		DoiAssociation doi = doiAssociationDao.getDoiAssociation(objectId, objectType, versionNumber);
@@ -196,10 +188,11 @@ public class DoiManagerImpl implements DoiManager {
 		if (!objectType.equals(ObjectType.ENTITY)) {
 			throw new IllegalArgumentException("Generating a location request currently only supports entities");
 		}
-		String request = stackConfiguration.getRepositoryServiceEndpoint() + RESOURCE_PATH;
-		request += "?id=" + objectId + "&objectType=" + objectType.name();
+		final String PERSISTENT_REPOSITORY_ENDPOINT = "https://repo-" + stackConfiguration.getStack() + "." + stackConfiguration.getStack() + ".sagebase.org/repo/v1";
+		String request = PERSISTENT_REPOSITORY_ENDPOINT + LOCATE_RESOURCE_PATH;
+		request += "?" + OBJECT_ID_PATH_PARAM + "=" + objectId + "&" + OBJECT_TYPE_PATH_PARAM + "=" + objectType.name();
 		if (versionNumber != null) {
-			request += "&version=" + versionNumber;
+			request += "&" + OBJECT_VERSION_PATH_PARAM + "=" + versionNumber;
 		}
 		return request;
 	}
@@ -233,7 +226,6 @@ public class DoiManagerImpl implements DoiManager {
 		doi.setCreators(metadata.getCreators());
 		doi.setPublicationYear(metadata.getPublicationYear());
 		doi.setResourceType(metadata.getResourceType());
-		doi.setStatus(metadata.getStatus());
 		doi.setTitles(metadata.getTitles());
 		// Copy from association
 		doi.setAssociationId(association.getAssociationId());

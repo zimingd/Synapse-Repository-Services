@@ -1,7 +1,6 @@
 package org.sagebionetworks;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 
@@ -184,13 +183,6 @@ public interface StackConfiguration {
 	public String getSynapseOpsEmailAddress();
 
 	/**
-	 * @return the name of the S3 Bucket where logs are stored each stack (dev,
-	 *         staging, prod) and each instance of each stack will have it's own
-	 *         subfolder in this bucket
-	 */
-	public String getS3LogBucket();
-
-	/**
 	 * @return whether the cloudWatch profiler should be on or off boolean. True
 	 *         means on, false means off.
 	 */
@@ -271,6 +263,8 @@ public interface StackConfiguration {
 	 */
 	public boolean getDoiEnabled();
 
+	public boolean getDoiDataciteEnabled();
+
 	/**
 	 * The S3 Bucket for backup file. This is shared across stacks to enable data
 	 * migration across a stack.
@@ -308,35 +302,7 @@ public interface StackConfiguration {
 	 * 
 	 * @return
 	 */
-	public String getAsyncQueueName(String baseName);
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getAsyncQueueName();
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public String getWorkerQueueName(String baseName);
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getWorkerQueueName();
-
-	/**
-	 * The name of the AWS topic where repository changes messages are published.
-	 * 
-	 * @return
-	 */
-	public String getRepositoryChangeTopicPrefix();
+	public String getQueueName(String baseName);
 
 	/**
 	 * Get the full topic name for a given object type.
@@ -345,85 +311,6 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public String getRepositoryChangeTopic(String objectType);
-
-	/**
-	 * Create the map used by spring to lookup full strings with keys.
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getRepositoryChangeTopic();
-
-	/**
-	 * The name of the AWS topic where repository changes messages are published.
-	 * 
-	 * @return
-	 */
-	public String getRepositoryModificationTopicName();
-
-	/**
-	 * The name of the AWS SQS where search updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getSearchUpdateQueueName();
-
-	public String getSearchUpdateDeadLetterQueueName();
-
-	/**
-	 * The name of the AWS SQS where dynamo updates are pushed.
-	 */
-	public String getDynamoUpdateQueueName();
-
-	/**
-	 * The name of the AWS SQS where rds updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getEntityAnnotationsUpdateQueueName();
-
-	/**
-	 * The name of the AWS SQS where message (to user) updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getMessageUpdateQueueName();
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getFileUpdateQueueName();
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getFileUpdateDeadLetterQueueName();
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getSubmissionAnnotationsUpdateQueueName();
-
-	/**
-	 * @return The name of the AWS SQS where ranges of change messages are pushed.
-	 */
-	public String getUnsentMessagesQueueName();
-
-	/**
-	 * @return The name of the AWS SQS where user identifier updates are pushed
-	 */
-	public String getPrincipalHeaderQueueName();
-
-	public String getTableUpdateQueueName();
-
-	public String getTableUpdateDeadLetterQueueName();
-
-	public String getTableCurrentCacheUpdateQueueName();
 
 	/**
 	 * This is the size of a single file transfer memory block used as a buffer.
@@ -473,26 +360,6 @@ public interface StackConfiguration {
 	public boolean getShouldMessagesBePublishedToTopic();
 
 	/**
-	 * EZID user name.
-	 */
-	public String getEzidUsername();
-
-	/**
-	 * EZID password.
-	 */
-	public String getEzidPassword();
-
-	/**
-	 * EZID REST API URL.
-	 */
-	public String getEzidUrl();
-
-	/**
-	 * EZID DOI prefix.
-	 */
-	public String getEzidDoiPrefix();
-
-	/**
 	 * DataCite user name.
 	 */
 	public String getDataciteUsername();
@@ -511,11 +378,6 @@ public interface StackConfiguration {
 	 * Prefix under which DOIs should be registered. DOI prefix.
 	 */
 	public String getDoiPrefix();
-
-	/**
-	 * EZID target URL prefix. Example: https://synapse.prod.sagebase.org/
-	 */
-	public String getEzidTargetUrlPrefix();
 
 	/**
 	 * The maximum size of a backup batch.
@@ -546,6 +408,12 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public Integer getSemaphoreSharedMaxTimeoutMS();
+
+	/**
+	 * Maximum number of reader locks allowed at the same time for WriteReadSemaphoreRunner
+	 * @return
+	 */
+	public Integer getWriteReadSemaphoreRunnerMaxReaders();
 
 	/**
 	 * This is the maximum amount of time the upload workers are allowed to take
@@ -746,6 +614,12 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public String getTablesDatabaseSchemaForIndex(int index);
+	
+	/**
+	 * Should an SSL connection be used when connecting to the table's database?
+	 * @return
+	 */
+	public boolean useSSLConnectionForTablesDatabase();
 
 	/**
 	 * @return for dev stacks, this controls whether emails are delivered or sent to
@@ -896,5 +770,18 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public int getCurrentHmacSigningKeyVersion();
+
+	/**
+	 * Get whether Google Cloud features should be enabled or not.
+	 * @return
+	 */
+	public boolean getGoogleCloudEnabled();
+
+	/**
+	 * Get the credentials for a Google Cloud service account.
+	 *
+	 * @return
+	 */
+	public String getDecodedGoogleCloudServiceAccountCredentials();
 
 }

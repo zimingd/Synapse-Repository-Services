@@ -1,6 +1,5 @@
 package org.sagebionetworks.repo.web.service;
 
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -23,6 +22,7 @@ import org.sagebionetworks.repo.model.PaginatedTeamIds;
 import org.sagebionetworks.repo.model.ResponseMessage;
 import org.sagebionetworks.repo.model.Team;
 import org.sagebionetworks.repo.model.TeamMember;
+import org.sagebionetworks.repo.model.TeamMemberTypeFilterOptions;
 import org.sagebionetworks.repo.model.TeamMembershipStatus;
 import org.sagebionetworks.repo.model.TeamSortOrder;
 import org.sagebionetworks.repo.model.UnauthorizedException;
@@ -116,25 +116,25 @@ public class TeamServiceImpl implements TeamService {
 	 */
 	@Override
 	public PaginatedResults<TeamMember> getMembers(String teamId,
-			String fragment, long limit, long offset)
+			String fragment, TeamMemberTypeFilterOptions memberType, long limit, long offset)
 			throws DatastoreException, NotFoundException {
 		
 		ValidateArgument.requirement(limit > 0 && limit <= MAX_LIMIT, "limit must be between 1 and "+MAX_LIMIT);
 		ValidateArgument.requirement(offset >= 0, "'offset' may not be negative");
 
-		// if there is no prefix provided, we just to a regular paginated query
-		// against the database and return the result.  We also clear out the private fields.
+		if (memberType == null) memberType = TeamMemberTypeFilterOptions.ALL;
+		PaginatedResults<TeamMember> results;
 		if (fragment==null || fragment.trim().length()==0) {
-			PaginatedResults<TeamMember>results = teamManager.listMembers(teamId, limit, offset);
-			for (TeamMember teamMember : results.getResults()) {
-				UserProfileManagerUtils.clearPrivateFields(null, teamMember.getMember());
-			}
-			return results;
+			// if there is no prefix provided, we just do a regular paginated query against the database
+			results = teamManager.listMembers(teamId, memberType, limit, offset);
+		} else {
+			results = teamManager.listMembersForPrefix(fragment, teamId, memberType, limit, offset);
 		}
-		Long teamIdLong = Long.parseLong(teamId);
-		List<Long> memberIds = principalPrefixDAO.listTeamMembersForPrefix(fragment, teamIdLong, limit, offset);
-		List<TeamMember> members = listTeamMembers(Arrays.asList(teamIdLong), memberIds).getList();
-		return PaginatedResults.createWithLimitAndOffset(members, limit, offset);
+		// Clear out the private fields.
+		for (TeamMember teamMember : results.getResults()) {
+			UserProfileManagerUtils.clearPrivateFields(null, teamMember.getMember());
+		}
+		return results;
 	}
 
 	/**
@@ -188,9 +188,10 @@ public class TeamServiceImpl implements TeamService {
 	 * @see org.sagebionetworks.repo.web.service.TeamService#getIconURL(java.lang.String)
 	 */
 	@Override
-	public String getIconURL(String teamId) throws DatastoreException,
+	public String getIconURL(Long userId, String teamId) throws DatastoreException,
 			NotFoundException {
-		return teamManager.getIconURL(teamId);
+		UserInfo userInfo = userManager.getUserInfo(userId);		
+		return teamManager.getIconURL(userInfo, teamId);
 	}
 
 	/* (non-Javadoc)

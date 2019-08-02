@@ -20,7 +20,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-import org.sagebionetworks.StackConfiguration;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
@@ -51,6 +50,7 @@ import org.sagebionetworks.repo.model.asynch.AsynchronousRequestBody;
 import org.sagebionetworks.repo.model.asynch.AsynchronousResponseBody;
 import org.sagebionetworks.repo.model.auth.NewUser;
 import org.sagebionetworks.repo.model.dao.FileHandleDao;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.table.AppendableRowSetRequest;
@@ -65,6 +65,8 @@ import org.sagebionetworks.repo.model.table.EntityView;
 import org.sagebionetworks.repo.model.table.PartialRow;
 import org.sagebionetworks.repo.model.table.PartialRowSet;
 import org.sagebionetworks.repo.model.table.Query;
+import org.sagebionetworks.repo.model.table.QueryBundleRequest;
+import org.sagebionetworks.repo.model.table.QueryOptions;
 import org.sagebionetworks.repo.model.table.QueryResultBundle;
 import org.sagebionetworks.repo.model.table.Row;
 import org.sagebionetworks.repo.model.table.RowSet;
@@ -95,10 +97,8 @@ import com.google.common.collect.Sets;
 @ContextConfiguration(locations = { "classpath:test-context.xml" })
 public class TableViewIntegrationTest {
 	
-	public static final int MAX_WAIT_MS = 1000 * 60 * 2;
+	public static final int MAX_WAIT_MS = 1000 * 60 * 3;
 	
-	@Autowired
-	private StackConfiguration config;
 	@Autowired
 	private UserManager userManager;
 	@Autowired
@@ -347,6 +347,25 @@ public class TableViewIntegrationTest {
 		List<Row> rows = results.getQueryResult().getQueryResults().getRows();
 		assertEquals(fileCount, rows.size());
 		validateRowsMatchFiles(rows);
+	}
+	
+	@Test
+	public void testSumFileSizes() throws Exception{
+		createFileView();
+		// wait for replication
+		waitForEntityReplication(fileViewId, fileViewId);
+		Query query = new Query();
+		query.setSql("select * from "+fileViewId);
+
+		// run the query again
+		int expectedRowCount = fileCount;
+		QueryOptions options = new QueryOptions().withRunSumFileSizes(true).withRunQuery(true);
+		QueryResultBundle results = waitForConsistentQuery(adminUserInfo, query, options, expectedRowCount);
+		assertNotNull(results);
+		assertNotNull(results.getSumFileSizes());
+		assertFalse(results.getSumFileSizes().getGreaterThan());
+		assertNotNull(results.getSumFileSizes().getSumFileSizesBytes());
+		assertTrue(results.getSumFileSizes().getSumFileSizesBytes() > 0L);
 	}
 	
 	/**
@@ -662,8 +681,9 @@ public class TableViewIntegrationTest {
 		String sql = "select * from "+fileViewId;
 		QueryResultBundle results = waitForConsistentQuery(adminUserInfo, sql);
 		assertNotNull(results);
+		IdAndVersion idAndVersion = IdAndVersion.parse(fileViewId);
 		// Set the view to processing without making any real changes
-		tableManagerSupport.setTableToProcessingAndTriggerUpdate(fileViewId);
+		tableManagerSupport.setTableToProcessingAndTriggerUpdate(idAndVersion);
 		// The view should become available again.
 		results = waitForConsistentQuery(adminUserInfo, sql);
 		assertNotNull(results);
@@ -771,7 +791,8 @@ public class TableViewIntegrationTest {
 		waitForConsistentQuery(adminUserInfo, sql, rowCount);
 		
 		// manually delete the replicated data the file to simulate a data loss.
-		TableIndexDAO indexDao = tableConnectionFactory.getConnection(fileViewId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(fileViewId);
+		TableIndexDAO indexDao = tableConnectionFactory.getConnection(idAndVersion);
 		indexDao.truncateReplicationSyncExpiration();
 		indexDao.deleteEntityData(mockProgressCallbackVoid, Lists.newArrayList(firtFileIdLong));
 		
@@ -803,7 +824,8 @@ public class TableViewIntegrationTest {
 		waitForConsistentQuery(adminUserInfo, sql, rowCount);
 		
 		// manually delete the replicated data of the project to simulate a data loss.
-		TableIndexDAO indexDao = tableConnectionFactory.getConnection(viewId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(viewId);
+		TableIndexDAO indexDao = tableConnectionFactory.getConnection(idAndVersion);
 		indexDao.truncateReplicationSyncExpiration();
 		indexDao.deleteEntityData(mockProgressCallbackVoid, Lists.newArrayList(projectIdLong));
 		
@@ -1220,6 +1242,11 @@ public class TableViewIntegrationTest {
 		return waitForConsistentQuery(user, query, rowCount);
 	}
 	
+	private QueryResultBundle waitForConsistentQuery(UserInfo user, Query query, int rowCount) throws Exception {
+		QueryOptions options = new QueryOptions().withRunQuery(true).withRunCount(true).withReturnFacets(false);
+		return waitForConsistentQuery(user, query, options, rowCount);
+	}
+	
 	/**
 	 * Wait for a query to return the expected number of rows.
 	 * @param user
@@ -1228,10 +1255,10 @@ public class TableViewIntegrationTest {
 	 * @return
 	 * @throws Exception
 	 */
-	private QueryResultBundle waitForConsistentQuery(UserInfo user, Query query, int rowCount) throws Exception {
+	private QueryResultBundle waitForConsistentQuery(UserInfo user, Query query, QueryOptions options, int rowCount) throws Exception {
 		long start = System.currentTimeMillis();
 		while(true){
-			QueryResultBundle results = waitForConsistentQuery(user, query);
+			QueryResultBundle results = waitForConsistentQuery(user, query, options);
 			List<Row> rows = extractRows(results);
 			if(rows.size() == rowCount){
 				return results;
@@ -1259,13 +1286,18 @@ public class TableViewIntegrationTest {
 	}
 	
 	private QueryResultBundle waitForConsistentQuery(UserInfo user, Query query) throws Exception {
+		QueryOptions options = new QueryOptions().withRunQuery(true).withRunCount(true).withReturnFacets(false);
+		return waitForConsistentQuery(user, query, options);
+	}
+	
+	private QueryResultBundle waitForConsistentQuery(UserInfo user, Query query, QueryOptions options) throws Exception {
 		long start = System.currentTimeMillis();
 		while(true){
 			try {
-				boolean runQuery = true;
-				boolean runCount = true;
-				boolean returnFacets = false;
-				return tableQueryManger.querySinglePage(mockProgressCallbackVoid, user, query, runQuery, runCount, returnFacets);
+				QueryBundleRequest request = new QueryBundleRequest();
+				request.setPartMask(options.getPartMask());
+				request.setQuery(query);
+				return tableQueryManger.queryBundle(mockProgressCallbackVoid, user, request);
 			} catch (LockUnavilableException e) {
 				System.out.println("Waiting for table lock: "+e.getLocalizedMessage());
 			} catch (TableUnavailableException e) {
@@ -1288,7 +1320,8 @@ public class TableViewIntegrationTest {
 	private EntityDTO waitForEntityReplication(String tableId, String entityId) throws InterruptedException{
 		Entity entity = entityManager.getEntity(adminUserInfo, entityId);
 		long start = System.currentTimeMillis();
-		TableIndexDAO indexDao = tableConnectionFactory.getConnection(tableId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
+		TableIndexDAO indexDao = tableConnectionFactory.getConnection(idAndVersion);
 		while(true){
 			EntityDTO dto = indexDao.getEntityData(KeyFactory.stringToKey(entityId));
 			if(dto == null || !dto.getEtag().equals(entity.getEtag())){

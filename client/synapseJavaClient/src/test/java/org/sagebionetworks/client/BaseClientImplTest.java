@@ -1,9 +1,19 @@
 package org.sagebionetworks.client;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static org.sagebionetworks.client.BaseClientImpl.*;
-import static org.sagebionetworks.client.Method.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.sagebionetworks.client.BaseClientImpl.MAX_RETRY_SERVICE_UNAVAILABLE_COUNT;
+import static org.sagebionetworks.client.Method.GET;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -18,8 +28,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
-import org.sagebionetworks.client.exceptions.SynapseServerException;
 import org.sagebionetworks.client.exceptions.SynapseForbiddenException;
+import org.sagebionetworks.client.exceptions.SynapseServerException;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.EntityId;
@@ -43,6 +53,8 @@ public class BaseClientImplTest {
 	Header mockHeader;
 
 	BaseClientImpl baseClient;
+	private final String sessionIdVal = "mySessionIdValue";
+
 
 	@Before
 	public void before(){
@@ -314,7 +326,7 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testPostJson() throws Exception{
-		when(mockClient.post(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.post(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{}");
@@ -333,7 +345,7 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testPutJson() throws Exception{
-		when(mockClient.put(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.put(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{}");
@@ -371,7 +383,7 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testPostStringDirect() throws Exception{
-		when(mockClient.post(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.post(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("content");
@@ -413,7 +425,7 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testPutJSONEntity() throws Exception {
-		when(mockClient.put(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.put(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{\"id\":\"0\"}");
@@ -423,7 +435,7 @@ public class BaseClientImplTest {
 				baseClient.putJSONEntity("https://repo-prod.prod.sagebase.org",
 						"/entityId", null, EntityId.class));
 		ArgumentCaptor<SimpleHttpRequest> captor = ArgumentCaptor.forClass(SimpleHttpRequest.class);
-		verify(mockClient).put(captor.capture(), anyString());
+		verify(mockClient).put(captor.capture(), isNull());
 		assertEquals("https://repo-prod.prod.sagebase.org/entityId",
 				captor.getValue().getUri());
 	}
@@ -441,13 +453,13 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testVoidPut() throws Exception {
-		when(mockClient.put(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.put(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{\"id\":\"0\"}");
 		baseClient.voidPut("https://repo-prod.prod.sagebase.org", "/entityId", null);
 		ArgumentCaptor<SimpleHttpRequest> captor = ArgumentCaptor.forClass(SimpleHttpRequest.class);
-		verify(mockClient).put(captor.capture(), anyString());
+		verify(mockClient).put(captor.capture(), isNull());
 		assertEquals("https://repo-prod.prod.sagebase.org/entityId",
 				captor.getValue().getUri());
 	}
@@ -469,7 +481,7 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testPostJSONEntity() throws Exception {
-		when(mockClient.post(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.post(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{\"id\":\"0\"}");
@@ -479,7 +491,7 @@ public class BaseClientImplTest {
 				baseClient.postJSONEntity("https://repo-prod.prod.sagebase.org",
 						"/entityId", null, EntityId.class));
 		ArgumentCaptor<SimpleHttpRequest> captor = ArgumentCaptor.forClass(SimpleHttpRequest.class);
-		verify(mockClient).post(captor.capture(), anyString());
+		verify(mockClient).post(captor.capture(), isNull());
 		assertEquals("https://repo-prod.prod.sagebase.org/entityId",
 				captor.getValue().getUri());
 	}
@@ -497,13 +509,13 @@ public class BaseClientImplTest {
 
 	@Test
 	public void testVoidPost() throws Exception {
-		when(mockClient.post(any(SimpleHttpRequest.class), anyString()))
+		when(mockClient.post(any(SimpleHttpRequest.class), isNull()))
 				.thenReturn(mockResponse);
 		when(mockResponse.getStatusCode()).thenReturn(200);
 		when(mockResponse.getContent()).thenReturn("{\"id\":\"0\"}");
 		baseClient.voidPost("https://repo-prod.prod.sagebase.org", "/entityId", null, null);
 		ArgumentCaptor<SimpleHttpRequest> captor = ArgumentCaptor.forClass(SimpleHttpRequest.class);
-		verify(mockClient).post(captor.capture(), anyString());
+		verify(mockClient).post(captor.capture(), isNull());
 		assertEquals("https://repo-prod.prod.sagebase.org/entityId",
 				captor.getValue().getUri());
 	}
@@ -794,5 +806,40 @@ public class BaseClientImplTest {
 		}
 		verify(mockClient, times(MAX_RETRY_SERVICE_UNAVAILABLE_COUNT))
 				.get(any(SimpleHttpRequest.class));
+	}
+
+	@Test
+	public void testSetSessionId(){
+		//method under test
+		baseClient.setSessionId(sessionIdVal);
+
+		verify(mockClient).addCookie("repo-prod.prod.sagebase.org", "sessionID", sessionIdVal);
+	}
+
+	@Test
+	public void testGetSessionId(){
+		when(mockClient.getFirstCookieValue("repo-prod.prod.sagebase.org", "sessionID")).thenReturn(sessionIdVal);
+
+		//method under test
+		String result = baseClient.getSessionId();
+
+		assertEquals(sessionIdVal, result);
+		verify(mockClient).getFirstCookieValue("repo-prod.prod.sagebase.org", "sessionID");
+	}
+
+	@Test (expected = IllegalArgumentException.class)
+	public void testSetRepositoryEndpoint_malformedRepoEndpoint(){
+		//set a bad endpoint
+		baseClient.setRepositoryEndpoint("asdf.asdf.asdf...");
+	}
+
+	@Test
+	public void testSetRepositoryEndpoint(){
+		String repoEndpoint = "https://my.test.endpoint.com/some/path";
+
+		baseClient.setRepositoryEndpoint(repoEndpoint);
+
+		assertEquals(repoEndpoint, baseClient.getRepoEndpoint());
+		assertEquals("my.test.endpoint.com", baseClient.repoEndpointBaseDomain);
 	}
 }

@@ -28,7 +28,6 @@ import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
-import org.sagebionetworks.repo.manager.S3TestUtils;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadRequest;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadResponse;
@@ -43,7 +42,6 @@ import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.file.MultipartUploadRequest;
 import org.sagebionetworks.repo.model.file.MultipartUploadStatus;
-import org.sagebionetworks.repo.model.file.PreviewFileHandle;
 import org.sagebionetworks.repo.model.file.ProxyFileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.file.S3UploadDestination;
@@ -62,8 +60,6 @@ import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.sagebionetworks.utils.MD5ChecksumHelper;
 
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3;
 import com.google.common.collect.Lists;
 
 public class IT049FileHandleTest {
@@ -144,7 +140,7 @@ public class IT049FileHandleTest {
 			handle = (S3FileHandle) synapse.getRawFileHandle(handle.getId());
 		}
 		// Get the preview file handle.
-		PreviewFileHandle preview = (PreviewFileHandle) synapse.getRawFileHandle(handle.getPreviewId());
+		S3FileHandle preview = (S3FileHandle) synapse.getRawFileHandle(handle.getPreviewId());
 		assertNotNull(preview);
 		System.out.println(preview);
 		toDelete.add(preview);
@@ -158,7 +154,7 @@ public class IT049FileHandleTest {
 			assertTrue("Timed out waiting for a preview image to be created.", (System.currentTimeMillis()-start) < MAX_WAIT_MS);
 			handle = (S3FileHandle) synapse.getRawFileHandle(handle.getId());
 		}
-		preview = (PreviewFileHandle) synapse.getRawFileHandle(handle.getPreviewId());
+		preview = (S3FileHandle) synapse.getRawFileHandle(handle.getPreviewId());
 		assertNotNull(preview);
 		toDelete.add(preview);
 		
@@ -319,7 +315,7 @@ public class IT049FileHandleTest {
 	public void testExternalObjectStoreFileHandleRoundTrip() throws SynapseException {
 		//create a new StorageLocationSetting
 		ExternalObjectStorageLocationSetting storageLocationSetting = new ExternalObjectStorageLocationSetting();
-		String bucket = "some bucket";
+		String bucket = "some-bucket";
 		String endpoint = "https://someurl.com";
 		storageLocationSetting.setBucket(bucket);
 		storageLocationSetting.setEndpointUrl(endpoint);

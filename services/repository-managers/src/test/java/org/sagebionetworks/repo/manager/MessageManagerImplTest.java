@@ -5,10 +5,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import org.junit.runner.RunWith;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
+import org.sagebionetworks.repo.manager.file.FileHandleUrlRequest;
 import org.sagebionetworks.repo.manager.principal.SynapseEmailService;
 import org.sagebionetworks.repo.manager.team.MembershipRequestManager;
 import org.sagebionetworks.repo.manager.team.TeamConstants;
@@ -54,6 +56,7 @@ import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.dao.TestUtils;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOCredential;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOTermsOfUseAgreement;
+import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.message.MessageBundle;
 import org.sagebionetworks.repo.model.message.MessageRecipientSet;
@@ -223,12 +226,12 @@ public class MessageManagerImplTest {
 			NewUser nu = new NewUser();
 			nu.setEmail(UUID.randomUUID().toString() + "@test.com");
 			nu.setUserName(UUID.randomUUID().toString());
-			testUser = userManager.createTestUser(adminUserInfo, nu, cred, tou);
+			testUser = userManager.createOrGetTestUser(adminUserInfo, nu, cred, tou);
 			
 			nu = new NewUser();
 			nu.setEmail(UUID.randomUUID().toString() + "@test.com");
 			nu.setUserName(UUID.randomUUID().toString());
-			otherTestUser = userManager.createTestUser(adminUserInfo,nu, cred, tou);
+			otherTestUser = userManager.createOrGetTestUser(adminUserInfo,nu, cred, tou);
 			
 			tou.setPrincipalId(otherTestUser.getId());
 			basicDao.createOrUpdate(tou);
@@ -238,7 +241,7 @@ public class MessageManagerImplTest {
 			NewUser nu2 = new NewUser();
 			nu2.setEmail(UUID.randomUUID().toString() + "@test.com");
 			nu2.setUserName(UUID.randomUUID().toString());
-			trustedMessageSender = userManager.createTestUser(adminUserInfo, nu2, cred, tou);
+			trustedMessageSender = userManager.createOrGetTestUser(adminUserInfo, nu2, cred, tou);
 			tou.setPrincipalId(trustedMessageSender.getId());
 			basicDao.createOrUpdate(tou);
 			// now add to trusted users group
@@ -269,8 +272,7 @@ public class MessageManagerImplTest {
 		teamManager.updateACL(testUser, acl);
 		
 		// Mock out the file handle manager so that the fake file handle won't result in broken downloads
-		String url = MessageManagerImplTest.class.getClassLoader().getResource("images/notAnImage.txt").toExternalForm();
-		when(mockFileHandleManager.getRedirectURLForFileHandle(anyString())).thenReturn(url);
+
 		ReflectionTestUtils.setField(messageManager, "fileHandleManager", mockFileHandleManager);
 		
 		// This user info needs to be updated to contain the team
@@ -747,20 +749,6 @@ public class MessageManagerImplTest {
 	}
 	
 	@Test
-	public void testSendTemplateEmail() throws Exception {
-		// Send an email to the test user
-		messageManager.sendPasswordResetEmail(testUser.getId(), "Blah?");
-		
-		// Try the other one
-		messageManager.sendWelcomeEmail(testUser.getId(), null);
-		
-		// Try the delivery failure email
-		List<String> mockErrors = new ArrayList<String>();
-		mockErrors.add(UUID.randomUUID().toString());
-		messageManager.sendDeliveryFailureEmail(userToOther.getId(), mockErrors);
-	}
-	
-	@Test
 	public void testCreateMessageToEntityOwner() throws Exception {
 		// Make an "entity"
 		Node node = new Node();
@@ -872,5 +860,22 @@ public class MessageManagerImplTest {
 			// We shouldn't get a nasty DB error
 			assertFalse(e.getMessage().contains("foreign key"));
 		}
+	}
+	
+	@Test
+	public void testGetMessageFileRedirectURL() throws Exception {
+		
+		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(testUser, fileHandleId)
+				.withAssociation(FileHandleAssociateType.MessageAttachment, userToOther.getId());
+		
+		String expectedUrl = "https://testurl.org";
+		
+		when(mockFileHandleManager.getRedirectURLForFileHandle(eq(urlRequest))).thenReturn(expectedUrl);
+		
+		String url = messageManager.getMessageFileRedirectURL(testUser, userToOther.getId());
+		
+		assertEquals(expectedUrl, url);
+		
+		verify(mockFileHandleManager).getRedirectURLForFileHandle(urlRequest);
 	}
 }

@@ -7,9 +7,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.commons.lang.NotImplementedException;
+import org.apache.commons.lang3.NotImplementedException;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
+import org.sagebionetworks.repo.manager.file.FileHandleUrlRequest;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
@@ -24,11 +25,11 @@ import org.sagebionetworks.repo.model.ProjectListSortColumn;
 import org.sagebionetworks.repo.model.ProjectListType;
 import org.sagebionetworks.repo.model.Team;
 import org.sagebionetworks.repo.model.UnauthorizedException;
-import org.sagebionetworks.repo.model.UserGroupDAO;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.UserProfile;
 import org.sagebionetworks.repo.model.UserProfileDAO;
 import org.sagebionetworks.repo.model.entity.query.SortDirection;
+import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.principal.AliasType;
 import org.sagebionetworks.repo.model.principal.PrincipalAlias;
 import org.sagebionetworks.repo.model.principal.PrincipalAliasDAO;
@@ -37,7 +38,6 @@ import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.amazonaws.services.s3.AmazonS3;
 import com.google.common.collect.Sets;
 
 public class UserProfileManagerImpl implements UserProfileManager {
@@ -158,7 +158,7 @@ public class UserProfileManagerImpl implements UserProfileManager {
 		
 		if(updated.getProfilePicureFileHandleId() != null){
 			// The user must own the file handle to set it as a picture.
-			AuthorizationManagerUtil.checkAuthorizationAndThrowException(authorizationManager.canAccessRawFileHandleById(userInfo, updated.getProfilePicureFileHandleId()));
+			authorizationManager.canAccessRawFileHandleById(userInfo, updated.getProfilePicureFileHandleId()).checkAuthorizationOrElseThrow();
 		}
 		// Update the DAO first
 		userProfileDAO.update(updated);
@@ -256,9 +256,9 @@ public class UserProfileManagerImpl implements UserProfileManager {
 	 */
 	public static Set<Long> getGroupsMinusPublic(Set<Long> usersGroups){
 		Set<Long> groups = Sets.newHashSet(usersGroups);
-		groups.remove(BOOTSTRAP_PRINCIPAL.PUBLIC_GROUP.getPrincipalId().longValue());
-		groups.remove(BOOTSTRAP_PRINCIPAL.AUTHENTICATED_USERS_GROUP.getPrincipalId().longValue());
-		groups.remove(BOOTSTRAP_PRINCIPAL.CERTIFIED_USERS.getPrincipalId().longValue());
+		groups.remove(BOOTSTRAP_PRINCIPAL.PUBLIC_GROUP.getPrincipalId());
+		groups.remove(BOOTSTRAP_PRINCIPAL.AUTHENTICATED_USERS_GROUP.getPrincipalId());
+		groups.remove(BOOTSTRAP_PRINCIPAL.CERTIFIED_USERS.getPrincipalId());
 		return groups;
 	}
 
@@ -312,18 +312,26 @@ public class UserProfileManagerImpl implements UserProfileManager {
 	}
 
 	@Override
-	public String getUserProfileImageUrl(String userId)
+	public String getUserProfileImageUrl(UserInfo userInfo, String userId)
 			throws NotFoundException {
-		String handleId = userProfileDAO.getPictureFileHandleId(userId);
-		return fileHandleManager.getRedirectURLForFileHandle(handleId);
+		String fileHandleId = userProfileDAO.getPictureFileHandleId(userId);
+		
+		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(userInfo, fileHandleId)
+				.withAssociation(FileHandleAssociateType.UserProfileAttachment, userId);
+		
+		return fileHandleManager.getRedirectURLForFileHandle(urlRequest);
 	}
 
 	@Override
-	public String getUserProfileImagePreviewUrl(String userId)
+	public String getUserProfileImagePreviewUrl(UserInfo userInfo, String userId)
 			throws NotFoundException {
-		String handleId = userProfileDAO.getPictureFileHandleId(userId);
-		String privewId = fileHandleManager.getPreviewFileHandleId(handleId);
-		return fileHandleManager.getRedirectURLForFileHandle(privewId);
+		String fileHandleId = userProfileDAO.getPictureFileHandleId(userId);
+		String fileHandlePreviewId = fileHandleManager.getPreviewFileHandleId(fileHandleId);
+		
+		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(userInfo, fileHandlePreviewId)
+				.withAssociation(FileHandleAssociateType.UserProfileAttachment, userId);
+		
+		return fileHandleManager.getRedirectURLForFileHandle(urlRequest);
 	}
 
 }

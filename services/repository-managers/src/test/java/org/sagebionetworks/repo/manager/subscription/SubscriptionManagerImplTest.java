@@ -1,7 +1,15 @@
 package org.sagebionetworks.repo.manager.subscription;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySetOf;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,14 +20,17 @@ import java.util.Set;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
-import org.sagebionetworks.repo.manager.AuthorizationManagerUtil;
+import org.sagebionetworks.repo.manager.AuthorizationStatus;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlListDAO;
 import org.sagebionetworks.repo.model.NextPageToken;
@@ -45,6 +56,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
+@RunWith(MockitoJUnitRunner.class)
 public class SubscriptionManagerImplTest {
 
 	@Mock
@@ -57,7 +69,7 @@ public class SubscriptionManagerImplTest {
 	private AccessControlListDAO mockAclDao;
 	@Captor
 	ArgumentCaptor<SubscriptionListRequest> subscriptionRequestCapture;
-	
+	@InjectMocks
 	private SubscriptionManagerImpl manager;
 	private Topic topic;
 	private String objectId;
@@ -71,14 +83,6 @@ public class SubscriptionManagerImplTest {
 
 	@Before
 	public void before() {
-
-		MockitoAnnotations.initMocks(this);
-		manager = new SubscriptionManagerImpl();
-		ReflectionTestUtils.setField(manager, "authorizationManager", mockAuthorizationManager);
-		ReflectionTestUtils.setField(manager, "subscriptionDao", mockDao);
-		ReflectionTestUtils.setField(manager, "changeDao", mockChangeDao);
-		ReflectionTestUtils.setField(manager, "aclDao", mockAclDao);
-
 		objectId = "1";
 		topic = new Topic();
 		topic.setObjectId(objectId);
@@ -141,7 +145,7 @@ public class SubscriptionManagerImplTest {
 	public void testCreateForumSubscription(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, objectId, SubscriptionObjectType.FORUM))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		when(mockDao
 				.create(userId.toString(), objectId, SubscriptionObjectType.FORUM))
 				.thenReturn(sub);
@@ -152,7 +156,7 @@ public class SubscriptionManagerImplTest {
 	public void testCreateThreadSubscription(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, objectId, SubscriptionObjectType.THREAD))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		when(mockDao
 				.create(userId.toString(), objectId, SubscriptionObjectType.THREAD))
 				.thenReturn(sub);
@@ -430,39 +434,6 @@ public class SubscriptionManagerImplTest {
 	}
 
 	@Test (expected=IllegalArgumentException.class)
-	public void testGetEtagInvalidObjectId() {
-		manager.getEtag(null, ObjectType.FORUM);
-	}
-
-	@Test (expected=IllegalArgumentException.class)
-	public void testGetEtagInvalidObjectType() {
-		manager.getEtag(objectId, null);
-	}
-
-	@Test (expected=NumberFormatException.class)
-	public void testGetEtagWithObjectIdNaN(){
-		manager.getEtag("syn"+objectId, ObjectType.FORUM).getEtag();
-	}
-
-	@Test
-	public void testGetEtagForEntity(){
-		String etag = "etag";
-		when(mockChangeDao
-				.getEtag(KeyFactory.stringToKey(objectId), ObjectType.ENTITY))
-				.thenReturn(etag);
-		assertEquals(etag, manager.getEtag("syn"+objectId, ObjectType.ENTITY).getEtag());
-	}
-
-	@Test
-	public void testGetEtagForNonEntity(){
-		String etag = "etag";
-		when(mockChangeDao
-				.getEtag(Long.parseLong(objectId), ObjectType.FORUM))
-				.thenReturn(etag);
-		assertEquals(etag, manager.getEtag(objectId, ObjectType.FORUM).getEtag());
-	}
-
-	@Test (expected=IllegalArgumentException.class)
 	public void testGetSubscribersWithNullUserInfo(){
 		manager.getSubscribers(null, topic, new NextPageToken(1, 0).toToken());
 	}
@@ -476,7 +447,7 @@ public class SubscriptionManagerImplTest {
 	public void testGetSubscribersUnauthorized(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, topic.getObjectId(), topic.getObjectType()))
-				.thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+				.thenReturn(AuthorizationStatus.accessDenied(""));
 		manager.getSubscribers(userInfo, topic, new NextPageToken(1, 0).toToken());
 	}
 
@@ -484,7 +455,7 @@ public class SubscriptionManagerImplTest {
 	public void testGetSubscribersWithNullNextPageToken(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, topic.getObjectId(), topic.getObjectType()))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		List<String> subscribers = new LinkedList<String>();
 		when(mockDao.getSubscribers(topic.getObjectId(), topic.getObjectType(),
 				NextPageToken.DEFAULT_LIMIT+1, NextPageToken.DEFAULT_OFFSET))
@@ -501,7 +472,7 @@ public class SubscriptionManagerImplTest {
 	public void testGetSubscribersWithNextPageToken(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, topic.getObjectId(), topic.getObjectType()))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		List<String> subscribers = new ArrayList<String>();
 		subscribers.addAll(Arrays.asList("1", "2"));
 		when(mockDao.getSubscribers(topic.getObjectId(), topic.getObjectType(), 2, 0))
@@ -528,7 +499,7 @@ public class SubscriptionManagerImplTest {
 	public void testGetSubscriberCountUnauthorized(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, topic.getObjectId(), topic.getObjectType()))
-				.thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+				.thenReturn(AuthorizationStatus.accessDenied(""));
 		manager.getSubscriberCount(userInfo, topic);
 	}
 
@@ -536,7 +507,7 @@ public class SubscriptionManagerImplTest {
 	public void testGetSubscriberCountAuthorized(){
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, topic.getObjectId(), topic.getObjectType()))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		when(mockDao.getSubscriberCount(topic.getObjectId(), topic.getObjectType()))
 				.thenReturn(10L);
 		SubscriberCount count = manager.getSubscriberCount(userInfo, topic);
@@ -558,7 +529,7 @@ public class SubscriptionManagerImplTest {
 	public void testSubscribeAllUnauthorized() {
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, SubscriptionManagerImpl.ALL_OBJECT_IDS, SubscriptionObjectType.THREAD))
-				.thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+				.thenReturn(AuthorizationStatus.accessDenied(""));
 		manager.subscribeAll(userInfo, SubscriptionObjectType.THREAD);
 	}
 
@@ -566,7 +537,7 @@ public class SubscriptionManagerImplTest {
 	public void testSubscribeAllAuthorized() {
 		when(mockAuthorizationManager
 				.canSubscribe(userInfo, SubscriptionManagerImpl.ALL_OBJECT_IDS, SubscriptionObjectType.THREAD))
-				.thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+				.thenReturn(AuthorizationStatus.authorized());
 		when(mockDao
 				.create(userId.toString(), SubscriptionManagerImpl.ALL_OBJECT_IDS, SubscriptionObjectType.THREAD))
 				.thenReturn(sub);

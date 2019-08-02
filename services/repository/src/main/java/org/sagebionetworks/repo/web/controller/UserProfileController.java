@@ -55,7 +55,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @ControllerInfo(displayName="User Profile Services", path="repo/v1")
 @Controller
 @RequestMapping(UrlHelpers.REPO_PATH)
-public class UserProfileController extends BaseController {
+public class UserProfileController {
 
 	@Autowired
 	ServiceProvider serviceProvider;
@@ -259,7 +259,7 @@ public class UserProfileController extends BaseController {
 	 * 
 	 * @param prefixFilter
 	 *            The name to search for.
-	 * @param filter
+	 * @param typeFilter
 	 *            Restrict the results to a type of principal. 
 	 *            Available options: <a href="${org.sagebionetworks.repo.model.principal.TypeFilter}">TypeFilter</a>.
 	 * @param offset
@@ -326,12 +326,13 @@ public class UserProfileController extends BaseController {
 	@RequestMapping(value = UrlHelpers.USER_PROFILE_IMAGE, method = RequestMethod.GET)
 	public @ResponseBody
 	void imageRedirectURLForUser(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String profileId,
 			@RequestParam(required = false) Boolean redirect,
 			HttpServletResponse response) throws DatastoreException,
 			NotFoundException, IOException {
 		// Get the redirect url
-		String redirectUrl = serviceProvider.getUserProfileService().getUserProfileImage(profileId);
+		String redirectUrl = serviceProvider.getUserProfileService().getUserProfileImage(userId, profileId);
 		RedirectUtils.handleRedirect(redirect, redirectUrl, response);
 	}
 	
@@ -356,12 +357,13 @@ public class UserProfileController extends BaseController {
 	@RequestMapping(value = UrlHelpers.USER_PROFILE_IMAGE_PREVIEW, method = RequestMethod.GET)
 	public @ResponseBody
 	void imagePreviewRedirectURLForUser(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String profileId,
 			@RequestParam(required = false) Boolean redirect,
 			HttpServletResponse response) throws DatastoreException,
 			NotFoundException, IOException {
 		// Get the redirect url
-		String redirectUrl = serviceProvider.getUserProfileService().getUserProfileImagePreview(profileId);
+		String redirectUrl = serviceProvider.getUserProfileService().getUserProfileImagePreview(userId, profileId);
 		RedirectUtils.handleRedirect(redirect, redirectUrl, response);
 	}
 	

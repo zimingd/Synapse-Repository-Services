@@ -1,6 +1,9 @@
 package org.sagebionetworks;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 import java.util.Arrays;
 
@@ -14,10 +17,8 @@ import org.sagebionetworks.client.SynapseAdminClientImpl;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.discussion.Forum;
-import org.sagebionetworks.repo.model.subscription.Etag;
 import org.sagebionetworks.repo.model.subscription.SortByType;
 import org.sagebionetworks.repo.model.subscription.SortDirection;
 import org.sagebionetworks.repo.model.subscription.SubscriberCount;
@@ -114,13 +115,6 @@ public class ITSubscription {
 		assertFalse(results.getResults().contains(sub));
 
 		assertNotNull(adminSynapse.subscribeAll(SubscriptionObjectType.DATA_ACCESS_SUBMISSION));
-	}
-
-	@Test
-	public void testGetEtag() throws SynapseException {
-		Etag etag = synapse.getEtag(forum.getId(), ObjectType.FORUM);
-		assertNotNull(etag);
-		assertNotNull(etag.getEtag());
 	}
 
 }

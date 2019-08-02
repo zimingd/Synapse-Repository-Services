@@ -3,11 +3,11 @@ package org.sagebionetworks.repo.manager;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyListOf;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.anySetOf;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyListOf;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySetOf;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -23,11 +23,19 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
+import org.sagebionetworks.repo.model.Annotations;
+import org.sagebionetworks.repo.model.DataType;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Entity;
 import org.sagebionetworks.repo.model.EntityChildrenRequest;
@@ -36,21 +44,20 @@ import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityId;
 import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.FileEntity;
-import org.sagebionetworks.repo.model.NamedAnnotations;
 import org.sagebionetworks.repo.model.NextPageToken;
 import org.sagebionetworks.repo.model.Node;
+import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.entity.Direction;
 import org.sagebionetworks.repo.model.entity.EntityLookupRequest;
 import org.sagebionetworks.repo.model.entity.SortBy;
+import org.sagebionetworks.repo.model.file.ChildStatsRequest;
+import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.web.NotFoundException;
-import org.springframework.test.util.ReflectionTestUtils;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-
+@RunWith(MockitoJUnitRunner.class)
 public class EntityManagerImplUnitTest {
 
 	@Mock
@@ -61,7 +68,13 @@ public class EntityManagerImplUnitTest {
 	private NodeManager mockNodeManager;
 	@Mock
 	private UserInfo mockUser;
+	@Mock
+	private ObjectTypeManager mockObjectTypeManger;
+	
+	@Captor
+	private ArgumentCaptor<ChildStatsRequest> statsRequestCaptor;
 
+	@InjectMocks
 	private EntityManagerImpl entityManager;
 	Long userId = 007L;
 	
@@ -69,14 +82,10 @@ public class EntityManagerImplUnitTest {
 	Set<Long> nonvisibleChildren;
 	List<EntityHeader> childPage;
 	
+	ChildStatsResponse statsReponse;
+	
 	@Before
 	public void before(){
-		MockitoAnnotations.initMocks(this);
-	
-		entityManager = new EntityManagerImpl();
-		ReflectionTestUtils.setField(entityManager, "nodeManager", mockNodeManager);
-		ReflectionTestUtils.setField(entityManager, "entityPermissionsManager", mockPermissionsManager);
-		ReflectionTestUtils.setField(entityManager, "userManager", mockUserManager);
 		
 		when(mockUser.getId()).thenReturn(userId);
 		when(mockUser.isAdmin()).thenReturn(false);
@@ -84,15 +93,19 @@ public class EntityManagerImplUnitTest {
 		childRequest = new EntityChildrenRequest();
 		childRequest.setParentId("syn123");
 		childRequest.setIncludeTypes(Lists.newArrayList(EntityType.file, EntityType.folder));
+		childRequest.setIncludeTotalChildCount(true);
+		childRequest.setIncludeSumFileSizes(false);
 		nonvisibleChildren = Sets.newHashSet(555L,777L);
 		
-		when(mockPermissionsManager.hasAccess(childRequest.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(childRequest.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockPermissionsManager.getNonvisibleChildren(mockUser, childRequest.getParentId())).thenReturn(nonvisibleChildren);
 		childPage = Lists.newArrayList(new EntityHeader());
 		when(mockNodeManager.getChildren(anyString(),
 						anyListOf(EntityType.class), anySetOf(Long.class),
 						any(SortBy.class), any(Direction.class), anyLong(),
 						anyLong())).thenReturn(childPage);
+		statsReponse = new ChildStatsResponse().withSumFileSizesBytes(123L).withTotalChildCount(4L);
+		when(mockNodeManager.getChildrenStats(any(ChildStatsRequest.class))).thenReturn(statsReponse);
 
 	}
 
@@ -102,7 +115,7 @@ public class EntityManagerImplUnitTest {
 		// return the mock user.
 		when(mockUserManager.getUserInfo(userId)).thenReturn(mockUser);
 		// Say now to this
-		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.accessDenied(""));
 		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.UPDATE, mockUser)).thenThrow(new IllegalArgumentException("Read and not update should have been checked"));
 		entityManager.validateReadAccess(mockUser, entityId);
 		
@@ -114,42 +127,19 @@ public class EntityManagerImplUnitTest {
 		// return the mock user.
 		when(mockUserManager.getUserInfo(userId)).thenReturn(mockUser);
 		// Say now to this
-		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.UPDATE, mockUser)).thenThrow(new IllegalArgumentException("Read and not update should have been checked"));
 		entityManager.validateReadAccess(mockUser, entityId);
 	}
-	
-	@Test
-	public void testGetEntitySecondaryFields() throws Exception {
-		String id = "123";
-		NamedAnnotations annos = new NamedAnnotations();
-		annos.getPrimaryAnnotations().addAnnotation("fileNameOverride", "bar.txt");
-		when(mockNodeManager.getAnnotations(mockUser, id)).thenReturn(annos);		
-		FileEntity entity = entityManager.getEntitySecondaryFields(mockUser, id, FileEntity.class);
-		assertEquals("0", entity.getCreatedBy());
-		assertEquals("0", entity.getModifiedBy());
-		assertEquals("bar.txt", entity.getFileNameOverride());
-	}
 
-	@Test
-	public void testGetEntitySecondaryFieldsForVersion() throws Exception {
-		String id = "123";
-		NamedAnnotations annos = new NamedAnnotations();
-		annos.getPrimaryAnnotations().addAnnotation("fileNameOverride", "bar.txt");
-		when(mockNodeManager.getAnnotationsForVersion(mockUser, id, 1L)).thenReturn(annos);		
-		FileEntity entity = entityManager.getEntitySecondaryFieldsForVersion(mockUser, id, 1L, FileEntity.class);
-		assertEquals("0", entity.getCreatedBy());
-		assertEquals("0", entity.getModifiedBy());
-		assertEquals("bar.txt", entity.getFileNameOverride());
-	}
 
 	@Test
 	public void testUpdateEntityActivityId() throws Exception {
 		String id = "123";
 		Node node = mock(Node.class);
-		NamedAnnotations annos = new NamedAnnotations();
+		Annotations annos = new Annotations();
 		when(mockNodeManager.get(mockUser, id)).thenReturn(node);
-		when(mockNodeManager.getAnnotations(mockUser, id)).thenReturn(annos);
+		when(mockNodeManager.getEntityPropertyAnnotations(mockUser, id)).thenReturn(annos);
 		Entity entity = new Project();
 		entity.setId(id);
 		
@@ -184,9 +174,9 @@ public class EntityManagerImplUnitTest {
 	public void testDeleteActivityId() throws Exception {
 		String id = "123";
 		Node node = mock(Node.class);
-		NamedAnnotations annos = new NamedAnnotations();
+		Annotations annos = new Annotations();
 		when(mockNodeManager.get(mockUser, id)).thenReturn(node);
-		when(mockNodeManager.getAnnotations(mockUser, id)).thenReturn(annos);
+		when(mockNodeManager.getEntityPropertyAnnotations(mockUser, id)).thenReturn(annos);
 		Entity entity = new Project();
 		entity.setId(id);
 		
@@ -222,9 +212,9 @@ public class EntityManagerImplUnitTest {
 		String id = "123";
 		Node node = new Node();
 		node.setFileHandleId("101");
-		NamedAnnotations annos = new NamedAnnotations();
+		Annotations annos = new Annotations();
 		when(mockNodeManager.get(mockUser, id)).thenReturn(node);
-		when(mockNodeManager.getAnnotations(mockUser, id)).thenReturn(annos);
+		when(mockNodeManager.getEntityPropertyAnnotations(mockUser, id)).thenReturn(annos);
 		FileEntity entity = new FileEntity();
 		entity.setId(id);
 		String dataFileHandleId = "202"; // i.e. we are updating from 101 to 202
@@ -247,6 +237,8 @@ public class EntityManagerImplUnitTest {
 		// call under test
 		EntityChildrenResponse response = entityManager.getChildren(mockUser, childRequest);
 		assertNotNull(response);
+		assertEquals(statsReponse.getTotalChildCount(), response.getTotalChildCount());
+		assertEquals(statsReponse.getSumFileSizesBytes(), response.getSumFileSizesBytes());
 		verify(mockPermissionsManager).hasAccess(childRequest.getParentId(),
 				ACCESS_TYPE.READ, mockUser);
 		verify(mockPermissionsManager).getNonvisibleChildren(mockUser,
@@ -255,6 +247,15 @@ public class EntityManagerImplUnitTest {
 				childRequest.getIncludeTypes(), nonvisibleChildren,
 				DEFAULT_SORT_BY, DEFAULT_SORT_DIRECTION, DEFAULT_LIMIT+1,
 				DEFAULT_OFFSET);
+		
+		verify(mockNodeManager).getChildrenStats(statsRequestCaptor.capture());
+		ChildStatsRequest statsRequest = statsRequestCaptor.getValue();
+		assertNotNull(statsRequest);
+		assertEquals(childRequest.getParentId(), statsRequest.getParentId());
+		assertEquals(childRequest.getIncludeTypes(), statsRequest.getIncludeTypes());
+		assertEquals(nonvisibleChildren, statsRequest.getChildIdsToExclude());
+		assertEquals(childRequest.getIncludeTotalChildCount(), statsRequest.getIncludeTotalChildCount());
+		assertEquals(childRequest.getIncludeSumFileSizes(), statsRequest.getIncludeSumFileSizes());
 	}
 	
 	@Test (expected=IllegalArgumentException.class)
@@ -309,7 +310,7 @@ public class EntityManagerImplUnitTest {
 	
 	@Test (expected=UnauthorizedException.class)
 	public void testGetChildrenCannotReadParent(){
-		when(mockPermissionsManager.hasAccess(childRequest.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+		when(mockPermissionsManager.hasAccess(childRequest.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.accessDenied(""));
 		// call under test
 		entityManager.getChildren(mockUser, childRequest);
 	}
@@ -359,7 +360,7 @@ public class EntityManagerImplUnitTest {
 		EntityLookupRequest request = new EntityLookupRequest();
 		request.setParentId("syn1");
 		request.setEntityName("entityName");
-		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.accessDenied(""));
 		entityManager.lookupChild(mockUser, request);
 	}
 
@@ -368,7 +369,7 @@ public class EntityManagerImplUnitTest {
 		EntityLookupRequest request = new EntityLookupRequest();
 		request.setParentId("syn1");
 		request.setEntityName("entityName");
-		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockNodeManager.lookupChild(request.getParentId(), request.getEntityName())).thenThrow(new NotFoundException());
 		entityManager.lookupChild(mockUser, request);
 	}
@@ -379,9 +380,9 @@ public class EntityManagerImplUnitTest {
 		request.setParentId("syn1");
 		request.setEntityName("entityName");
 		String entityId = "syn2";
-		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockNodeManager.lookupChild(request.getParentId(), request.getEntityName())).thenReturn(entityId);
-		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.ACCESS_DENIED);
+		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.accessDenied(""));
 		entityManager.lookupChild(mockUser, request);
 	}
 
@@ -391,9 +392,9 @@ public class EntityManagerImplUnitTest {
 		request.setParentId("syn1");
 		request.setEntityName("entityName");
 		String entityId = "syn2";
-		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockNodeManager.lookupChild(request.getParentId(), request.getEntityName())).thenReturn(entityId);
-		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		EntityId result = entityManager.lookupChild(mockUser, request);
 		assertNotNull(result);
 		assertEquals(entityId, result.getId());
@@ -404,11 +405,20 @@ public class EntityManagerImplUnitTest {
 		EntityLookupRequest request = new EntityLookupRequest();
 		request.setEntityName("entityName");
 		String entityId = "syn2";
-		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(request.getParentId(), ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		when(mockNodeManager.lookupChild(EntityManagerImpl.ROOT_ID, request.getEntityName())).thenReturn(entityId);
-		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationManagerUtil.AUTHORIZED);
+		when(mockPermissionsManager.hasAccess(entityId, ACCESS_TYPE.READ, mockUser)).thenReturn(AuthorizationStatus.authorized());
 		EntityId result = entityManager.lookupChild(mockUser, request);
 		assertNotNull(result);
 		assertEquals(entityId, result.getId());
+	}
+	
+	@Test
+	public void testChangeEntityDataType() {
+		String entityId = "syn123";
+		DataType dataType = DataType.SENSITIVE_DATA;
+		// call under test
+		entityManager.changeEntityDataType(mockUser, entityId, dataType);
+		verify(mockObjectTypeManger).changeObjectsDataType(mockUser, entityId, ObjectType.ENTITY, dataType);
 	}
 }

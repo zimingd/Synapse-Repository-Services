@@ -8,8 +8,6 @@ import org.sagebionetworks.repo.model.dbo.asynch.AsynchJobType;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.amazonaws.services.sqs.AmazonSQS;
-import com.amazonaws.services.sqs.model.CreateQueueRequest;
-import com.amazonaws.services.sqs.model.CreateQueueResult;
 import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
@@ -56,9 +54,7 @@ public class AsynchJobQueuePublisherImpl implements AsynchJobQueuePublisher {
 		// Map each type to its queue;
 		toTypeToQueueURLMap = new HashMap<AsynchJobType, String>(AsynchJobType.values().length);
 		for(AsynchJobType type: AsynchJobType.values()){
-			CreateQueueRequest cqRequest = new CreateQueueRequest(type.getQueueName());
-			CreateQueueResult cqResult = this.awsSQSClient.createQueue(cqRequest);
-			String qUrl = cqResult.getQueueUrl();
+			String qUrl = this.awsSQSClient.getQueueUrl(type.getQueueName()).getQueueUrl();
 			toTypeToQueueURLMap.put(type, qUrl);
 		}
 	}

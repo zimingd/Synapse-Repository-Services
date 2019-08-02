@@ -1,10 +1,9 @@
 package org.sagebionetworks.repo.manager;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.HashSet;
@@ -37,8 +36,6 @@ import org.sagebionetworks.repo.model.principal.PrincipalAliasDAO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-
-import com.amazonaws.auth.AWSCredentials;
 
 /**
  * Checks how the message manager handles sending emails to Amazon SES
@@ -142,10 +139,6 @@ public class MessageManagerImplSESTest {
 		when(mockMessageDAO.getMessage(MESSAGE_ID_HTML)).thenReturn(mockHtmlMessageToUser);
 		
 		// Mocks downloadEmailContent(...)
-		String urlPT = MessageManagerImplSESTest.class.getClassLoader().getResource("images/notAnImage.txt").toExternalForm();
-		when(mockFileHandleManager.getRedirectURLForFileHandle(FILE_HANDLE_ID_PLAIN_TEXT)).thenReturn(urlPT);
-		String urlHTML = MessageManagerImplSESTest.class.getClassLoader().getResource("images/notAnImage.html").toExternalForm();
-		when(mockFileHandleManager.getRedirectURLForFileHandle(FILE_HANDLE_ID_HTML)).thenReturn(urlHTML);
 		when(mockFileHandleManager.downloadFileToString(anyString())).thenReturn("my dog has fleas");
 
 		// Proceed past this check

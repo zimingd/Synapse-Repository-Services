@@ -1,8 +1,12 @@
 package org.sagebionetworks.repo.manager.message;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 import java.util.Date;
@@ -14,9 +18,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
-
-import static org.mockito.Mockito.*;
-
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.dbo.dao.DBOChangeDAO;
 import org.sagebionetworks.repo.model.message.ChangeMessage;
@@ -102,7 +103,6 @@ public class RepositoryMessagePublisherImplAutowireTest {
 		message.setChangeType(ChangeType.CREATE);
 		message.setObjectType(ObjectType.ENTITY);
 		message.setObjectId("123");
-		message.setObjectEtag("ABCDEFG");
 		message.setChangeNumber(1l);
 		message.setTimestamp(new Date());
 		message = changeDao.replaceChange(message);
@@ -132,7 +132,6 @@ public class RepositoryMessagePublisherImplAutowireTest {
 			message.setChangeType(ChangeType.CREATE);
 			message.setObjectType(ObjectType.ENTITY);
 			message.setObjectId(""+i);
-			message.setObjectEtag("ABCDEFG"+i);
 			message.setChangeNumber(1l);
 			message.setTimestamp(new Date());
 			message = changeDao.replaceChange(message);

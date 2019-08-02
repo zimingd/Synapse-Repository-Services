@@ -16,7 +16,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
-import org.sagebionetworks.repo.model.ACLInheritanceException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.DatastoreException;
@@ -197,7 +196,7 @@ public class UserProfileManagerImplTest {
 	public void testGetPicturePresignedUrlNotFound() throws Exception {
 		String userIdString = "" + userId;
 		// get the presigned url for this handle
-		assertNotNull(userProfileManager.getUserProfileImageUrl(userIdString));
+		assertNotNull(userProfileManager.getUserProfileImageUrl(userInfo, userIdString));
 	}
 
 	@Test

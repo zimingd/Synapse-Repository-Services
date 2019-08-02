@@ -2,7 +2,7 @@ package org.sagebionetworks.repo.manager.search;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -21,6 +21,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.sagebionetworks.aws.SynapseS3Client;
 import org.sagebionetworks.repo.manager.EntityManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
@@ -32,7 +33,6 @@ import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityPath;
 import org.sagebionetworks.repo.model.EntityType;
-import org.sagebionetworks.repo.model.NamedAnnotations;
 import org.sagebionetworks.repo.model.Node;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.Project;
@@ -55,8 +55,6 @@ import org.sagebionetworks.schema.adapter.org.json.AdapterFactoryImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-
-import com.amazonaws.services.s3.AmazonS3;
 
 /**
  * @author deflaux
@@ -83,7 +81,7 @@ public class SearchDocumentDriverImplAutowireTest {
 	@Autowired
 	FileHandleDao fileMetadataDao;	
 	@Autowired
-	AmazonS3 s3Client;
+	SynapseS3Client s3Client;
 	
 	private UserInfo adminUserInfo;
 	private Project project;
@@ -186,19 +184,15 @@ public class SearchDocumentDriverImplAutowireTest {
 		node.setModifiedByPrincipalId(nonexistantPrincipalId);
 		node.setModifiedOn(new Date());
 		node.setVersionLabel("versionLabel");
-		NamedAnnotations named = new NamedAnnotations();
-		Annotations primaryAnnos = named.getAdditionalAnnotations();
-		primaryAnnos.addAnnotation("numSamples", 999L);
-		Annotations additionalAnnos = named.getAdditionalAnnotations();
+		Annotations additionalAnnos = new Annotations();
 		additionalAnnos
 				.addAnnotation("stringKey",
 						"a multi-word annotation gets underscores so we can exact-match find it");
 		additionalAnnos.addAnnotation("longKey", 10L);
-		additionalAnnos.addAnnotation("Tissue_Tumor", "ear lobe");
-		additionalAnnos.addAnnotation("platform", "synapse");
+		additionalAnnos.addAnnotation("tissue", "ear lobe");
 		additionalAnnos.addAnnotation("consortium", "C O N S O R T I U M");
 		// PLFM-4438
-		additionalAnnos.addAnnotation("disease", 1L);
+		additionalAnnos.addAnnotation("diagnosis", 1L);
 		Date dateValue = new Date();
 		additionalAnnos.addAnnotation("dateKey", dateValue);
 		additionalAnnos
@@ -230,7 +224,7 @@ public class SearchDocumentDriverImplAutowireTest {
 		fakeEntityPath.writeToJSONObject(adapter);		
 		String fakeEntityPathJSONString = adapter.toJSONString();
 		Document document = searchDocumentDriver.formulateSearchDocument(node,
-				named, acl, wikiPageText);
+				additionalAnnos, acl, wikiPageText);
 		assertEquals(DocumentTypeNames.add, document.getType());
 		assertEquals(node.getId(), document.getId());
 
@@ -252,14 +246,9 @@ public class SearchDocumentDriverImplAutowireTest {
 		assertEquals(new Long(node.getModifiedOn().getTime() / 1000), fields
 				.getModified_on());
 
-		// Check boost field
-		assertTrue(fields.getBoost().contains(node.getId()));
-		assertTrue(fields.getBoost().contains(node.getName()));
-
 		// Check the faceted fields
-		assertEquals((Long) 999L, fields.getNum_samples());
+		assertNull(fields.getOrgan());
 		assertEquals("ear lobe", fields.getTissue());
-		assertEquals("synapse", fields.getPlatform());
 		assertEquals("C O N S O R T I U M", fields.getConsortium());
 
 		// Check ACL fields

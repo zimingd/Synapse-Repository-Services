@@ -15,6 +15,8 @@ import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.BooleanResult;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
+import org.sagebionetworks.repo.model.DataType;
+import org.sagebionetworks.repo.model.DataTypeResponse;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Entity;
 import org.sagebionetworks.repo.model.EntityChildrenRequest;
@@ -172,7 +174,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 @ControllerInfo(displayName = "Entity Services", path = "repo/v1")
 @Controller
 @RequestMapping(UrlHelpers.REPO_PATH)
-public class EntityController extends BaseController {
+public class EntityController {
 
 	@Autowired
 	ServiceProvider serviceProvider;
@@ -200,7 +202,19 @@ public class EntityController extends BaseController {
 	 * >ACCESS_TYPE.CREATE</a> on the parent Entity. Any authenticated caller
 	 * can create a new Project (with parentId=null).
 	 * </p>
-	 * 
+	 * <p>
+	 * <b>Service Limits</b>
+	 * <table border="1">
+	 * <tr>
+	 * <th>resource</th>
+	 * <th>limit</th>
+	 * </tr>
+	 * <tr>
+	 * <td>The maximum number of children for a single parent entity</td>
+	 * <td>10 K</td>
+	 * </tr>
+	 * </table>
+	 * </p>
 	 * @param userId
 	 *            - The user that is doing the create.
 	 * @param header
@@ -240,7 +254,7 @@ public class EntityController extends BaseController {
 			IOException, JSONObjectAdapterException {
 		// Now create the entity
 		Entity createdEntity = serviceProvider.getEntityService().createEntity(
-				userId, entity, generatedBy, request);
+				userId, entity, generatedBy);
 		// Finally, add the type specific metadata.
 		return createdEntity;
 	}
@@ -275,7 +289,7 @@ public class EntityController extends BaseController {
 			DatastoreException, UnauthorizedException {
 		// Get the entity.
 		Entity entity = serviceProvider.getEntityService().getEntity(userId,
-				id, request);
+				id);
 		return entity;
 	}
 
@@ -304,7 +318,19 @@ public class EntityController extends BaseController {
 	 * href="${org.sagebionetworks.repo.model.ACCESS_TYPE}"
 	 * >ACCESS_TYPE.UPDATE</a> on the Entity.
 	 * </p>
-	 * 
+	 * <p>
+	 * <b>Service Limits</b>
+	 * <table border="1">
+	 * <tr>
+	 * <th>resource</th>
+	 * <th>limit</th>
+	 * </tr>
+	 * <tr>
+	 * <td>The maximum number of children for a single parent entity</td>
+	 * <td>10 K</td>
+	 * </tr>
+	 * </table>
+	 * </p>
 	 * @param id
 	 *            The ID of the entity to update. This ID must match the ID of
 	 *            the passed Entity in the request body.
@@ -356,7 +382,7 @@ public class EntityController extends BaseController {
 		}
 		// validate the entity
 		entity = serviceProvider.getEntityService().updateEntity(userId,
-				entity, newVersionBoolean, generatedBy, request);
+				entity, newVersionBoolean, generatedBy);
 		// Return the result
 		return entity;
 	}
@@ -427,7 +453,7 @@ public class EntityController extends BaseController {
 			DatastoreException, UnauthorizedException {
 		// Pass it along
 		return serviceProvider.getEntityService().getEntityAnnotations(userId,
-				id, request);
+				id);
 	}
 
 	/**
@@ -473,7 +499,7 @@ public class EntityController extends BaseController {
 			InvalidModelException {
 		// Pass it along
 		return serviceProvider.getEntityService().updateEntityAnnotations(
-				userId, id, updatedAnnotations, request);
+				userId, id, updatedAnnotations);
 	}
 
 	/**
@@ -539,7 +565,7 @@ public class EntityController extends BaseController {
 				.getReader());
 		// validate the entity
 		entity = serviceProvider.getEntityService().updateEntity(userId,
-				entity, newVersion, activityId, request);
+				entity, newVersion, activityId);
 		// Return the result
 		return entity;
 	}
@@ -601,7 +627,7 @@ public class EntityController extends BaseController {
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		// Get the entity.
 		Entity updatedEntity = serviceProvider.getEntityService()
-				.getEntityForVersion(userId, id, versionNumber, request);
+				.getEntityForVersion(userId, id, versionNumber);
 		// Return the results
 		return updatedEntity;
 	}
@@ -758,7 +784,7 @@ public class EntityController extends BaseController {
 			NotFoundException, UnauthorizedException {
 		// pass it along.
 		return new BooleanResult(serviceProvider.getEntityService().hasAccess(
-				id, userId, request, accessType));
+				id, userId, accessType));
 	}
 
 	/**
@@ -848,7 +874,7 @@ public class EntityController extends BaseController {
 					"ACL ID in the path cannot be null");
 		newAcl.setId(id);
 		AccessControlList acl = serviceProvider.getEntityService()
-				.createEntityACL(userId, newAcl, request);
+				.createEntityACL(userId, newAcl);
 		return acl;
 	}
 
@@ -926,7 +952,7 @@ public class EntityController extends BaseController {
 		// This is a fix for PLFM-621
 		updatedACL.setId(id);
 		return serviceProvider.getEntityService().updateEntityACL(userId,
-				updatedACL, null, request);
+				updatedACL, null);
 	}
 
 	/**
@@ -1008,7 +1034,7 @@ public class EntityController extends BaseController {
 			throw new IllegalArgumentException("PathVariable ID cannot be null");
 		// pass it along.
 		return serviceProvider.getEntityService().getEntityBenefactor(id,
-				userId, request);
+				userId);
 	}
 
 	/**
@@ -1068,8 +1094,8 @@ public class EntityController extends BaseController {
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		// Pass it along
 		return serviceProvider.getEntityService()
-				.getEntityAnnotationsForVersion(userId, id, versionNumber,
-						request);
+				.getEntityAnnotationsForVersion(userId, id, versionNumber
+				);
 	}
 
 	/**
@@ -1183,7 +1209,7 @@ public class EntityController extends BaseController {
 			HttpServletRequest request) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
 		return serviceProvider.getEntityService().getActivityForEntity(userId,
-				id, request);
+				id);
 	}
 
 	/**
@@ -1215,7 +1241,7 @@ public class EntityController extends BaseController {
 			HttpServletRequest request) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
 		return serviceProvider.getEntityService().getActivityForEntity(userId,
-				id, versionNumber, request);
+				id, versionNumber);
 	}
 
 	/**
@@ -1250,7 +1276,7 @@ public class EntityController extends BaseController {
 			HttpServletRequest request) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
 		return serviceProvider.getEntityService().setActivityForEntity(userId,
-				id, generatedBy, request);
+				id, generatedBy);
 	}
 
 	/**
@@ -1277,8 +1303,8 @@ public class EntityController extends BaseController {
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			HttpServletRequest request) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
-		serviceProvider.getEntityService().deleteActivityForEntity(userId, id,
-				request);
+		serviceProvider.getEntityService().deleteActivityForEntity(userId, id
+		);
 	}
 
 	// Files
@@ -1495,7 +1521,7 @@ public class EntityController extends BaseController {
 			HttpServletRequest request) throws NotFoundException,
 			DatastoreException {
 		List<EntityHeader> entityHeaders = serviceProvider.getEntityService()
-				.getEntityHeaderByMd5(userId, md5, request);
+				.getEntityHeaderByMd5(userId, md5);
 		PaginatedResults<EntityHeader> results = new PaginatedResults<EntityHeader>();
 		results.setResults(entityHeaders);
 		results.setTotalNumberOfResults(entityHeaders.size());
@@ -1548,6 +1574,29 @@ public class EntityController extends BaseController {
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestBody(required=true) EntityLookupRequest request){
 		return serviceProvider.getEntityService().lookupChild(userId, request);
+	}
+	
+	/**
+	 * Change the <a href="${org.sagebionetworks.repo.model.DataType}" >DataType</a>
+	 * of the given entity. The entity's DataType controls how the entity can be
+	 * accessed. For example, an entity's DataType must be set to 'open_data' in
+	 * order for anonymous to be allowed to access its contents.
+	 * 
+	 * <p>
+	 * Note: The caller must be a member of the 'Synapse Access and Compliance Team'
+	 * (id=464532) in order to change an Entity's type to 'OPEN_DATA'. The caller must be grated
+	 * UPDATED on the Entity to change the its type to any other value.
+	 * </p>
+	 * 
+	 * @param userId
+	 * @param id
+	 * @param dataType
+	 */
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = { UrlHelpers.ENTITY_DATA_TYPE }, method = RequestMethod.PUT)
+	public @ResponseBody DataTypeResponse changeEntityDataType(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String id, @RequestParam(value = "type") DataType dataType) {
+		return serviceProvider.getEntityService().changeEntityDataType(userId, id, dataType);
 	}
 }
 

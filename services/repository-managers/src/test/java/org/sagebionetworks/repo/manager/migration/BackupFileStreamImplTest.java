@@ -4,7 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,18 +27,22 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
+import org.sagebionetworks.repo.model.UnmodifiableXStream;
 import org.sagebionetworks.repo.model.daemon.BackupAliasType;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.migration.MigrationTypeProvider;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOAccessControlList;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOCredential;
+import org.sagebionetworks.repo.model.dbo.persistence.DBOCredentialBackup;
 import org.sagebionetworks.repo.model.dbo.persistence.DBONode;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOResourceAccess;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOResourceAccessType;
 import org.sagebionetworks.repo.model.dbo.persistence.DBORevision;
 import org.sagebionetworks.repo.model.migration.MigrationType;
+import org.sagebionetworks.repo.model.query.jdo.SqlConstants;
+import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.amazonaws.util.StringInputStream;
@@ -51,7 +55,11 @@ public class BackupFileStreamImplTest {
 	
 	@Mock
 	MigrationTypeProvider mockTypeProvider;
-	
+
+	UnmodifiableXStream tableNameXStream;
+	UnmodifiableXStream migrationTypeXStream;
+
+
 	BackupFileStreamImpl backupFileStream;
 	
 	ByteArrayOutputStream byteArrayOutputStream;
@@ -122,6 +130,17 @@ public class BackupFileStreamImplTest {
 		credentialTwo.setSecretKey("keyTwo");
 		credentialTwo.setPrincipalId(456L);
 		credentials = Lists.newArrayList(credentialOne, credentialTwo);
+
+		tableNameXStream = UnmodifiableXStream.builder()
+				.alias(SqlConstants.TABLE_NODE, DBONode.class)
+				.alias(SqlConstants.TABLE_REVISION, DBORevision.class)
+				.alias(SqlConstants.TABLE_ACCESS_CONTROL_LIST, DBOAccessControlList.class)
+				.alias(SqlConstants.TABLE_RESOURCE_ACCESS, DBOResourceAccess.class)
+				.alias(SqlConstants.TABLE_RESOURCE_ACCESS_TYPE, DBOResourceAccessType.class)
+				.alias(SqlConstants.TABLE_CREDENTIAL, DBOCredentialBackup.class).build();
+		migrationTypeXStream = UnmodifiableXStream.builder().build();
+		when(mockTypeProvider.getXStream(BackupAliasType.TABLE_NAME)).thenReturn(tableNameXStream);
+		when(mockTypeProvider.getXStream(BackupAliasType.MIGRATION_TYPE_NAME)).thenReturn(migrationTypeXStream);
 	}
 	
 	@Test
@@ -224,6 +243,22 @@ public class BackupFileStreamImplTest {
 		assertEquals(type, result);
 	}
 	
+	/**
+	 * Support for types that have been removed.  See: PLFM-5682.
+	 */
+	@Test
+	public void testGetTypeFromFileNameRemovedType() {
+		String typeName = "RemovedType";
+		String fileName = typeName+".12.xml";
+		// call under test
+		try {
+			BackupFileStreamImpl.getTypeFromFileName(fileName);
+			fail();
+		} catch (NotFoundException e) {
+			assertTrue(e.getMessage().contains(typeName));
+		}
+	}
+	
 	@Test (expected=IllegalArgumentException.class)
 	public void testGetTypeFromFileNameNull() {
 		String name = null;
@@ -249,46 +284,12 @@ public class BackupFileStreamImplTest {
 		BackupFileStreamImpl.getTypeFromFileName(name);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test (expected=NotFoundException.class)
 	public void testGetTypeFromFileNameWrongNotType() {
 		// Type name does not match
 		String name = MigrationType.ACL.name()+"1"+".xml";
 		// call under test
 		BackupFileStreamImpl.getTypeFromFileName(name);
-	}
-	
-	@Test
-	public void testGetAliasTypeName() {
-		MigratableDatabaseObject mdo = new DBONode();
-		BackupAliasType type = BackupAliasType.MIGRATION_TYPE_NAME;
-		// Call under test
-		String allias = BackupFileStreamImpl.getAlias(mdo, type);
-		assertEquals(mdo.getMigratableTableType().name(), allias);
-	}
-	
-	@Test
-	public void testGetAliasTableName() {
-		MigratableDatabaseObject mdo = new DBONode();
-		BackupAliasType type = BackupAliasType.TABLE_NAME;
-		// Call under test
-		String allias = BackupFileStreamImpl.getAlias(mdo, type);
-		assertEquals(mdo.getTableMapping().getTableName(), allias);
-	}
-	
-	@Test (expected=IllegalArgumentException.class)
-	public void testGetAliasTableNameNullType() {
-		MigratableDatabaseObject mdo = new DBONode();
-		BackupAliasType type = null;
-		// Call under test
-		BackupFileStreamImpl.getAlias(mdo, type);
-	}
-	
-	@Test (expected=IllegalArgumentException.class)
-	public void testGetAliasTableNameNullObject() {
-		MigratableDatabaseObject mdo = null;
-		BackupAliasType type = BackupAliasType.TABLE_NAME;
-		// Call under test
-		BackupFileStreamImpl.getAlias(mdo, type);
 	}
 	
 	@Test
@@ -489,6 +490,14 @@ public class BackupFileStreamImplTest {
 		StringInputStream input = new StringInputStream("");
 		int index = 0;
 		String fileName = BackupFileStreamImpl.createFileName(MigrationType.CREDENTIAL, index);
+		// Call under test
+		backupFileStream.readFileFromStream(input, backupAliasType, fileName);
+	}
+	
+	@Test(expected = EmptyFileException.class)
+	public void testReadFileFromStreamMigrationTypeDoesNotExist() throws Exception {
+		StringInputStream input = new StringInputStream("");
+		String fileName = "RemovedType.4.xml";
 		// Call under test
 		backupFileStream.readFileFromStream(input, backupAliasType, fileName);
 	}

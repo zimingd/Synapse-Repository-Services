@@ -35,6 +35,8 @@ import org.sagebionetworks.client.exceptions.SynapseForbiddenException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.client.exceptions.UnknownSynapseServerException;
 import org.sagebionetworks.repo.model.Annotations;
+import org.sagebionetworks.repo.model.DataType;
+import org.sagebionetworks.repo.model.DataTypeResponse;
 import org.sagebionetworks.repo.model.Entity;
 import org.sagebionetworks.repo.model.Folder;
 import org.sagebionetworks.repo.model.NextPageToken;
@@ -46,6 +48,8 @@ import org.sagebionetworks.repo.model.table.ColumnChange;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnModelPage;
 import org.sagebionetworks.repo.model.table.ColumnType;
+import org.sagebionetworks.repo.model.table.FacetColumnRangeRequest;
+import org.sagebionetworks.repo.model.table.FacetType;
 import org.sagebionetworks.repo.model.table.PaginatedColumnModels;
 import org.sagebionetworks.repo.model.table.PartialRow;
 import org.sagebionetworks.repo.model.table.PartialRowSet;
@@ -55,12 +59,15 @@ import org.sagebionetworks.repo.model.table.Row;
 import org.sagebionetworks.repo.model.table.RowReferenceSet;
 import org.sagebionetworks.repo.model.table.RowSelection;
 import org.sagebionetworks.repo.model.table.RowSet;
+import org.sagebionetworks.repo.model.table.SnapshotRequest;
+import org.sagebionetworks.repo.model.table.SnapshotResponse;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.TableFileHandleResults;
 import org.sagebionetworks.repo.model.table.TableSchemaChangeRequest;
 import org.sagebionetworks.repo.model.table.TableSchemaChangeResponse;
 import org.sagebionetworks.repo.model.table.TableUpdateRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateResponse;
+import org.sagebionetworks.repo.model.table.TransformSqlWithFacetsRequest;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
 import org.sagebionetworks.repo.model.table.ViewTypeMask;
@@ -186,6 +193,12 @@ public class IT100TableControllerTest {
 		// now create a table entity
 		TableEntity table = createTable(Lists.newArrayList(one.getId(), two.getId()));
 		String tableId = table.getId();
+		
+		// Set the table's type to sensitive (add with PLFM-5240)
+		DataType dataType = DataType.SENSITIVE_DATA;
+		DataTypeResponse typeResponse = synapse.changeEntitysDataType(tableId, dataType);
+		assertNotNull(typeResponse);
+		assertEquals(dataType, typeResponse.getDataType());
 		
 		assertNotNull(table);
 		assertNotNull(table.getId());
@@ -684,7 +697,7 @@ public class IT100TableControllerTest {
 
 	@Test
 	public void testQueryAsync() throws Exception {
-		int columnCount = 20;
+		int columnCount = 16;
 		int stringSize = 1000;
 		int rowsNeeded = 40;
 
@@ -730,7 +743,7 @@ public class IT100TableControllerTest {
 			}
 		});
 		
-		assertEquals(result.getMaxRowsPerPage().intValue(), result.getQueryResult().getQueryResults().getRows().size());
+		assertTrue(result.getMaxRowsPerPage().intValue() >= result.getQueryResult().getQueryResults().getRows().size());
 		assertEquals(rowsNeeded, result.getQueryCount().intValue());
 		assertNotNull(result.getQueryResult().getNextPageToken());
 		
@@ -785,6 +798,34 @@ public class IT100TableControllerTest {
 		assertEquals(Lists.newArrayList(cm), response.getSchema());
 	}
 	
+	@Test
+	public void testCreateTableSnapshot() throws SynapseException {
+		ColumnModel cm = new ColumnModel();
+		cm.setName("aString");
+		cm.setColumnType(ColumnType.STRING);
+		cm.setMaximumSize(100L);
+		cm = synapse.createColumnModel(cm);
+		
+		// create a table
+		TableEntity table = createTable(Lists.newArrayList(cm.getId()), synapse);
+		
+		SnapshotRequest request = new SnapshotRequest();
+		request.setSnapshotLabel("snapshot label");
+		request.setSnapshotComment("snapshot comment");
+		// call under test
+		SnapshotResponse response = synapse.createTableSnapshot(table.getId(), request);
+		assertNotNull(response);
+		assertNotNull(response.getSnapshotVersionNumber());
+		
+		Entity version = synapse.getEntityByIdForVersion(table.getId(), response.getSnapshotVersionNumber());
+		assertNotNull(version);
+		assertTrue(version instanceof TableEntity);
+		TableEntity tableVersion = (TableEntity) version;
+		assertEquals(request.getSnapshotLabel(), tableVersion.getVersionLabel());
+		assertEquals(request.getSnapshotComment(), tableVersion.getVersionComment());
+	}
+	
+	
 	@Test (timeout=60000)
 	public void testGetPossibleColumnModelsForViewScope() throws Exception {
 		// Create a project to contain it all
@@ -837,6 +878,25 @@ public class IT100TableControllerTest {
 		assertEquals(1, page.getResults().size());
 		ColumnModel cm = page.getResults().get(0);
 		assertEquals("keyB", cm.getName());
+	}
+	
+	@Test
+	public void tesSqlTransformRequest() throws SynapseException {
+		TransformSqlWithFacetsRequest request = new TransformSqlWithFacetsRequest();
+		request.setSqlToTransform("select * from syn123");
+		FacetColumnRangeRequest facet = new FacetColumnRangeRequest();
+		facet.setColumnName("foo");
+		facet.setMax("100");
+		facet.setMin("0");
+		request.setSelectedFacets(Lists.newArrayList(facet));
+		ColumnModel column = new ColumnModel();
+		column.setName("foo");
+		column.setFacetType(FacetType.range);
+		column.setColumnType(ColumnType.INTEGER);
+		request.setSchema(Lists.newArrayList(column));
+		// Call under test
+		String resultSql = synapse.transformSqlRequest(request);
+		assertEquals("SELECT * FROM syn123 WHERE ( ( \"foo\" BETWEEN '0' AND '100' ) )", resultSql);
 	}
 	
 	private TableEntity createTable(List<String> columns) throws SynapseException {

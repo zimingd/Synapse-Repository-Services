@@ -1,6 +1,8 @@
 package org.sagebionetworks.repo.model.dbo.persistence.table;
 
-import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.*;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_BOUND_OWNER_ETAG;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_BOUND_OWNER_OBJECT_ID;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_BOUND_COLUMN_OWNER;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -75,7 +77,6 @@ public class DBOBoundColumnOwner implements MigratableDatabaseObject<DBOBoundCol
 	@Override
 	public List<MigratableDatabaseObject<?,?>> getSecondaryTypes() {
 		List<MigratableDatabaseObject<?,?>> seconday = new LinkedList<MigratableDatabaseObject<?,?>>();
-		seconday.add(new DBOBoundColumn());
 		seconday.add(new DBOBoundColumnOrdinal());
 		return seconday;
 	}

@@ -6,12 +6,11 @@ import java.util.Map;
 import java.util.Set;
 
 import org.sagebionetworks.repo.manager.NodeManager;
-import org.sagebionetworks.repo.model.AnnotationNameSpace;
 import org.sagebionetworks.repo.model.Annotations;
-import org.sagebionetworks.repo.model.NamedAnnotations;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.dao.table.ColumnModelDAO;
 import org.sagebionetworks.repo.model.dbo.dao.table.ViewScopeDao;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.table.AnnotationType;
 import org.sagebionetworks.repo.model.table.ColumnChange;
@@ -20,9 +19,10 @@ import org.sagebionetworks.repo.model.table.EntityField;
 import org.sagebionetworks.repo.model.table.SparseRowDto;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewTypeMask;
-import org.sagebionetworks.repo.transactions.RequiresNewReadCommitted;
-import org.sagebionetworks.repo.transactions.WriteTransactionReadCommitted;
+import org.sagebionetworks.repo.transactions.NewWriteTransaction;
+import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.table.cluster.SQLUtils;
+import org.sagebionetworks.table.cluster.utils.ColumnConstants;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -35,7 +35,7 @@ public class TableViewManagerImpl implements TableViewManager {
 	/**
 	 * Max columns per view is now the same as the max per table.
 	 */
-	public static final int MAX_COLUMNS_PER_VIEW = ColumnModelManagerImpl.MY_SQL_MAX_COLUMNS_PER_TABLE;
+	public static final int MAX_COLUMNS_PER_VIEW = ColumnConstants.MY_SQL_MAX_COLUMNS_PER_TABLE;
 	
 	@Autowired
 	ViewScopeDao viewScopeDao;
@@ -52,7 +52,7 @@ public class TableViewManagerImpl implements TableViewManager {
 	 * (non-Javadoc)
 	 * @see org.sagebionetworks.repo.manager.table.TableViewManager#setViewSchemaAndScope(org.sagebionetworks.repo.model.UserInfo, java.util.List, java.util.List, java.lang.String)
 	 */
-	@WriteTransactionReadCommitted
+	@WriteTransaction
 	@Override
 	public void setViewSchemaAndScope(UserInfo userInfo, List<String> schema,
 			ViewScope scope, String viewIdString) {
@@ -60,6 +60,7 @@ public class TableViewManagerImpl implements TableViewManager {
 		ValidateArgument.required(scope, "scope");
 		validateViewSchemaSize(schema);
 		Long viewId = KeyFactory.stringToKey(viewIdString);
+		IdAndVersion idAndVersion = IdAndVersion.parse(viewIdString);
 		Set<Long> scopeIds = null;
 		if(scope.getScope() != null){
 			scopeIds = new HashSet<Long>(KeyFactory.stringToKey(scope.getScope()));
@@ -76,32 +77,35 @@ public class TableViewManagerImpl implements TableViewManager {
 		// Define the scope of this view.
 		viewScopeDao.setViewScopeAndType(viewId, scopeIds, viewTypeMaks);
 		// Define the schema of this view.
-		columModelManager.bindColumnToObject(schema, viewIdString);
+		columModelManager.bindColumnsToDefaultVersionOfObject(schema, viewIdString);
 		// trigger an update
-		tableManagerSupport.setTableToProcessingAndTriggerUpdate(viewIdString);
+		tableManagerSupport.setTableToProcessingAndTriggerUpdate(idAndVersion);
 	}
 
 	@Override
 	public Set<Long> findViewsContainingEntity(String entityId) {
-		Set<Long> entityPath = tableManagerSupport.getEntityPath(entityId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(entityId);
+		Set<Long> entityPath = tableManagerSupport.getEntityPath(idAndVersion);
 		return viewScopeDao.findViewScopeIntersectionWithPath(entityPath);
 	}
 
 	@Override
 	public List<ColumnModel> getViewSchema(String tableId) {
-		 return tableManagerSupport.getColumnModelsForTable(tableId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
+		return tableManagerSupport.getColumnModelsForTable(idAndVersion);
 	}
 
-	@WriteTransactionReadCommitted
+	@WriteTransaction
 	@Override
 	public List<ColumnModel> applySchemaChange(UserInfo user, String viewId,
 			List<ColumnChange> changes, List<String> orderedColumnIds) {
 		// first determine what the new Schema will be
 		List<String> newSchemaIds = columModelManager.calculateNewSchemaIdsAndValidate(viewId, changes, orderedColumnIds);
 		validateViewSchemaSize(newSchemaIds);
-		List<ColumnModel> newSchema = columModelManager.bindColumnToObject(newSchemaIds, viewId);
+		List<ColumnModel> newSchema = columModelManager.bindColumnsToDefaultVersionOfObject(newSchemaIds, viewId);
+		IdAndVersion idAndVersion = IdAndVersion.parse(viewId);
 		// trigger an update.
-		tableManagerSupport.setTableToProcessingAndTriggerUpdate(viewId);
+		tableManagerSupport.setTableToProcessingAndTriggerUpdate(idAndVersion);
 		return newSchema;
 	}
 	
@@ -119,7 +123,7 @@ public class TableViewManagerImpl implements TableViewManager {
 	
 	@Override
 	public List<String> getTableSchema(String tableId){
-		return columModelManager.getColumnIdForTable(tableId);
+		return columModelManager.getColumnIdForTable(IdAndVersion.parse(tableId));
 	}
 
 	/**
@@ -132,7 +136,7 @@ public class TableViewManagerImpl implements TableViewManager {
 	 * @return The EntityId.
 	 * 
 	 */
-	@RequiresNewReadCommitted
+	@NewWriteTransaction
 	@Override
 	public void updateEntityInView(UserInfo user,
 			List<ColumnModel> tableSchema, SparseRowDto row) {
@@ -160,13 +164,12 @@ public class TableViewManagerImpl implements TableViewManager {
 			}
 		}
 		// Get the current annotations for this entity.
-		NamedAnnotations annotations = nodeManager.getAnnotations(user, entityId);
-		Annotations additional = annotations.getAdditionalAnnotations();
-		additional.setEtag(etag);
-		boolean updated = updateAnnotationsFromValues(additional, tableSchema, values);
+		Annotations userAnnotations = nodeManager.getUserAnnotations(user, entityId);
+		userAnnotations.setEtag(etag);
+		boolean updated = updateAnnotationsFromValues(userAnnotations, tableSchema, values);
 		if(updated){
 			// save the changes.
-			nodeManager.updateAnnotations(user, entityId, additional, AnnotationNameSpace.ADDITIONAL);
+			nodeManager.updateUserAnnotations(user, entityId, userAnnotations);
 		}
 	}
 	

@@ -1,5 +1,16 @@
 package org.sagebionetworks.search;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Iterator;
+import java.util.Set;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.sagebionetworks.repo.model.search.Document;
+import org.sagebionetworks.repo.web.TemporarilyUnavailableException;
+import org.sagebionetworks.util.ValidateArgument;
+
 import com.amazonaws.services.cloudsearchdomain.AmazonCloudSearchDomain;
 import com.amazonaws.services.cloudsearchdomain.model.AmazonCloudSearchDomainException;
 import com.amazonaws.services.cloudsearchdomain.model.DocumentServiceException;
@@ -8,15 +19,7 @@ import com.amazonaws.services.cloudsearchdomain.model.SearchRequest;
 import com.amazonaws.services.cloudsearchdomain.model.SearchResult;
 import com.amazonaws.services.cloudsearchdomain.model.UploadDocumentsRequest;
 import com.amazonaws.services.cloudsearchdomain.model.UploadDocumentsResult;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.sagebionetworks.repo.model.search.Document;
-import org.sagebionetworks.util.ValidateArgument;
-
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.List;
+import com.google.common.collect.Iterators;
 
 /**
  * A wrapper for AWS's AmazonCloudSearchDomain. DO NOT INSTANTIATE.
@@ -25,34 +28,50 @@ import java.util.List;
 public class CloudsSearchDomainClientAdapter {
 	static private Logger logger = LogManager.getLogger(CloudsSearchDomainClientAdapter.class);
 
-	private AmazonCloudSearchDomain client;
+	private final AmazonCloudSearchDomain client;
+	private final CloudSearchDocumentBatchIteratorProvider iteratorProvider;
+	private final CloudSearchLogger recordLogger;
 
-
-	CloudsSearchDomainClientAdapter(AmazonCloudSearchDomain client){
+	CloudsSearchDomainClientAdapter(AmazonCloudSearchDomain client, CloudSearchDocumentBatchIteratorProvider iteratorProvider, CloudSearchLogger recordLogger){
 		this.client = client;
+		this.iteratorProvider = iteratorProvider;
+		this.recordLogger = recordLogger;
+	}
+
+	public void sendDocuments(Iterator<Document> documents){
+		ValidateArgument.required(documents, "documents");
+		Iterator<CloudSearchDocumentBatch> searchDocumentFileIterator = iteratorProvider.getIterator(documents);
+
+
+		while(searchDocumentFileIterator.hasNext()) {
+			Set<String> documentIds = null;
+			try (CloudSearchDocumentBatch batch = searchDocumentFileIterator.next();
+				 InputStream fileStream = batch.getNewInputStream();) {
+
+				documentIds = batch.getDocumentIds();
+
+				UploadDocumentsRequest request = new UploadDocumentsRequest()
+						.withContentType("application/json")
+						.withDocuments(fileStream)
+						.withContentLength(batch.size());
+				UploadDocumentsResult result = client.uploadDocuments(request);
+				recordLogger.currentBatchFinshed(result.getStatus());
+			} catch (DocumentServiceException e) {
+				logger.error("The following documents failed to upload: " +  documentIds);
+				documentIds = null;
+				recordLogger.currentBatchFinshed(e.getStatus());
+				throw handleCloudSearchExceptions(e);
+			} catch (IOException e){
+				throw new TemporarilyUnavailableException(e);
+			} finally{
+				recordLogger.pushAllRecordsAndReset();
+			}
+		}
 	}
 
 	public void sendDocument(Document document){
 		ValidateArgument.required(document, "document");
-		sendDocuments(Collections.singletonList(document));
-	}
-
-	public void sendDocuments(List<Document> batch){
-		ValidateArgument.required(batch, "batch");
-		ValidateArgument.requirement(!batch.isEmpty(), "List<Document> batch cannot be empty");
-
-
-		String documents = SearchUtil.convertSearchDocumentsToJSONString(batch);
-		byte[] documentBytes = documents.getBytes(StandardCharsets.UTF_8);
-		UploadDocumentsRequest request = new UploadDocumentsRequest()
-										.withContentType("application/json")
-										.withDocuments(new ByteArrayInputStream(documentBytes))
-										.withContentLength((long) documentBytes.length);
-		try {
-			UploadDocumentsResult result = client.uploadDocuments(request);
-		} catch (DocumentServiceException e){
-			throw handleCloudSearchExceptions(e);
-		}
+		sendDocuments(Iterators.singletonIterator(document));
 	}
 
 	SearchResult rawSearch(SearchRequest request) {

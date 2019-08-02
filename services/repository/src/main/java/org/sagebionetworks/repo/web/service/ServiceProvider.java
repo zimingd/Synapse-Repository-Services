@@ -21,8 +21,6 @@ public interface ServiceProvider {
 	
 	public EntityBundleService getEntityBundleService();
 	
-	public NodeQueryService getNodeQueryService();
-	
 	public UserGroupService getUserGroupService();
 	
 	public UserProfileService getUserProfileService();
@@ -41,8 +39,8 @@ public interface ServiceProvider {
 
 	public TrashService getTrashService();
 
-	public DoiService getDoiService();
-	
+	public DoiServiceV2 getDoiServiceV2();
+
 	public MigrationService getMigrationService();
 
 	public TableServices getTableServices();

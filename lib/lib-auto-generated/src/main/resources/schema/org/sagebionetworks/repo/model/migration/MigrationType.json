@@ -51,6 +51,10 @@
 			"description": "TODO: Auto-generated description"
 		},
 		{
+			"name": "MULTIPART_UPLOAD_COMPOSER_PART_STATE",
+			"description": "TODO: Auto-generated description"
+		},
+		{
 			"name": "MESSAGE_CONTENT",
 			"description": "TODO: Auto-generated description"
 		},
@@ -204,15 +208,19 @@
 		},
 		{
 			"name": "BOUND_COLUMN_OWNER",
-			"description": "TODO: Auto-generated description"
-		},
-		{
-			"name": "BOUND_COLUMN",
-			"description": "TODO: Auto-generated description"
+			"description": "Primary table for all table to column binding."
 		},
 		{
 			"name": "BOUND_COLUMN_ORDINAL",
-			"description": "TODO: Auto-generated description"
+			"description": "Tracks the binding of columns to tables."
+		},
+		{
+			"name": "TABLE_TRANSACTION",
+			"description": "Tracks all table transactions."
+		},
+		{
+			"name": "TABLE_TRANSACTION_TO_VERSION",
+			"description": "Links a table transaction to a table version."
 		},
 		{
 			"name": "TABLE_SEQUENCE",
@@ -313,6 +321,10 @@
 		{
 			"name": "DOWNLOAD_ORDER",
 			"description": "Historical record of files download by users."
+		},
+		{
+			"name": "DATA_TYPE",
+			"description": "TODO: Auto-generated description"
 		},
 		{
 			"name": "CHANGE",

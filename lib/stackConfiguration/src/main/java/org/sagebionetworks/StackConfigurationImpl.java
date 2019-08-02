@@ -1,9 +1,10 @@
 package org.sagebionetworks;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import java.util.StringJoiner;
 
 import org.apache.logging.log4j.LogManager;
@@ -332,15 +333,6 @@ public class StackConfigurationImpl implements StackConfiguration {
 	}
 
 	/**
-	 * @return the name of the S3 Bucket where logs are stored each stack (dev,
-	 *         staging, prod) and each instance of each stack will have it's own
-	 *         subfolder in this bucket
-	 */
-	public String getS3LogBucket() {
-		return configuration.getProperty("org.sagebionetworks.logging.sweeper.bucket");
-	}
-
-	/**
 	 * @return whether the cloudWatch profiler should be on or off boolean. True
 	 *         means on, false means off.
 	 */
@@ -450,6 +442,11 @@ public class StackConfigurationImpl implements StackConfiguration {
 		return Boolean.parseBoolean(configuration.getProperty("org.sagebionetworks.doi.enabled"));
 	}
 
+	public boolean getDoiDataciteEnabled() {
+		return Boolean.parseBoolean(configuration.getProperty("org.sagebionetworks.doi.datacite.enabled"));
+	}
+
+
 	/**
 	 * The S3 Bucket for backup file. This is shared across stacks to enable data
 	 * migration across a stack.
@@ -457,7 +454,7 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 * @return
 	 */
 	public String getSharedS3BackupBucket() {
-		return configuration.getProperty("org.sagebionetworks.shared.s3.backup.bucket");
+		return getStack()+configuration.getProperty("org.sagebionetworks.shared.s3.backup.bucket");
 	}
 
 	public String getGoogleAppsOAuthAccessTokenSecret() {
@@ -495,58 +492,12 @@ public class StackConfigurationImpl implements StackConfiguration {
 	}
 
 	/**
-	 * The name of the async queue
+	 * The name of the queue
 	 * 
 	 * @return
 	 */
-	public String getAsyncQueueName(String baseName) {
-		return String.format(StackConstants.ASYNC_QUEUE_TEMPLATE, getStack(), getStackInstance(), baseName);
-	}
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getAsyncQueueName() {
-		return new DynamicMap<String, String>() {
-			@Override
-			protected String create(Object key) {
-				return getAsyncQueueName(key.toString());
-			}
-		};
-	}
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public String getWorkerQueueName(String baseName) {
-		return String.format(StackConstants.WORKER_QUEUE_TEMPLATE, getStack(), getStackInstance(), baseName);
-	}
-
-	/**
-	 * The name of the async queue
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getWorkerQueueName() {
-		return new DynamicMap<String, String>() {
-			@Override
-			protected String create(Object key) {
-				return getWorkerQueueName(key.toString());
-			}
-		};
-	}
-
-	/**
-	 * The name of the AWS topic where repository changes messages are published.
-	 * 
-	 * @return
-	 */
-	public String getRepositoryChangeTopicPrefix() {
-		return String.format(StackConstants.TOPIC_NAME_TEMPLATE_PREFIX, getStack(), getStackInstance());
+	public String getQueueName(String baseName) {
+		return String.format(StackConstants.QUEUE_AND_TOPIC_NAME_TEMPLATE, getStack(), getStackInstance(), baseName);
 	}
 
 	/**
@@ -556,123 +507,7 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 * @return
 	 */
 	public String getRepositoryChangeTopic(String objectType) {
-		return getRepositoryChangeTopicPrefix() + objectType;
-	}
-
-	/**
-	 * Create the map used by spring to lookup full strings with keys.
-	 * 
-	 * @return
-	 */
-	public Map<String, String> getRepositoryChangeTopic() {
-		return new DynamicMap<String, String>() {
-			@Override
-			protected String create(Object key) {
-				return getRepositoryChangeTopic(key.toString());
-			}
-		};
-	}
-
-	/**
-	 * The name of the AWS topic where repository changes messages are published.
-	 * 
-	 * @return
-	 */
-	public String getRepositoryModificationTopicName() {
-		return String.format(StackConstants.TOPIC_NAME_TEMPLATE_PREFIX, getStack(), getStackInstance())
-				+ "modifications";
-	}
-
-	/**
-	 * The name of the AWS SQS where search updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getSearchUpdateQueueName() {
-		return String.format(StackConstants.SEARCH_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	public String getSearchUpdateDeadLetterQueueName() {
-		return String.format(StackConstants.SEARCH_DEAD_LETTER_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where dynamo updates are pushed.
-	 */
-	public String getDynamoUpdateQueueName() {
-		return String.format(StackConstants.DYNAMO_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where rds updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getEntityAnnotationsUpdateQueueName() {
-		return String.format(StackConstants.ENTITY_ANNOTATIONS_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where message (to user) updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getMessageUpdateQueueName() {
-		return String.format(StackConstants.MESSAGE_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getFileUpdateQueueName() {
-		return String.format(StackConstants.FILE_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getFileUpdateDeadLetterQueueName() {
-		return String.format(StackConstants.FILE_DEAD_LETTER_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * The name of the AWS SQS where file updates are pushed.
-	 * 
-	 * @return
-	 */
-	public String getSubmissionAnnotationsUpdateQueueName() {
-		return String.format(StackConstants.SUBMISSION_ANNOTATIONS_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * @return The name of the AWS SQS where ranges of change messages are pushed.
-	 */
-	public String getUnsentMessagesQueueName() {
-		return String.format(StackConstants.UNSENT_MESSAGES_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	/**
-	 * @return The name of the AWS SQS where user identifier updates are pushed
-	 */
-	public String getPrincipalHeaderQueueName() {
-		return String.format(StackConstants.PRINCIPAL_HEADER_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	public String getTableUpdateQueueName() {
-		return String.format(StackConstants.TABLE_CLUSTER_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
-	}
-
-	public String getTableUpdateDeadLetterQueueName() {
-		return String.format(StackConstants.TABLE_CLUSTER_DEAD_LETTER_QUEUE_NAME_TEMPLATE, getStack(),
-				getStackInstance());
-	}
-
-	public String getTableCurrentCacheUpdateQueueName() {
-		return String.format(StackConstants.TABLE_CURRENT_CACHE_QUEUE_NAME_TEMPLATE, getStack(), getStackInstance());
+		return String.format(StackConstants.QUEUE_AND_TOPIC_NAME_TEMPLATE, getStack(), getStackInstance(), objectType);
 	}
 
 	/**
@@ -759,38 +594,15 @@ public class StackConfigurationImpl implements StackConfiguration {
 	}
 
 	/**
-	 * EZID user name.
-	 */
-	public String getEzidUsername() {
-		return configuration.getProperty("org.sagebionetworks.ezid.username");
-	}
-
-	/**
-	 * EZID password.
-	 */
-	public String getEzidPassword() {
-		return configuration.getDecryptedProperty("org.sagebionetworks.ezid.password");
-	}
-
-	/**
-	 * EZID REST API URL.
-	 */
-	public String getEzidUrl() {
-		return configuration.getProperty("org.sagebionetworks.ezid.url");
-	}
-
-	/**
 	 * Prefix under which DOIs should be registered.
 	 */
 	public String getDoiPrefix() {
-		return configuration.getProperty("org.sagebionetworks.doi.prefix");
-	}
-
-	/**
-	 * EZID DOI prefix.
-	 */
-	public String getEzidDoiPrefix() {
-		return configuration.getProperty("org.sagebionetworks.ezid.doi.prefix");
+		if (isProductionStack()) {
+			return configuration.getProperty("org.sagebionetworks.doi.prefix");
+		} else {
+			// We change the prefix to prevent collisions (separate developer builds may have objects with the same DOI)
+			return configuration.getProperty("org.sagebionetworks.doi.prefix") + "/" + getStackInstance();
+		}
 	}
 
 	/**
@@ -812,13 +624,6 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 */
 	public String getDataciteAPIEndpoint() {
 		return configuration.getProperty("org.sagebionetworks.doi.datacite.api.endpoint");
-	}
-
-	/**
-	 * EZID target URL prefix. Example: https://synapse.prod.sagebase.org/
-	 */
-	public String getEzidTargetUrlPrefix() {
-		return configuration.getProperty("org.sagebionetworks.ezid.doi.target.url.prefix");
 	}
 
 	/**
@@ -861,6 +666,11 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 */
 	public Integer getSemaphoreSharedMaxTimeoutMS() {
 		return Integer.parseInt(configuration.getProperty("org.sagebionetworks.semaphore.shared.max.timeout.ms"));
+	}
+
+	@Override
+	public Integer getWriteReadSemaphoreRunnerMaxReaders(){
+		return Integer.parseInt(configuration.getProperty("org.sagebionetworks.write.read.semaphore.runner.max.readers"));
 	}
 
 	/**
@@ -1346,5 +1156,25 @@ public class StackConfigurationImpl implements StackConfiguration {
 	 */
 	public int getCurrentHmacSigningKeyVersion() {
 		return Integer.parseInt(configuration.getProperty("org.sagebionetworks.hmac.signing.key.current.version"));
+	}
+
+	@Override
+	public boolean getGoogleCloudEnabled() {
+		return Boolean.parseBoolean(configuration.getProperty("org.sagebionetworks.google.cloud.enabled"));
+	}
+
+	@Override
+	public String getDecodedGoogleCloudServiceAccountCredentials() {
+		// The credentials should be passed in with base64 encoding
+		return new String(
+				Base64.getDecoder().decode(
+						configuration.getDecryptedProperty("org.sagebionetworks.google.cloud.key")
+								.getBytes(StandardCharsets.UTF_8)),
+				StandardCharsets.UTF_8);
+	}
+
+	@Override
+	public boolean useSSLConnectionForTablesDatabase() {
+		return Boolean.parseBoolean(configuration.getProperty("org.sagebionetworks.table.cluster.use.ssl"));
 	}
 }

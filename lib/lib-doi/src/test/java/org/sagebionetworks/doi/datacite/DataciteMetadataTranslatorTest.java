@@ -1,20 +1,68 @@
 package org.sagebionetworks.doi.datacite;
 
-import org.apache.xerces.dom.DocumentImpl;
-import org.junit.Before;
-import org.junit.Test;
-import org.sagebionetworks.repo.model.ObjectType;
-import org.sagebionetworks.repo.model.doi.v2.*;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.*;
-import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.*;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.CREATOR;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.CREATORS;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.CREATOR_NAME;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.IDENTIFIER;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.IDENTIFIER_TYPE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.IDENTIFIER_TYPE_VALUE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.ISNI_URI;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAMESPACE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAMESPACE_PREFIX;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAMESPACE_PREFIX_VALUE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAMESPACE_VALUE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.NAME_IDENTIFIER;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.ORCID_URI;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.PUBLICATION_YEAR;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.PUBLISHER;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.PUBLISHER_VALUE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.RESOURCE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.RESOURCE_TYPE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.RESOURCE_TYPE_GENERAL;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.SCHEMA_LOCATION;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.SCHEMA_LOCATION_VALUE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.TITLE;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataConstants.TITLES;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createCreatorElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createCreatorsElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createIdentifierElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createPublicationYearElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createPublisherElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createResourceTypeElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createTitleElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createTitlesElement;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.createXmlDom;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.getSchemeUri;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateAdherenceToDataciteSchema;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiCreator;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiCreators;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiNameIdentifier;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiPublicationYear;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiResourceType;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiTitle;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.validateDoiTitles;
+import static org.sagebionetworks.doi.datacite.DataciteMetadataTranslatorImpl.xmlToString;
+
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
+
+import org.apache.xerces.dom.DocumentImpl;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Test;
+import org.sagebionetworks.repo.model.doi.v2.DataciteMetadata;
+import org.sagebionetworks.repo.model.doi.v2.Doi;
+import org.sagebionetworks.repo.model.doi.v2.DoiCreator;
+import org.sagebionetworks.repo.model.doi.v2.DoiNameIdentifier;
+import org.sagebionetworks.repo.model.doi.v2.DoiResourceType;
+import org.sagebionetworks.repo.model.doi.v2.DoiResourceTypeGeneral;
+import org.sagebionetworks.repo.model.doi.v2.DoiTitle;
+import org.sagebionetworks.repo.model.doi.v2.NameIdentifierScheme;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 public class DataciteMetadataTranslatorTest {
 
@@ -23,8 +71,6 @@ public class DataciteMetadataTranslatorTest {
 	private List<DoiCreator> creators;
 	private DoiCreator c1;
 	private DoiCreator c2;
-	private DoiNameIdentifier nameId1;
-	private DoiNameIdentifier nameId2;
 	private List<DoiTitle> titles;
 	private DoiTitle t1;
 	private DoiTitle t2;
@@ -32,6 +78,7 @@ public class DataciteMetadataTranslatorTest {
 	private long publicationYear = 2000L;
 
 	private String uri = "10.1234/syn0000000";
+	private String validOrcid = "0000-0003-1415-9269";
 
 	private DoiResourceType resourceType;
 	private DoiResourceTypeGeneral resourceTypeGeneral = DoiResourceTypeGeneral.Dataset;
@@ -47,16 +94,6 @@ public class DataciteMetadataTranslatorTest {
 		creators = new ArrayList<>();
 		c1 = new DoiCreator();
 		c1.setCreatorName("Last, First");
-		nameId1 = new DoiNameIdentifier();
-		nameId1.setIdentifier("0123-4567-8987-789X");
-		nameId1.setNameIdentifierScheme(NameIdentifierScheme.ORCID);
-		nameId2 = new DoiNameIdentifier();
-		nameId2.setIdentifier("9876-5432-1012-456X");
-		nameId2.setNameIdentifierScheme(NameIdentifierScheme.ISNI);
-		List<DoiNameIdentifier> ids = new ArrayList<>();
-		ids.add(nameId1);
-		ids.add(nameId2);
-		c1.setNameIdentifiers(ids);
 		c2 = new DoiCreator();
 		c2.setCreatorName("Sample name");
 		creators.add(c1);
@@ -96,16 +133,6 @@ public class DataciteMetadataTranslatorTest {
 		Element creatorNameActual = (Element)actual.getElementsByTagName(CREATOR_NAME).item(0);
 		assertEquals(CREATOR_NAME, creatorNameActual.getTagName());
 		assertEquals(c1.getCreatorName(), creatorNameActual.getTextContent());
-
-		// Test the name identifiers
-		assertEquals(2, actual.getElementsByTagName(NAME_IDENTIFIER).getLength());
-		Element nameIdActual = (Element) actual.getElementsByTagName(NAME_IDENTIFIER).item(0);
-		assertEquals(nameId1.getNameIdentifierScheme().name(), nameIdActual.getAttribute(NAME_IDENTIFIER_SCHEME));
-		assertEquals(nameId1.getIdentifier(), nameIdActual.getTextContent());
-
-		nameIdActual = (Element) actual.getElementsByTagName(NAME_IDENTIFIER).item(1);
-		assertEquals(nameId2.getNameIdentifierScheme().name(), nameIdActual.getAttribute(NAME_IDENTIFIER_SCHEME));
-		assertEquals(nameId2.getIdentifier(), nameIdActual.getTextContent());
 
 		// Test the second creator that has no name identifiers
 		actual = createCreatorElement(dom, c2);
@@ -211,5 +238,202 @@ public class DataciteMetadataTranslatorTest {
 		assertEquals(ORCID_URI, getSchemeUri(NameIdentifierScheme.ORCID));
 		assertEquals(ISNI_URI, getSchemeUri(NameIdentifierScheme.ISNI));
 		// If adding a new scheme, test it with its URI pair here
+	}
+
+	@Test
+	public void testValidateAdherenceToSchemaPass() {
+		// all fields should be set in @Before
+		validateAdherenceToDataciteSchema(metadata);
+	}
+
+	@Test
+	public void testValidateCreatorsListPass() {
+		// Call under test
+		validateDoiCreators(metadata.getCreators());
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testInvalidNullCreatorsList() {
+		// Call under test
+		validateDoiCreators(null);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testEmptyCreatorsList() {
+		// Call under test
+		validateDoiCreators(new ArrayList<>());
+	}
+
+	@Test
+	public void testValidCreatorPass() {
+		DoiCreator creator = new DoiCreator();
+		creator.setCreatorName("Anything");
+		// Call under test
+		validateDoiCreator(creator);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullCreatorName() {
+		DoiCreator creator = new DoiCreator();
+		creator.setCreatorName(null);
+		// Call under test
+		validateDoiCreator(creator);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testEmptyCreatorName() {
+		DoiCreator creator = new DoiCreator();
+		creator.setCreatorName("");
+		// Call under test
+		validateDoiCreator(creator);
+	}
+
+	@Test
+	@Ignore // Remove this annotation when PLFM-5145 is complete
+	public void testValidateCreatorWithNonNullNameIdentifiers() {
+		DoiCreator creator = new DoiCreator();
+		creator.setCreatorName("A name");
+
+		DoiNameIdentifier id1 = new DoiNameIdentifier();
+		id1.setIdentifier(validOrcid);
+		id1.setNameIdentifierScheme(NameIdentifierScheme.ORCID);
+
+		DoiNameIdentifier id2 = new DoiNameIdentifier();
+		id2.setIdentifier("Another Identifier");
+		id2.setNameIdentifierScheme(NameIdentifierScheme.ISNI);
+
+		List<DoiNameIdentifier> ids = new ArrayList<>();
+		ids.add(id1);
+		ids.add(id2);
+
+		creator.setNameIdentifiers(ids);
+		// Call under test
+		validateDoiCreator(creator);
+	}
+
+	@Test
+	public void testNameIdPass() {
+		DoiNameIdentifier nameIdentifier = new DoiNameIdentifier();
+		nameIdentifier.setNameIdentifierScheme(NameIdentifierScheme.ORCID);
+		nameIdentifier.setIdentifier(validOrcid);
+		// Call under test
+		validateDoiNameIdentifier(nameIdentifier);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNameIdWithoutScheme() {
+		DoiNameIdentifier nameIdentifier = new DoiNameIdentifier();
+		nameIdentifier.setNameIdentifierScheme(null);
+		nameIdentifier.setIdentifier(validOrcid);
+		// Call under test
+		validateDoiNameIdentifier(nameIdentifier);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNameIdInvalidOrcidFormat() {
+		DoiNameIdentifier nameIdentifier = new DoiNameIdentifier();
+		nameIdentifier.setNameIdentifierScheme(NameIdentifierScheme.ORCID);
+		nameIdentifier.setIdentifier("123-424-253-53X");
+		// Call under test
+		validateDoiNameIdentifier(nameIdentifier);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNameIdInvalidOrcidCheckDigit() {
+		DoiNameIdentifier nameIdentifier = new DoiNameIdentifier();
+		nameIdentifier.setNameIdentifierScheme(NameIdentifierScheme.ORCID);
+		nameIdentifier.setIdentifier("0000-0003-1415-926X");
+		// Call under test
+		validateDoiNameIdentifier(nameIdentifier);
+	}
+
+	@Test
+	public void testValidateTitlesListPass() {
+		// Call under test
+		validateDoiTitles(metadata.getTitles());
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullTitlesList() {
+		// Call under test
+		validateDoiTitles(null);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testEmptyTitlesList() {
+		// Call under test
+		validateDoiTitles(new ArrayList<>());
+	}
+
+	@Test
+	public void testValidateTitlePass() {
+		DoiTitle title = new DoiTitle();
+		title.setTitle("A Valid Title");
+		// Call under test
+		validateDoiTitle(title);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullTitleName() {
+		DoiTitle title = new DoiTitle();
+		title.setTitle(null);
+		// Call under test
+		validateDoiTitle(title);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testEmptyTitleName() {
+		DoiTitle title = new DoiTitle();
+		title.setTitle("");
+		// Call under test
+		validateDoiTitle(title);
+	}
+
+	@Test
+	public void testValidatePublicationYearPass() {
+		// Call under test
+		validateDoiPublicationYear(1997L);
+	}
+
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullPublicationYear() {
+		// Call under test
+		validateDoiPublicationYear(null);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testAncientPublicationYear() {
+		// Call under test
+		validateDoiPublicationYear(30L);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testFuturePublicationYear() {
+		// Can't mint a DOI more than 1 year in the future
+		// Call under test
+		validateDoiPublicationYear((((long) Calendar.getInstance().get(Calendar.YEAR)) + 2L));
+	}
+
+	@Test
+	public void testValidateResourceTypePass() {
+		DoiResourceType resourceType = new DoiResourceType();
+		resourceType.setResourceTypeGeneral(DoiResourceTypeGeneral.Dataset);
+		// Call under test
+		validateDoiResourceType(resourceType);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullResourceType() {
+		// Call under test
+		validateDoiResourceType(null);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void testNullResourceTypeGeneral() {
+		DoiResourceType resourceType = new DoiResourceType();
+		resourceType.setResourceTypeGeneral(null);
+		// Call under test
+		validateDoiResourceType(resourceType);
 	}
 }

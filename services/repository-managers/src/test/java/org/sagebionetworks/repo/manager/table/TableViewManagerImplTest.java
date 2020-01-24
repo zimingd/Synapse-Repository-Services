@@ -430,13 +430,6 @@ public class TableViewManagerImplTest {
 	}
 	
 	@Test
-	public void testGetTableSchema(){
-		when(mockColumnModelManager.getColumnIdsForTable(idAndVersion)).thenReturn(schema);
-		List<String> retrievedSchema = manager.getTableSchema(viewId);
-		assertEquals(schema, retrievedSchema);
-	}
-	
-	@Test
 	public void testUpdateAnnotationsFromValues(){
 		Annotations annos = AnnotationsV2TestUtils.newEmptyAnnotationsV2();
 		Map<String, String> values = new HashMap<>();

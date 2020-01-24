@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.common.collect.Sets;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
@@ -93,14 +95,13 @@ public class TableIndexManagerImpl implements TableIndexManager {
 		final long currentVersion = tableIndexDao
 				.getMaxCurrentCompleteVersionForTable(tableId);
 		if (changeSetVersionNumber > currentVersion) {
-			//tracks id of all rows that were modified for list columns
-			Map<ColumnModel, Set<Long>> listColumnsToRowIdMap = new HashMap<>();
-
 			// apply all changes in a transaction
 			tableIndexDao
 					.executeInWriteTransaction(new TransactionCallback<Void>() {
 						@Override
 						public Void doInTransaction(TransactionStatus status) {
+							//tracks id of all rows that were modified for list columns
+							Map<ColumnModel, Set<Long>> listColumnsToRowIdMap = new HashMap<>();
 							// apply all groups to the table
 							for(Grouping grouping: rowset.groupByValidValues()){
 								tableIndexDao.createOrUpdateOrDeleteRows(tableId, grouping);
@@ -112,16 +113,15 @@ public class TableIndexManagerImpl implements TableIndexManager {
 								tableIndexDao.applyFileHandleIdsToTable(
 										tableId, fileHandleIds);
 							}
+							for(Map.Entry<ColumnModel, Set<Long>> entry : listColumnsToRowIdMap.entrySet()){
+								tableIndexDao.populateListColumnIndexTable(tableId, entry.getKey(), entry.getValue());
+							}
 							// set the new max version for the index
 							tableIndexDao.setMaxCurrentCompleteVersionForTable(
 									tableId, changeSetVersionNumber);
 							return null;
 						}
 					});
-
-			for(Map.Entry<ColumnModel, Set<Long>> entry : listColumnsToRowIdMap.entrySet()){
-				tableIndexDao.populateListColumnIndexTable(tableId, entry.getKey(), entry.getValue());
-			}
 		}
 	}
 
@@ -221,9 +221,40 @@ public class TableIndexManagerImpl implements TableIndexManager {
 			List<String> columnIds = TableModelUtils.getIds(currentSchema);
 			String schemaMD5Hex = TableModelUtils.createSchemaMD5Hex(columnIds);
 			tableIndexDao.setCurrentSchemaMD5Hex(tableId, schemaMD5Hex);
+
+			createOrDropMultivalueColumnIndexTables(tableId, currentSchema);
+			//do a full re-population of multi-value column index tables after schema change and reintroduction of the index tables
+			populateListColumnIndexTables(tableId, currentSchema);
 		}
 		return wasSchemaChanged;
-	}	
+	}
+
+	void createOrDropMultivalueColumnIndexTables(IdAndVersion tableId, List<ColumnModel> currentSchema){
+		//set of column IDs of columns that have an existing index table associated with the tableId
+		Set<Long> existingMultivalueIndexTableColumnIds = new HashSet<>(tableIndexDao.getMultivalueColumnIndexTableColumnIds(tableId));
+		//map of id to ColumnModel for all LIST type columns in the schema
+		Map<Long, ColumnModel> idToCurrentMultiValueSchemaMap = currentSchema.stream()
+				//get ONLY list types
+				.filter((ColumnModel cm) -> ColumnTypeListMappings.isList(cm.getColumnType()))
+				//map from ID as long to ColumnModel
+				.collect(Collectors.toMap(
+						(ColumnModel cm) -> Long.parseLong(cm.getId()),
+						Function.identity()
+				));
+
+		//delete tables for columns that are no longer present
+		Set<Long> columnIdsToDelete = Sets.difference(existingMultivalueIndexTableColumnIds, idToCurrentMultiValueSchemaMap.keySet());
+		for(Long columnId : columnIdsToDelete){
+			tableIndexDao.deleteMultivalueColumnIndexTable(tableId, columnId);
+		}
+
+		//create tables for columns that do not yet have index tables
+		Set<Long> columnIdsToCreate = Sets.difference(idToCurrentMultiValueSchemaMap.keySet(), existingMultivalueIndexTableColumnIds);
+		for(Long columnId : columnIdsToCreate){
+			tableIndexDao.createMultivalueColumnIndexTable(tableId, idToCurrentMultiValueSchemaMap.get(columnId));
+		}
+
+	}
 	
 	@Override
 	public boolean alterTempTableSchmea(final IdAndVersion tableId, final List<ColumnChangeDetails> changes){

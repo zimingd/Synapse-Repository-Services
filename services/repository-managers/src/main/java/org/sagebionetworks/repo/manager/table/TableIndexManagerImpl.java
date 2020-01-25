@@ -45,6 +45,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 
 public class TableIndexManagerImpl implements TableIndexManager {
+	public static final int TIMEOUT_SECONDS = 120;
 
 	static private Logger log = LogManager.getLogger(TableIndexManagerImpl.class);
 
@@ -436,6 +437,33 @@ public class TableIndexManagerImpl implements TableIndexManager {
 	@Override
 	public void buildIndexToChangeNumber(final ProgressCallback progressCallback, final IdAndVersion idAndVersion,
 			final Iterator<TableChangeMetaData> iterator) throws RecoverableMessageException {
+		try {
+			// Run with the exclusive lock on the table if we can get it.
+			tableManagerSupport.tryRunWithTableExclusiveLock(progressCallback, idAndVersion, TIMEOUT_SECONDS,
+					(ProgressCallback callback) -> {
+						buildTableIndexWithLock(callback, idAndVersion, iterator);
+						return null;
+					});
+		} catch (LockUnavilableException | TableUnavailableException | InterruptedException| IOException e) {
+			throw new RecoverableMessageException(e);
+		} catch (Exception e) {
+			if(e instanceof RuntimeException) {
+				throw (RuntimeException) e;
+			}else {
+				throw new RuntimeException(e);
+			}
+		} 
+	}
+	
+	/**
+	 * Build a table index while holding the table's exclusive lock.  This level manages the status of the table.
+	 * @param progressCallback
+	 * @param idAndVersion
+	 * @param iterator
+	 * @throws RecoverableMessageException
+	 */
+	void buildTableIndexWithLock(final ProgressCallback progressCallback, final IdAndVersion idAndVersion,
+			final Iterator<TableChangeMetaData> iterator) throws RecoverableMessageException {
 		// Attempt to run with
 		try {
 			// Only proceed if work is needed.
@@ -453,18 +481,12 @@ public class TableIndexManagerImpl implements TableIndexManager {
 			if(!targetChangeNumber.isPresent()) {
 				throw new NotFoundException("Snapshot for "+idAndVersion.toString()+" does not exist");
 			}
-
-			// Run with the exclusive lock on the table if we can get it.
-			String lastEtag = tableManagerSupport.tryRunWithTableExclusiveLock(progressCallback, idAndVersion, 120,
-					(ProgressCallback callback) -> {
-						return buildIndexToChangeNumberWithExclusiveLock(idAndVersion, iterator, targetChangeNumber.get(),
-								tableResetToken);
-					});
+			// build the table up to the latest change.
+			String lastEtag = buildIndexToLatestChange(idAndVersion, iterator, targetChangeNumber.get(),
+					tableResetToken);
 			log.info("Completed index update for: " + idAndVersion);
 			tableManagerSupport.attemptToSetTableStatusToAvailable(idAndVersion, tableResetToken, lastEtag);
-		} catch (LockUnavilableException | TableUnavailableException | InterruptedException| IOException e) {
-			throw new RecoverableMessageException(e);
-		} catch (Exception e) {
+		}catch (Exception e) {
 			// Any other error is a table failure.
 			tableManagerSupport.attemptToSetTableStatusToFailed(idAndVersion, e);
 			// This is not an error we can recover from.
@@ -473,8 +495,8 @@ public class TableIndexManagerImpl implements TableIndexManager {
 	}
 	
 	/**
-	 * Note: The caller must be holding an exclusive lock on table while calling this method.
-	 * Build the table index
+	 * Build the table index up to the latest change.  The caller must hold the table's exclusive lock and manage
+	 * the status of the table.
 	 * @param tableId
 	 * @param iterator
 	 * @param lastChangeNumber
@@ -482,7 +504,7 @@ public class TableIndexManagerImpl implements TableIndexManager {
 	 * @throws IOException 
 	 * @throws NotFoundException 
 	 */
-	String buildIndexToChangeNumberWithExclusiveLock(final IdAndVersion idAndVersion, final Iterator<TableChangeMetaData> iterator,
+	String buildIndexToLatestChange(final IdAndVersion idAndVersion, final Iterator<TableChangeMetaData> iterator,
 			final long targetChangeNumber, final String tableResetToken) throws NotFoundException, IOException {
 		String lastEtag = null;
 		// Inspect each change.

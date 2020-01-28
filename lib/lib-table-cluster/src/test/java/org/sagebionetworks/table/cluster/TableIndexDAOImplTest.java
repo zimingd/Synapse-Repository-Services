@@ -1,12 +1,6 @@
 package org.sagebionetworks.table.cluster;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_ENTITY_ID;
 import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_MAX_STRING_LENGTH;
 import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_TABLE;
@@ -943,6 +937,79 @@ public class TableIndexDAOImplTest {
 	}
 
 	@Test
+	public void testAlterTableAsNeeded_ListColumnIndexTables(){
+		// This will be an add, so the old is null.
+		ColumnModel column = new ColumnModel();
+		column.setColumnType(ColumnType.STRING_LIST);
+		String columnId = "1337";
+		column.setId(columnId);
+		column.setMaximumSize(50L);
+		column.setName("StringList");
+		// Create the table
+		tableIndexDAO.createTableIfDoesNotExist(tableId, isView);
+		boolean alterTemp = false;
+
+		//add column
+		ColumnChangeDetails addColumnChange = new ColumnChangeDetails(null, column);
+		boolean wasAltered = alterTableAsNeeded(tableId, Lists.newArrayList(addColumnChange), alterTemp);
+		assertTrue(wasAltered);
+
+
+		//check index table was created
+		assertNotNull(tableIndexDAO.getConnection().queryForObject("show tables like '" + SQLUtils.getTableNameForMultiValueColumnIndex(tableId, columnId) + "'", String.class));
+
+		//delete column
+		ColumnChangeDetails deleteColumnChange = new ColumnChangeDetails(column, null);
+		wasAltered = alterTableAsNeeded(tableId, Lists.newArrayList(deleteColumnChange), alterTemp);
+		assertTrue(wasAltered);
+
+
+		//check index table was deleted
+		assertThrows(EmptyResultDataAccessException.class, () -> {
+			tableIndexDAO.getConnection().queryForObject("show tables like '" + SQLUtils.getTableNameForMultiValueColumnIndex(tableId, columnId) + "'", String.class);
+		});
+	}
+
+	@Test
+	public void testVarCharMaxSize(){
+		ColumnModel stringColumn = new ColumnModel();
+		stringColumn.setId("15");
+		stringColumn.setName("syn");
+		stringColumn.setColumnType(ColumnType.STRING);
+		stringColumn.setMaximumSize(255L);
+
+		List<ColumnModel> schema = Lists.newArrayList(stringColumn);
+
+		createOrUpdateTable(schema, tableId, isView);
+
+		List<Row> rows = TableModelTestUtils.createRows(schema, 5);
+
+		RowSet set = new RowSet();
+		set.setRows(rows);
+		set.setHeaders(TableModelUtils.getSelectColumns(schema));
+		set.setTableId(tableId.toString());
+
+		IdRange range = new IdRange();
+		range.setMinimumId(100L);
+		range.setMaximumId(200L);
+		range.setVersionNumber(3L);
+		TableModelTestUtils.assignRowIdsAndVersionNumbers(set, range);
+
+		createOrUpdateOrDeleteRows(tableId, set, schema);
+
+		List<DatabaseColumnInfo> infoList = getAllColumnInfo(tableId);
+		assertNotNull(infoList);
+
+		DatabaseColumnInfo info = infoList.get(2);
+		assertEquals("_C15_", info.getColumnName());
+		assertEquals(new Long(5), info.getCardinality());
+
+		assertEquals(MySqlColumnType.VARCHAR, info.getType());
+		assertEquals(255, info.getMaxSize());
+
+	}
+	
+	@Test
 	public void testColumnInfoAndCardinality(){
 		// create a table with a long column.
 		ColumnModel intColumn = new ColumnModel();
@@ -987,18 +1054,20 @@ public class TableIndexDAOImplTest {
 		assertEquals(new Long(5), info.getCardinality());
 		assertEquals("PRIMARY", info.getIndexName());
 		assertTrue(info.hasIndex());
+
 		assertEquals(MySqlColumnType.BIGINT, info.getType());
-		assertEquals(new Integer(20), info.getMaxSize());
-		assertEquals(null, info.getColumnType());
-		
+		assertNull(info.getMaxSize());
+		assertNull(info.getColumnType());
+
 		// one
 		info = infoList.get(2);
 		assertEquals("_C12_", info.getColumnName());
 		assertEquals(new Long(5), info.getCardinality());
 		assertTrue(info.hasIndex());
 		assertEquals("_C12_idx_", info.getIndexName());
+
 		assertEquals(MySqlColumnType.BIGINT, info.getType());
-		assertEquals(new Integer(20), info.getMaxSize());
+		assertNull(info.getMaxSize());
 		assertEquals(ColumnType.INTEGER, info.getColumnType());
 		
 		// two
@@ -1008,7 +1077,7 @@ public class TableIndexDAOImplTest {
 		assertTrue(info.hasIndex());
 		assertEquals("_C13_idx_", info.getIndexName());
 		assertEquals(MySqlColumnType.TINYINT, info.getType());
-		assertEquals(new Integer(1), info.getMaxSize());
+		assertNull(info.getMaxSize());
 		assertEquals(ColumnType.BOOLEAN, info.getColumnType());
 	}
 	

@@ -6,9 +6,7 @@ package org.sagebionetworks;
  *
  */
 public class StackConstants {
-	
-	static final String S3_PROPERTY_FILENAME_PREFIX = "https://s3.amazonaws.com";
-	
+
 	static final String STACK_PROPERTY_NAME 			= "org.sagebionetworks.stack";
 	static final String STACK_INSTANCE_PROPERTY_NAME 	= "org.sagebionetworks.stack.instance";
 	

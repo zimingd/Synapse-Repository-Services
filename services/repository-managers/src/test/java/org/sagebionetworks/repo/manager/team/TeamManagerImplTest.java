@@ -1136,7 +1136,7 @@ public class TeamManagerImplTest {
 					"        Sincerely,\r\n" + 
 					"      </p>\r\n" + 
 					"      <p style=\"-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;margin: 0 0 10px;\">\r\n" + 
-					"        <img src=\"https://s3.amazonaws.com/static.synapse.org/images/SynapseLogo2.png\" style=\"display: inline;width: 40px;height: 40px;-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;border: 0;vertical-align: middle;\"> Synapse Administration\r\n" + 
+					"        <img src=\"https://static.synapse.org.s3.amazonaws.com/images/SynapseLogo2.png\" style=\"display: inline;width: 40px;height: 40px;-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;border: 0;vertical-align: middle;\"> Synapse Administration\r\n" +
 					"      </p>\r\n" + 
 					"    </div>\r\n" + 
 					"  </body>\r\n" + 
@@ -1186,7 +1186,7 @@ public class TeamManagerImplTest {
 				"        Sincerely,\r\n" + 
 				"      </p>\r\n" + 
 				"      <p style=\"-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;margin: 0 0 10px;\">\r\n" + 
-				"        <img src=\"https://s3.amazonaws.com/static.synapse.org/images/SynapseLogo2.png\" style=\"display: inline;width: 40px;height: 40px;-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;border: 0;vertical-align: middle;\"> Synapse Administration\r\n" + 
+				"        <img src=\"https://static.synapse.org.s3.amazonaws.com/images/SynapseLogo2.png\" style=\"display: inline;width: 40px;height: 40px;-webkit-box-sizing: border-box;-moz-box-sizing: border-box;box-sizing: border-box;border: 0;vertical-align: middle;\"> Synapse Administration\r\n" +
 				"      </p>\r\n" + 
 				"    </div>\r\n" + 
 				"  </body>\r\n" + 

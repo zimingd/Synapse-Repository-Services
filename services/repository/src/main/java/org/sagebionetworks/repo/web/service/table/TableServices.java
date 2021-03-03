@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.List;
 
 import org.sagebionetworks.repo.model.DatastoreException;
+import org.sagebionetworks.repo.model.EntityType;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnModelPage;
 import org.sagebionetworks.repo.model.table.PaginatedColumnModels;
@@ -14,7 +16,9 @@ import org.sagebionetworks.repo.model.table.SnapshotRequest;
 import org.sagebionetworks.repo.model.table.SnapshotResponse;
 import org.sagebionetworks.repo.model.table.SqlTransformRequest;
 import org.sagebionetworks.repo.model.table.SqlTransformResponse;
+import org.sagebionetworks.repo.model.table.TableBundle;
 import org.sagebionetworks.repo.model.table.TableFileHandleResults;
+import org.sagebionetworks.repo.model.table.ViewEntityType;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.table.query.ParseException;
@@ -126,22 +130,14 @@ public interface TableServices {
 	 * @throws IOException
 	 */
 	public String getFilePreviewRedirectURL(Long userId, String tableId, RowReference rowRef, String columnId) throws IOException,
-			NotFoundException;
-
-	/**
-	 * Get the max number of rows allowed for a page (get, post, or query) for the given column models.
-	 * @param models
-	 * @return
-	 */
-	public Long getMaxRowsPerPage(List<ColumnModel> models);
-	
+			NotFoundException;	
 	
 	/**
 	 * Get the default columns for a view of the given type.
 	 * @param viewTypeMask 
 	 * @return
 	 */
-	public List<ColumnModel> getDefaultViewColumnsForType(Long viewTypeMask);
+	public List<ColumnModel> getDefaultViewColumnsForType(ViewEntityType viewEntityType, Long viewTypeMask);
 
 	/**
 	 * Get the possible ColumnModel definitions based on annotations for a given view.
@@ -177,4 +173,11 @@ public interface TableServices {
 	 * @return
 	 */
 	public SnapshotResponse createTableSnapshot(Long userId, String tableId, SnapshotRequest request);
+
+	/**
+	 * Get a table bundle for the given tableId and optional version.
+	 * @param idAndVersion
+	 * @return
+	 */
+	public TableBundle getTableBundle(IdAndVersion idAndVersion);
 }

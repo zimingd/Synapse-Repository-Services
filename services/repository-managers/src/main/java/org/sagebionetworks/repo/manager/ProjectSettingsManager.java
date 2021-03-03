@@ -2,26 +2,23 @@ package org.sagebionetworks.repo.manager;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
-import org.sagebionetworks.repo.model.migration.MergeStorageLocationsResponse;
 import org.sagebionetworks.repo.model.project.ProjectSetting;
 import org.sagebionetworks.repo.model.project.ProjectSettingsType;
 import org.sagebionetworks.repo.model.project.StorageLocationSetting;
 import org.sagebionetworks.repo.web.NotFoundException;
-import org.sagebionetworks.util.TemporaryCode;
 
 
 public interface ProjectSettingsManager {
 
-	public static final String OWNER_MARKER = "owner.txt";
-
 	ProjectSetting getProjectSetting(UserInfo userInfo, String id) throws DatastoreException, NotFoundException;
 
-	ProjectSetting getProjectSettingByProjectAndType(UserInfo userInfo, String projectId, ProjectSettingsType type)
+	Optional<ProjectSetting> getProjectSettingByProjectAndType(UserInfo userInfo, String projectId, ProjectSettingsType type)
 			throws DatastoreException, NotFoundException;
 
 	ProjectSetting createProjectSetting(UserInfo userInfo, ProjectSetting projectSetting) throws DatastoreException, NotFoundException;
@@ -30,8 +27,20 @@ public interface ProjectSettingsManager {
 
 	void deleteProjectSetting(UserInfo userInfo, String id) throws DatastoreException, NotFoundException;
 
-	<T extends ProjectSetting> T getProjectSettingForNode(UserInfo userInfo, String parentId, ProjectSettingsType type,
+	<T extends ProjectSetting> Optional<T> getProjectSettingForNode(UserInfo userInfo, String parentId, ProjectSettingsType type,
 			Class<T> expectedType) throws DatastoreException, UnauthorizedException, NotFoundException;
+
+	/**
+	 * Helper method to check if a StorageLocationSetting is a an STS-enabled storage location. That is, the storage
+	 * location is an StsStorageLocation with StsEnabled=true.
+	 */
+	boolean isStsStorageLocationSetting(StorageLocationSetting storageLocationSetting);
+
+	/**
+	 * Helper method to check if a ProjectSetting is a an STS-enabled storage location. That is, the storage location
+	 * referenced in the project setting is an StsStorageLocation with StsEnabled=true.
+	 */
+	boolean isStsStorageLocationSetting(ProjectSetting projectSetting);
 
 	<T extends StorageLocationSetting> T createStorageLocationSetting(UserInfo userInfo, T StorageLocationSetting) throws DatastoreException,
 			NotFoundException, IOException;
@@ -44,10 +53,7 @@ public interface ProjectSettingsManager {
 
 	StorageLocationSetting getStorageLocationSetting(Long storageLocationId) throws DatastoreException, NotFoundException;
 
-	List<UploadDestinationLocation> getUploadDestinationLocations(UserInfo userInfo, List<Long> locations) throws DatastoreException,
+	List<UploadDestinationLocation> getUploadDestinationLocations(UserInfo userInfo, List<Long> storageLocationIds) throws DatastoreException,
 			NotFoundException;
-	
-	@TemporaryCode(author = "marco.marasca@sagebase.org")
-	MergeStorageLocationsResponse mergeDuplicateStorageLocations(UserInfo userInfo) throws DatastoreException, UnauthorizedException;
 	
 }

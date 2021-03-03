@@ -1,10 +1,8 @@
 package org.sagebionetworks.table.cluster;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 public class MySqlColumnTypeTest {
 
@@ -28,11 +26,18 @@ public class MySqlColumnTypeTest {
 	
 	@Test
 	public void testParseSizeBigInt(){
-		String typeString = "bigint(20)";
+		String typeString = "BIGINT";
 		Integer size = MySqlColumnType.parseSize(typeString);
-		assertEquals(new Integer(20), size);
+		assertNull(size);
 	}
-	
+
+	@Test
+	public void testParseSizeVarChar(){
+		String typeString = "VARCHAR(255)";
+		Integer size = MySqlColumnType.parseSize(typeString);
+		assertEquals(new Integer(255), size);
+	}
+
 	@Test
 	public void testParseSizeDouble(){
 		String typeString = "double";
@@ -46,10 +51,17 @@ public class MySqlColumnTypeTest {
 		Integer size = MySqlColumnType.parseSize(typeString);
 		assertEquals(null, size);
 	}
-	
+
+	@Test
+	public void testParseSizeJSON(){
+		String typeString = "json";
+		Integer size = MySqlColumnType.parseSize(typeString);
+		assertEquals(null, size);
+	}
+
 	@Test
 	public void testBigIntHasSize(){
-		assertTrue(MySqlColumnType.BIGINT.hasSize());
+		assertFalse(MySqlColumnType.BIGINT.hasSize());
 	}
 	
 	@Test
@@ -74,11 +86,16 @@ public class MySqlColumnTypeTest {
 	
 	@Test
 	public void testTinyIntHasSize(){
-		assertTrue(MySqlColumnType.TINYINT.hasSize());
+		assertFalse(MySqlColumnType.TINYINT.hasSize());
 	}
 	
 	@Test
 	public void testEnumHasSize(){
 		assertFalse(MySqlColumnType.ENUM.hasSize());
+	}
+
+	@Test
+	public void testJsonHasSize(){
+		assertFalse(MySqlColumnType.JSON.hasSize());
 	}
 }

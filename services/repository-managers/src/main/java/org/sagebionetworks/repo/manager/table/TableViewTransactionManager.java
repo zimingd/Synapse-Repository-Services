@@ -28,6 +28,8 @@ import org.sagebionetworks.repo.model.table.TableUpdateResponse;
 import org.sagebionetworks.repo.model.table.TableUpdateTransactionRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateTransactionResponse;
 import org.sagebionetworks.repo.model.table.UploadToTableRequest;
+import org.sagebionetworks.repo.model.table.ViewObjectType;
+import org.sagebionetworks.repo.model.table.ViewScopeType;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.table.cluster.utils.TableModelUtils;
@@ -71,14 +73,21 @@ public class TableViewTransactionManager implements TableTransactionManager, Upl
 		TableUpdateTransactionResponse response = new TableUpdateTransactionResponse();
 		List<TableUpdateResponse> results = new LinkedList<>();
 		response.setResults(results);
-		// process each type
-		for(TableUpdateRequest change: request.getChanges()){
-			TableUpdateResponse result = applyChange(progressCallback, userInfo, change);
-			results.add(result);
+		if(request.getChanges() != null) {
+			// process each type
+			for(TableUpdateRequest change: request.getChanges()){
+				TableUpdateResponse result = applyChange(progressCallback, userInfo, change);
+				results.add(result);
+			}
+		}
+		if(Boolean.TRUE.equals(request.getCreateSnapshot())) {
+			long snapshotVersionNumber = tableViewManger.createSnapshot(userInfo, tableId, request.getSnapshotOptions());
+			response.setSnapshotVersionNumber(snapshotVersionNumber);
 		}
 		return response;
 	}
-	
+
+
 	/**
 	 * Apply each change within a transaction.
 	 * 
@@ -123,8 +132,11 @@ public class TableViewTransactionManager implements TableTransactionManager, Upl
 		ValidateArgument.required(change, "AppendableRowSetRequest");
 		ValidateArgument.required(change.getToAppend(), "AppendableRowSetRequest.toAppend");
 		ValidateArgument.required(change.getEntityId(), "AppendableRowSetRequest.entityId");
+		if (!change.getEntityId().equals(change.getToAppend().getTableId())) {
+			throw new IllegalArgumentException(String.format("The table id in the rowSet must match the entity id in the request (Expected: %s, Found: %s)", change.getEntityId(), change.getToAppend().getTableId()));
+		}
 		IdAndVersion idAndVersion = IdAndVersion.parse(change.getEntityId());
-		List<ColumnModel> currentSchema = tableManagerSupport.getColumnModelsForTable(idAndVersion);
+		List<ColumnModel> currentSchema = tableManagerSupport.getTableSchema(idAndVersion);
 		if(change.getToAppend() instanceof PartialRowSet){
 			return applyPartialRowSet(progressCallback, user, currentSchema, (PartialRowSet)change.getToAppend());
 		}else if(change.getToAppend() instanceof RowSet){
@@ -205,10 +217,15 @@ public class TableViewTransactionManager implements TableTransactionManager, Upl
 			List<ColumnModel> tableSchema, Iterator<SparseRowDto> rowStream,
 			String updateEtag, ProgressCallback progressCallback) {
 		List<EntityUpdateResult> results = new LinkedList<EntityUpdateResult>();
+		
+		IdAndVersion viewId = IdAndVersion.parse(tableId);
+		
+		ViewScopeType scopeType = tableManagerSupport.getViewScopeType(viewId);
+		ViewObjectType objectType = scopeType.getObjectType();
+		
 		// process all rows, each as a single transaction.
-		while(rowStream.hasNext()){
-			EntityUpdateResult result = processRow(user, tableSchema,
-					rowStream.next(), progressCallback);
+		while (rowStream.hasNext()){
+			EntityUpdateResult result = processRow(user, tableSchema, objectType, rowStream.next(), progressCallback);
 			results.add(result);
 		}
 		EntityUpdateResults response = new EntityUpdateResults();
@@ -225,13 +242,11 @@ public class TableViewTransactionManager implements TableTransactionManager, Upl
 	 * @param progressCallback
 	 * @return
 	 */
-	EntityUpdateResult processRow(UserInfo user,
-			List<ColumnModel> tableSchema, SparseRowDto row,
-			ProgressCallback progressCallback) {
+	EntityUpdateResult processRow(UserInfo user, List<ColumnModel> tableSchema, ViewObjectType objectType, SparseRowDto row, ProgressCallback progressCallback) {
 		EntityUpdateResult result = new EntityUpdateResult();
 		try {
 			result.setEntityId(KeyFactory.keyToString(row.getRowId()));
-			tableViewManger.updateEntityInView(user, tableSchema, row);
+			tableViewManger.updateRowInView(user, tableSchema, objectType, row);
 		} catch (NotFoundException e) {
 			result.setFailureCode(EntityUpdateFailureCode.NOT_FOUND);
 		}catch (ConflictingUpdateException e) {

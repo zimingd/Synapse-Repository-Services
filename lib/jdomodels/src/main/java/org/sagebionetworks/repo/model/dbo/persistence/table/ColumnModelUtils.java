@@ -3,7 +3,6 @@ package org.sagebionetworks.repo.model.dbo.persistence.table;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.UnmodifiableXStream;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
@@ -22,7 +20,7 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.sagebionetworks.schema.adapter.org.json.EntityFactory;
-import org.sagebionetworks.table.cluster.utils.ColumnConstants;
+import org.sagebionetworks.repo.model.table.ColumnConstants;
 import org.sagebionetworks.table.cluster.utils.TableModelUtils;
 
 import com.google.common.collect.Lists;
@@ -40,13 +38,6 @@ public class ColumnModelUtils {
 			.alias("ColumnChange", ColumnChange.class)
 			.allowTypes(ColumnModel.class, ColumnType.class, ColumnChange.class)
 			.build();
-
-	/**
-	 * The default maximum number of characters for a string.
-	 */
-	public static Long DEFAULT_MAX_STRING_SIZE = 50L;
-	public static final Charset UTF8 = Charset.forName("UTF-8");
-
 	/**
 	 * Translate from a DTO to DBO.
 	 * @param dto
@@ -158,11 +149,14 @@ public class ColumnModelUtils {
 				defaultValue = defaultValue.trim();
 			}
 			switch (clone.getColumnType()) {
+			case STRING_LIST:
+				validateListLengthForClone(clone);
+				// intentional no break to also validate max size
 			case STRING:
 			case LINK:
 				if(clone.getMaximumSize() == null){
 					// Use the default value
-					clone.setMaximumSize(DEFAULT_MAX_STRING_SIZE);
+					clone.setMaximumSize(ColumnConstants.DEFAULT_STRING_SIZE);
 				}else if(clone.getMaximumSize() > ColumnConstants.MAX_ALLOWED_STRING_SIZE){
 					// The max is beyond the allowed size
 					throw new IllegalArgumentException("ColumnModel.maxSize for a STRING cannot exceed: "+ColumnConstants.MAX_ALLOWED_STRING_SIZE);
@@ -172,6 +166,8 @@ public class ColumnModelUtils {
 				}
 				break;
 			case ENTITYID:
+			case SUBMISSIONID:
+			case EVALUATIONID:
 			case FILEHANDLEID:
 			case USERID:
 			case LARGETEXT:
@@ -179,9 +175,22 @@ public class ColumnModelUtils {
 					defaultValue = null;
 				}
 				if (defaultValue != null) {
-					throw new IllegalArgumentException("Columns of type ENTITYID, FILEHANDLEID, USERID, and LARGETEXT cannot have default values.");
+					throw new IllegalArgumentException("Columns of type " + clone.getColumnType() + " cannot have default values.");
 				}
 				break;
+			case ENTITYID_LIST:
+			case USERID_LIST:
+				if (StringUtils.isEmpty(defaultValue)) {
+					defaultValue = null;
+				}
+				if (defaultValue != null) {
+					throw new IllegalArgumentException("Columns of type " + clone.getColumnType() + " cannot have default values.");
+				}
+			case INTEGER_LIST:
+			case DATE_LIST:
+			case BOOLEAN_LIST:
+				validateListLengthForClone(clone);
+				// intentional no break for default value validation
 			case BOOLEAN:
 			case DATE:
 			case INTEGER:
@@ -239,6 +248,19 @@ public class ColumnModelUtils {
 		}
 	}
 
+	static void validateListLengthForClone(ColumnModel clone){
+		if(clone.getMaximumListLength() == null){
+			// Use the default value
+			clone.setMaximumListLength(ColumnConstants.MAX_ALLOWED_LIST_LENGTH);
+		}else if(clone.getMaximumListLength() > ColumnConstants.MAX_ALLOWED_LIST_LENGTH){
+			// The max is beyond the allowed size
+			throw new IllegalArgumentException("ColumnModel.maximumListLength for a LIST column cannot exceed: "+ColumnConstants.MAX_ALLOWED_LIST_LENGTH);
+		} else if (clone.getMaximumListLength() < 2) {
+			// The max is beyond the allowed size
+			throw new IllegalArgumentException("ColumnModel.maximumListLength for a LIST column must be at least 2");
+		}
+	}
+
 	
 	/**
 	 * Create a list DBOBoundColumnOrdinal where the order of the list is preserved.
@@ -271,13 +293,9 @@ public class ColumnModelUtils {
 	 * @throws IOException
 	 */
 	public static void writeSchemaChangeToGz(List<ColumnChange> changes, OutputStream out) throws IOException{
-		GZIPOutputStream zipOut = null;
-		try{
-			zipOut = new GZIPOutputStream(out);
+		try(GZIPOutputStream zipOut = new GZIPOutputStream(out);){
 			X_STREAM.toXML(changes, zipOut);
 			zipOut.flush();
-		}finally{
-			IOUtils.closeQuietly(zipOut);
 		}
 	}
 	
@@ -289,12 +307,8 @@ public class ColumnModelUtils {
 	 * @throws IOException
 	 */
 	public static List<ColumnChange> readSchemaChangeFromGz(InputStream input) throws IOException{
-		GZIPInputStream zipIn = null;
-		try{
-			zipIn = new GZIPInputStream(input);
+		try(GZIPInputStream zipIn = new GZIPInputStream(input);){
 			return (List<ColumnChange>) X_STREAM.fromXML(zipIn);
-		}finally{
-			IOUtils.closeQuietly(zipIn);
 		}
 	}
 }

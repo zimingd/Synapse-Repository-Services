@@ -59,6 +59,7 @@ import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.EntityView;
+import org.sagebionetworks.repo.model.table.SubmissionView;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.ViewType;
 import org.sagebionetworks.repo.web.NotFoundException;
@@ -241,6 +242,12 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 					view.setColumnIds(idList);
 					view.setType(ViewType.file);
 				}
+				if (object instanceof SubmissionView) {
+					SubmissionView view = (SubmissionView)object;
+					List<String> idList = new LinkedList<String>();
+					idList.add(columnModelOne.getId());
+					view.setColumnIds(idList);
+				}
 				if(object instanceof DockerRepository){
 					DockerRepository dockerRepository = (DockerRepository)object;
 					dockerRepository.setIsManaged(false);
@@ -361,31 +368,6 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 		}
 	}
 	
-	@Ignore
-	@Test
-	public void testGetPath() throws Exception{
-		// First create one of each type
-		List<Entity> created = createEntitesOfEachType(1);
-		assertNotNull(created);
-		assertTrue(created.size() >= EntityType.values().length);
-		
-		// Now update each
-		for(Entity entity: created){
-			// Make sure we can get the annotations for this entity.
-			EntityPath entityPath = servletTestHelper.getEntityPath(dispatchServlet, entity.getClass(), entity.getId(), userId);
-			List<EntityHeader> path = entityPath.getPath();
-			assertNotNull(path);
-			assertTrue(path.size() > 0);
-			EntityType type = EntityTypeUtils.getEntityTypeForClass(entity.getClass());
-			// The last element should match this entity
-			EntityHeader myData = path.get(path.size()-1);
-			assertNotNull(myData);
-			assertEquals(entity.getId(), myData.getId());
-			assertEquals(entity.getName(), myData.getName());
-			assertEquals(EntityTypeUtils.getEntityTypeClassName(type), myData.getType());
-		}
-	}
-	
 	@Test
 	public void testGetAnnotations() throws Exception{
 		// First create one of each type
@@ -419,14 +401,12 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 			assertNotNull(annos);
 			assertNotNull(annos.getEtag());
 			annos.addAnnotation("someStringKey", "one");
-			annos.addAnnotation("someBlobKey", "I am a very long string".getBytes("UTF-8"));
 			// Do the update
 			Annotations updatedAnnos = servletTestHelper.updateEntityAnnotations(dispatchServlet, entity.getClass(), annos, userId);
 			assertNotNull(updatedAnnos);
 			assertNotNull(updatedAnnos.getEtag());
 			assertFalse(updatedAnnos.getEtag().equals(annos.getEtag()));
 			assertEquals("one", updatedAnnos.getSingleValue("someStringKey"));
-			assertNotNull(updatedAnnos.getBlobAnnotations().get("someBlobKey"));
 		}
 
 	}
@@ -471,66 +451,6 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 
 	}
 	
-	@Ignore
-	@Test
-	public void testCreateEntityAcl() throws Exception {
-		// First create one of each type
-		List<Entity> created = createEntitesOfEachType(1);
-		assertNotNull(created);
-		assertTrue(created.size() >= EntityType.values().length);
-		
-		// Now update each
-		for(Entity entity: created){
-			AccessControlList acl = null;
-			try{
-				acl = servletTestHelper.getEntityACL(dispatchServlet, entity.getId(), userId);
-			}catch(ACLInheritanceException e){
-				// occurs when the child inherits its permissions from a benefactor
-				acl = servletTestHelper.getEntityACL(dispatchServlet, e.getBenefactorId(), userId);
-			}
-			assertNotNull(acl);
-			// Get the full path of this entity.
-			EntityPath entityPath = servletTestHelper.getEntityPath(dispatchServlet, entity.getClass(), entity.getId(), userId);
-			List<EntityHeader> path = entityPath.getPath();
-			assertNotNull(path);
-			assertTrue(path.size() > 0);
-			// The ACL should match the root of the node
-			EntityHeader rootHeader = path.get(1);
-			// the returned ACL should refer to the parent
-			assertEquals(rootHeader.getId(), acl.getId());
-			
-			// We cannot add an ACL to a node that already has one
-			if(acl.getId().equals(entity.getId())){
-				continue;
-			}
-			
-			// now switch to child
-			acl.setId(null);
-			// (Is this OK, or do we have to make new ResourceAccess objects inside?)
-			// now POST to /dataset/{id}/acl with this acl as the body
-			AccessControlList acl2 = servletTestHelper.createEntityACL(dispatchServlet, entity.getId(), acl, userId);
-			// now retrieve the acl for the child. should get its own back
-			AccessControlList acl3 = servletTestHelper.getEntityACL(dispatchServlet, entity.getId(), userId);
-			assertEquals(entity.getId(), acl3.getId());
-			
-			
-			// now delete the ACL (restore inheritance)
-			servletTestHelper.deleteEntityACL(dispatchServlet, entity.getId(), userId);
-			// try retrieving the ACL for the child
-			
-			// should get the parent's ACL
-			AccessControlList acl4 = null;
-			try{
-				acl4 = servletTestHelper.getEntityACL(dispatchServlet, entity.getId(), userId);
-			}catch(ACLInheritanceException e){
-				acl4 = servletTestHelper.getEntityACL(dispatchServlet, e.getBenefactorId(), userId);
-			}
-			assertNotNull(acl4);
-			// the returned ACL should refer to the parent
-			assertEquals(rootHeader.getId(), acl4.getId());
-		}
-	}
-	
 	@Test
 	public void testCreateNewVersion() throws Exception {
 		// First create one of each type
@@ -540,7 +460,7 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 		// Now update each
 		for(Entity entity: created){
 			// Cannot directly create version of tables or views
-			if(entity instanceof TableEntity || entity instanceof EntityView) {
+			if(entity instanceof TableEntity || entity instanceof EntityView || entity instanceof SubmissionView) {
 				continue;
 			}
 			// We can only create new versions for versionable entities.
@@ -572,7 +492,7 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 		// Now update each
 		for(Entity entity: created){
 			// Cannot directly create version of tables or views
-			if(entity instanceof TableEntity || entity instanceof EntityView) {
+			if(entity instanceof TableEntity || entity instanceof EntityView || entity instanceof SubmissionView) {
 				continue;
 			}
 			// We can only create new versions for versionable entities.
@@ -616,7 +536,7 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 			// We can only create new versions for versionable entities.
 			if(entity instanceof VersionableEntity){
 				// Cannot directly create version of tables or views
-				if(entity instanceof TableEntity || entity instanceof EntityView) {
+				if(entity instanceof TableEntity || entity instanceof EntityView || entity instanceof SubmissionView) {
 					continue;
 				}
 				VersionableEntity versionableEntity = (VersionableEntity) entity;
@@ -668,7 +588,7 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 		// Now update each
 		for(Entity entity: created){
 			// Cannot directly create version of tables or views
-			if(entity instanceof TableEntity || entity instanceof EntityView) {
+			if(entity instanceof TableEntity || entity instanceof EntityView || entity instanceof SubmissionView) {
 				continue;
 			}
 			// We can only create new versions for versionable entities.
@@ -726,7 +646,7 @@ public class DefaultControllerAutowiredAllTypesTest extends AbstractAutowiredCon
 		// Now update each
 		for(Entity entity: created){
 			// Cannot directly create version of tables or views
-			if(entity instanceof TableEntity || entity instanceof EntityView) {
+			if(entity instanceof TableEntity || entity instanceof EntityView || entity instanceof SubmissionView) {
 				continue;
 			}
 			// We can only create new versions for versionable entities.

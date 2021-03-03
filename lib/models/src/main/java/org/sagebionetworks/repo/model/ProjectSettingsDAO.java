@@ -1,30 +1,30 @@
 package org.sagebionetworks.repo.model;
 
-import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 
 import org.sagebionetworks.repo.model.project.ProjectSetting;
 import org.sagebionetworks.repo.model.project.ProjectSettingsType;
 import org.sagebionetworks.repo.web.NotFoundException;
-import org.sagebionetworks.util.TemporaryCode;
 
 public interface ProjectSettingsDAO {
 
-	public String create(ProjectSetting settings) throws DatastoreException, InvalidModelException;
+	String create(ProjectSetting settings) throws DatastoreException, InvalidModelException;
 
-	public ProjectSetting get(String id) throws DatastoreException, NotFoundException;
+	ProjectSetting get(String id) throws DatastoreException, NotFoundException;
 
-	public ProjectSetting get(String projectId, ProjectSettingsType projectSettingsType) throws DatastoreException;
+	Optional<ProjectSetting> get(String projectId, ProjectSettingsType projectSettingsType) throws DatastoreException;
 
-	public ProjectSetting get(List<Long> parentIds, ProjectSettingsType projectSettingsType) throws DatastoreException;
+	List<ProjectSetting> getAllForProject(String projectId) throws DatastoreException, NotFoundException;
 
-	public List<ProjectSetting> getAllForProject(String projectId) throws DatastoreException, NotFoundException;
+	/**
+	 * Walks up the entity hierarchy and returns the ID of the first ProjectSetting of the given type, or null if no ProjectSettings are
+	 * defined in the entity hierarchy for the given type.
+	 */
+	String getInheritedProjectSetting(String entityId, ProjectSettingsType settingType);
 
-	@TemporaryCode(author="marco.marasca@sagebase.org")
-	public Iterator<ProjectSetting> getByType(ProjectSettingsType projectSettingsType) throws DatastoreException, NotFoundException;
-
-	public ProjectSetting update(ProjectSetting settings) throws DatastoreException, InvalidModelException, NotFoundException,
+	ProjectSetting update(ProjectSetting settings) throws DatastoreException, InvalidModelException, NotFoundException,
 			ConflictingUpdateException;
 
-	public void delete(String id) throws DatastoreException, NotFoundException;
+	void delete(String id) throws DatastoreException, NotFoundException;
 }

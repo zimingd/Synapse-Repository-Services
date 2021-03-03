@@ -42,8 +42,11 @@ import org.sagebionetworks.repo.model.AccessControlListDAO;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityType;
+import org.sagebionetworks.repo.model.NodeConstants;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.ResourceAccess;
+import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOAccessControlList;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOResourceAccess;
@@ -61,6 +64,7 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 
 import com.google.common.collect.Sets;
 
@@ -258,8 +262,7 @@ public class DBOAccessControlListDaoImpl implements AccessControlListDAO {
 		populateResourceAccess(dbo.getId(), acl.getResourceAccess());
 
 		transactionalMessenger.sendMessageAfterCommit(dbo.getId().toString(),
-				ObjectType.ACCESS_CONTROL_LIST, acl.getEtag(),
-				ChangeType.CREATE);
+				ObjectType.ACCESS_CONTROL_LIST, ChangeType.CREATE);
 		return acl.getId(); // This preserves the "syn" prefix
 	}
 
@@ -431,8 +434,7 @@ public class DBOAccessControlListDaoImpl implements AccessControlListDAO {
 		populateResourceAccess(dbo.getId(), acl.getResourceAccess());
 
 		transactionalMessenger.sendMessageAfterCommit(dbo.getId().toString(),
-				ObjectType.ACCESS_CONTROL_LIST, acl.getEtag(),
-				ChangeType.UPDATE);
+				ObjectType.ACCESS_CONTROL_LIST, ChangeType.UPDATE);
 	}
 
 	@WriteTransaction
@@ -450,8 +452,7 @@ public class DBOAccessControlListDaoImpl implements AccessControlListDAO {
 			dboBasicDao.deleteObjectByPrimaryKey(DBOAccessControlList.class,
 					params);
 			transactionalMessenger.sendMessageAfterCommit(dboId.toString(),
-					ObjectType.ACCESS_CONTROL_LIST, UUID.randomUUID()
-							.toString(), ChangeType.DELETE);
+					ObjectType.ACCESS_CONTROL_LIST, ChangeType.DELETE);
 		} catch (NotFoundException e) {
 			// if there is no valid AclId for this ownerId and ownerType, do
 			// nothing
@@ -475,8 +476,7 @@ public class DBOAccessControlListDaoImpl implements AccessControlListDAO {
 		List<Long> aclIds = getAclIds(ownerIds, ownerType);
 		for (Long aclId : aclIds) {
 			transactionalMessenger.sendMessageAfterCommit(aclId.toString(),
-					ObjectType.ACCESS_CONTROL_LIST, UUID.randomUUID()
-							.toString(), ChangeType.DELETE);
+					ObjectType.ACCESS_CONTROL_LIST, ChangeType.DELETE);
 		}
 
 		MapSqlParameterSource params = new MapSqlParameterSource();
@@ -604,5 +604,26 @@ public class DBOAccessControlListDaoImpl implements AccessControlListDAO {
 		Map<String, Object> namedParameters = new HashMap<String, Object>(1);
 		namedParameters.put(BIND_PARENT_ID, parentIds);
 		return namedParameterJdbcTemplate.queryForList(SQL_SELECT_CHILDREN_ENTITIES_WITH_ACLS, namedParameters, Long.class);
+	}
+
+	@Override
+	public AuthorizationStatus canAccess(UserInfo user, String resourceId, ObjectType resourceType,
+			ACCESS_TYPE permission) {
+		ValidateArgument.required(user, "user");
+		if (canAccess(user.getGroups(), resourceId, resourceType, permission)) {
+			return AuthorizationStatus.authorized();
+		} else {
+			return AuthorizationStatus.accessDenied(
+					String.format("You do not have %s permission for %s : %s", permission, resourceType, resourceId));
+		}
+	}
+
+	@Override
+	public void truncateAll() {
+		SqlParameterSource params = new MapSqlParameterSource("bootstrapIds",
+				NodeConstants.BOOTSTRAP_NODES.getAllBootstrapIds());
+		namedParameterJdbcTemplate.update(
+				"DELETE FROM " + TABLE_ACCESS_CONTROL_LIST + " WHERE " + COL_ACL_OWNER_ID + " NOT IN(:bootstrapIds)",
+				params);
 	}
 }

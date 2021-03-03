@@ -1,21 +1,35 @@
 package org.sagebionetworks.table.query;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+import com.google.common.collect.Lists;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.sagebionetworks.repo.model.table.SortDirection;
 import org.sagebionetworks.repo.model.table.SortItem;
 import org.sagebionetworks.table.query.model.ComparisonPredicate;
 import org.sagebionetworks.table.query.model.DerivedColumn;
 import org.sagebionetworks.table.query.model.QuerySpecification;
 import org.sagebionetworks.table.query.model.SortKey;
+import org.sagebionetworks.table.query.model.WhereClause;
 import org.sagebionetworks.table.query.util.SimpleAggregateQueryException;
 import org.sagebionetworks.table.query.util.SqlElementUntils;
 
-import com.google.common.collect.Lists;
-
 public class SqlElementUntilsTest {
+
+	String searchConditionString;
+	StringBuilder stringBuilder;
+	WhereClause whereClause;
+
+	@BeforeEach
+	public void setUp() throws ParseException {
+		whereClause = new WhereClause(SqlElementUntils.createSearchCondition("water=wet AND sky=blue"));
+		searchConditionString = "(tabs > spaces)";
+		stringBuilder = new StringBuilder();
+	}
 	
 	@Test
 	public void testConvertToPaginated() throws ParseException {
@@ -90,6 +104,19 @@ public class SqlElementUntilsTest {
 		QuerySpecification converted = SqlElementUntils.convertToSortedQuery(model, Lists.newArrayList(sort1, sort2));
 		assertNotNull(converted);
 		assertEquals("SELECT foo, bar FROM syn123 WHERE foo = 1 ORDER BY \"bar\" DESC, \"foo\" ASC LIMIT 1", converted.toString());
+	}
+
+
+	@Test
+	public void testConvertToSortedQuerySortWithDoubleQuote() throws ParseException {
+		QuerySpecification model = TableQueryParser
+				.parserQuery("select * from syn123");
+		SortItem sort1 = new SortItem();
+		sort1.setColumn("has\"Quote");
+		QuerySpecification converted = SqlElementUntils.convertToSortedQuery(model, Lists.newArrayList(sort1));
+		assertNotNull(converted);
+		assertEquals("SELECT * FROM syn123 ORDER BY \"has\"\"Quote\" ASC",
+				converted.toString());
 	}
 	
 	@Test
@@ -260,16 +287,20 @@ public class SqlElementUntilsTest {
 		assertEquals("SELECT COUNT(DISTINCT foo, bar) FROM syn123", countSql);
 	}
 	
-	@Test (expected=SimpleAggregateQueryException.class)
+	@Test
 	public void testCreateCountSimpleAggregateCountStar() throws ParseException, SimpleAggregateQueryException{
 		QuerySpecification model = new TableQueryParser("select count(*) from syn123").querySpecification();
-		SqlElementUntils.createCountSql(model);
+		assertThrows(SimpleAggregateQueryException.class, () ->
+			SqlElementUntils.createCountSql(model)
+		);
 	}
 	
-	@Test (expected=SimpleAggregateQueryException.class)
+	@Test
 	public void testCreateCountSimpleAggregateMultipleAggregate() throws ParseException, SimpleAggregateQueryException{
 		QuerySpecification model = new TableQueryParser("select sum(foo), max(bar) from syn123").querySpecification();
-		SqlElementUntils.createCountSql(model);
+		assertThrows(SimpleAggregateQueryException.class, () ->
+				SqlElementUntils.createCountSql(model)
+		);
 	}
 	
 	@Test
@@ -352,7 +383,14 @@ public class SqlElementUntilsTest {
 		String result = SqlElementUntils.wrapInDoubleQuotes(toWrap);
 		assertEquals("\"foo\"", result);
 	}
-	
+
+	@Test
+	public void testWrapInDoubleQuotes_StringContainsDoubleQuotes(){
+		String toBeWrapped = "\"Don't trust everything you read on the internet\" - Abraham Lincoln";
+		String expectedResult = "\"\"\"Don't trust everything you read on the internet\"\" - Abraham Lincoln\"";
+		assertEquals(expectedResult, SqlElementUntils.wrapInDoubleQuotes(toBeWrapped));
+	}
+
 	@Test
 	public void testCreateSortKeyWithKeywordInName() throws ParseException{
 		SortKey sortKey = SqlElementUntils.createSortKey("Date Approved/Rejected");
@@ -374,11 +412,26 @@ public class SqlElementUntilsTest {
 		assertNotNull(sortKey);
 		assertEquals("MAX(foo)", sortKey.toSql());
 	}
-	
-	@Test
-	public void testCreateDoubleQuotedDerivedColumn(){
+
+	///////////////////////////////////////////////
+	// createDoubleQuotedDerivedColumn() tests
+	///////////////////////////////////////////////
+
+	public void testCreateDoubleQuotedDerivedColumn_nameIsSingleWord() throws ParseException {
 		DerivedColumn dr = SqlElementUntils.createDoubleQuotedDerivedColumn("foo");
 		assertEquals("\"foo\"", dr.toSql());
+	}
+
+	@Test
+	public void testCreateDoubleQuotedDerivedColumn_nameIncludesSpaces() throws ParseException {
+		DerivedColumn dr = SqlElementUntils.createDoubleQuotedDerivedColumn("foo bar");
+		assertEquals("\"foo bar\"", dr.toSql());
+	}
+
+	@Test
+	public void testCreateDoubleQuotedDerivedColumn_nameIncludesDoubleQuotes() throws ParseException {
+		DerivedColumn dr = SqlElementUntils.createDoubleQuotedDerivedColumn("foo\"bar\"");
+		assertEquals("\"foo\"\"bar\"\"\"", dr.toSql());
 	}
 	
 	@Test
@@ -386,5 +439,40 @@ public class SqlElementUntilsTest {
 		DerivedColumn dr = SqlElementUntils.createNonQuotedDerivedColumn("ROW_ID");
 		assertEquals("ROW_ID", dr.toSql());
 	}
-	
+
+
+	////////////////////////////////////////////////////////////
+	// appendCombinedWhereClauseToStringBuilder() tests
+	////////////////////////////////////////////////////////////
+	@Test
+	public void appendCombinedWhereClauseToStringBuilderNullBuilder(){
+		assertThrows(IllegalArgumentException.class, () ->
+			SqlElementUntils.appendCombinedWhereClauseToStringBuilder(null, searchConditionString, whereClause)
+		);
+	}
+
+	@Test
+	public void appendCombinedWhereClauseToStringBuilderNullFacetSearchConditionStringNullWhereClause(){
+		SqlElementUntils.appendCombinedWhereClauseToStringBuilder(stringBuilder, null, null);
+		assertEquals(0, stringBuilder.length());
+	}
+
+	@Test
+	public void appendCombinedWhereClauseToStringBuilderNullWhereClause(){
+		SqlElementUntils.appendCombinedWhereClauseToStringBuilder(stringBuilder, searchConditionString, null);
+		assertEquals(" WHERE "+ searchConditionString, stringBuilder.toString());
+	}
+
+	@Test
+	public void appendCombinedWhereClauseToStringBuilderNullFacetSearchConditionString(){
+		SqlElementUntils.appendCombinedWhereClauseToStringBuilder(stringBuilder, null, whereClause);
+		assertEquals(" WHERE "+ whereClause.getSearchCondition().toSql(), stringBuilder.toString());
+	}
+
+	@Test
+	public void appendCombinedWhereClauseToStringBuilderNoNulls(){
+		SqlElementUntils.appendCombinedWhereClauseToStringBuilder(stringBuilder, searchConditionString, whereClause);
+		assertEquals(" WHERE ("+ whereClause.getSearchCondition().toSql() + ") AND (" + searchConditionString + ")", stringBuilder.toString());
+	}
+
 }

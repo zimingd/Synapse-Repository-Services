@@ -20,11 +20,14 @@ import java.util.zip.GZIPOutputStream;
 
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.StringUtils;
+import org.json.JSONArray;
 import org.sagebionetworks.repo.model.asynch.AsynchronousResponseBody;
 import org.sagebionetworks.repo.model.dao.table.RowHandler;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.table.ColumnChange;
+import org.sagebionetworks.repo.model.table.ColumnConstants;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.IdRange;
@@ -49,6 +52,7 @@ import org.sagebionetworks.table.cluster.ColumnChangeDetails;
 import org.sagebionetworks.table.cluster.ColumnTypeInfo;
 import org.sagebionetworks.table.model.SparseChangeSet;
 import org.sagebionetworks.table.model.SparseRow;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 import org.sagebionetworks.util.ValidateArgument;
 
 import com.google.common.base.Function;
@@ -101,7 +105,7 @@ public class TableModelUtils {
 			return Long.parseLong(sc.getId());
 		}
 	};
-	
+
 	/**
 	 * Write a SparseChangeSetDto to the given output stream as GZIP compressed JSON.
 	 * @param set
@@ -210,20 +214,13 @@ public class TableModelUtils {
 	 * @return
 	 */
 	public static String validateValue(String value, ColumnModel cm) {
-		switch (cm.getColumnType()) {
-		case STRING:
-			if (cm.getMaximumSize() == null)
-				throw new IllegalArgumentException("String columns must have a maximum size");
-			if (cm.getMaximumSize() > ColumnConstants.MAX_ALLOWED_STRING_SIZE){
-				throw new IllegalArgumentException("Exceeds the maximum number of character: "+ColumnConstants.MAX_ALLOWED_STRING_SIZE);
-			}
-			if (value.length() > cm.getMaximumSize()) {
-				throw new IllegalArgumentException("String '" + value + "' exceeds the maximum length of " + cm.getMaximumSize()
-						+ " characters. Consider using a FileHandle to store large strings.");
-			}
+		if (cm.getColumnType() == ColumnType.STRING) {
+			validateStringValueSize(value, cm);
 			checkStringEnum(value, cm);
 			return value;
-		case LINK:
+		}
+
+		if (cm.getColumnType() == ColumnType.LINK) {
 			if (cm.getMaximumSize() == null)
 				throw new IllegalArgumentException("Link columns must have a maximum size");
 			if (value.length() > cm.getMaximumSize()) {
@@ -232,17 +229,60 @@ public class TableModelUtils {
 			}
 			checkStringEnum(value, cm);
 			return value;
-		case LARGETEXT:
+		}
+
+		if (cm.getColumnType() == ColumnType.LARGETEXT) {
 			if (value.length() > ColumnConstants.MAX_LARGE_TEXT_CHARACTERS) {
-				throw new IllegalArgumentException("Exceeds the maximum number of characters: "+ColumnConstants.MAX_LARGE_TEXT_CHARACTERS);
+				throw new IllegalArgumentException("Exceeds the maximum number of characters: " + ColumnConstants.MAX_LARGE_TEXT_CHARACTERS);
 			}
 			checkStringEnum(value, cm);
 			return value;
-		default:
-			// All other types are handled by the type specific parser.
-			ColumnTypeInfo info = ColumnTypeInfo.getInfoForType(cm.getColumnType());
-			Object objectValue = info.parseValueForDatabaseWrite(value);
-			return objectValue.toString();
+		}
+
+		if (ColumnTypeListMappings.isList(cm.getColumnType())) {
+			//make sure this is a valid JSON List (size limit, values
+			String listValue = (String) ColumnTypeInfo.getInfoForType(cm.getColumnType())
+					.parseValueForDatabaseWrite(value);
+
+			if(listValue == null){
+				// this can occur in cases such as the JSON string being an empty JSON Array
+				return null;
+			}
+
+			//validate values for each individual string in the list
+			JSONArray jsonArray = new JSONArray(listValue);
+
+			if (jsonArray.length() > cm.getMaximumListLength()) {
+				throw new IllegalArgumentException(
+						"Exceeds the maximum number of list elements defined in the ColumnModel ("+cm.getMaximumListLength()+"): \"" +
+								value + "\"");
+			}
+
+			if(cm.getColumnType() == ColumnType.STRING_LIST) {
+				for (Object listElem : jsonArray) {
+					String strListElem = listElem.toString();
+					validateStringValueSize(strListElem, cm);
+					checkStringEnum(strListElem, cm);
+				}
+			}
+			return listValue;
+		}
+
+		// All other types are handled by the type specific parser.
+		ColumnTypeInfo info = ColumnTypeInfo.getInfoForType(cm.getColumnType());
+		Object objectValue = info.parseValueForDatabaseWrite(value);
+		return objectValue.toString();
+	}
+
+	private static void validateStringValueSize(String value, ColumnModel cm) {
+		if (cm.getMaximumSize() == null)
+			throw new IllegalArgumentException("String columns must have a maximum size");
+		if (cm.getMaximumSize() > ColumnConstants.MAX_ALLOWED_STRING_SIZE){
+			throw new IllegalArgumentException("Exceeds the maximum number of character: "+ColumnConstants.MAX_ALLOWED_STRING_SIZE);
+		}
+		if (value.length() > cm.getMaximumSize()) {
+			throw new IllegalArgumentException("String '" + value + "' exceeds the maximum length of " + cm.getMaximumSize()
+					+ " characters.");
 		}
 	}
 
@@ -664,7 +704,7 @@ public class TableModelUtils {
 		ValidateArgument.required(models, "models");
 		int size = 0;
 		for (ColumnModel cm : models) {
-			size += calculateMaxSizeForType(cm.getColumnType(), cm.getMaximumSize());
+			size += calculateMaxSizeForType(cm.getColumnType(), cm.getMaximumSize(), cm.getMaximumListLength());
 		}
 		return size;
 	}
@@ -683,7 +723,7 @@ public class TableModelUtils {
 				size += 64;
 			}else {
 				// we don't know the max size, now what?
-				size += calculateMaxSizeForType(scm.getColumnType(), ColumnConstants.MAX_ALLOWED_STRING_SIZE);
+				size += calculateMaxSizeForType(scm.getColumnType(), ColumnConstants.MAX_ALLOWED_STRING_SIZE, ColumnConstants.MAX_ALLOWED_LIST_LENGTH);
 			}
 		}
 		return size;
@@ -702,10 +742,14 @@ public class TableModelUtils {
 			// Lookup the column by name
 			ColumnModel column = nameToSchemaMap.get(scm.getName());
 			if(column != null){
-				size += calculateMaxSizeForType(column.getColumnType(), column.getMaximumSize());
+				size += calculateMaxSizeForType(column.getColumnType(),
+						column.getMaximumSize(),
+						column.getMaximumListLength());
 			}else{
 				// Since the size is unknown, the max allowed size is used.
-				size += calculateMaxSizeForType(scm.getColumnType(), ColumnConstants.MAX_ALLOWED_STRING_SIZE);
+				size += calculateMaxSizeForType(scm.getColumnType(),
+						ColumnConstants.MAX_ALLOWED_STRING_SIZE,
+						ColumnConstants.MAX_ALLOWED_LIST_LENGTH);
 			}
 		}
 		return size;
@@ -717,34 +761,61 @@ public class TableModelUtils {
 	 * @param cm
 	 * @return
 	 */
-	public static int calculateMaxSizeForType(ColumnType type, Long maxSize){
+	public static int calculateMaxSizeForType(ColumnType type, Long maxSize, Long maxListLength){
 		if(type == null) throw new IllegalArgumentException("ColumnType cannot be null");
 		switch (type) {
-		case STRING:
-		case LINK:
-			if (maxSize == null) {
-				throw new IllegalArgumentException("maxSize cannot be null for String types");
-			}
-			return (int) (ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8 * maxSize);
-		case LARGETEXT:
-			return ColumnConstants.SIZE_OF_LARGE_TEXT_FOR_COLUMN_SIZE_ESTIMATE_BYTES;	
-		case BOOLEAN:
-			return ColumnConstants.MAX_BOOLEAN_BYTES_AS_STRING;
-		case INTEGER:
-		case DATE:
-			return ColumnConstants.MAX_INTEGER_BYTES_AS_STRING;
-		case DOUBLE:
-			return ColumnConstants.MAX_DOUBLE_BYTES_AS_STRING;
-		case FILEHANDLEID:
-			return ColumnConstants.MAX_FILE_HANDLE_ID_BYTES_AS_STRING;
-		case ENTITYID:
-			return ColumnConstants.MAX_ENTITY_ID_BYTES_AS_STRING;
-		case USERID:
-			return ColumnConstants.MAX_USER_ID_BYTES_AS_STRING;
+			case STRING:
+			case LINK:
+				if (maxSize == null) {
+					throw new IllegalArgumentException("maxSize cannot be null for String types");
+				}
+				return (int) (ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8 * maxSize);
+			case LARGETEXT:
+				return ColumnConstants.SIZE_OF_LARGE_TEXT_FOR_COLUMN_SIZE_ESTIMATE_BYTES;
+			case BOOLEAN:
+				return ColumnConstants.MAX_BOOLEAN_BYTES_AS_STRING;
+			case INTEGER:
+			case SUBMISSIONID:
+			case EVALUATIONID:
+			case DATE:
+				return ColumnConstants.MAX_INTEGER_BYTES_AS_STRING;
+			case DOUBLE:
+				return ColumnConstants.MAX_DOUBLE_BYTES_AS_STRING;
+			case FILEHANDLEID:
+				return ColumnConstants.MAX_FILE_HANDLE_ID_BYTES_AS_STRING;
+			case ENTITYID:
+				return ColumnConstants.MAX_ENTITY_ID_BYTES_AS_STRING;
+			case USERID:
+				return ColumnConstants.MAX_USER_ID_BYTES_AS_STRING;
+			case STRING_LIST:
+				if (maxSize == null) {
+					throw new IllegalArgumentException("maxSize cannot be null for String List types");
+				}
+				if(maxListLength == null){
+					throw new IllegalArgumentException("maxListLength cannot be null for List types");
+				}
+
+				return (int) (ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8 * maxSize * maxListLength);
+			case INTEGER_LIST:
+			case DATE_LIST:
+			case USERID_LIST:
+				if(maxListLength == null){
+					throw new IllegalArgumentException("maxListLength cannot be null for List types");
+				}
+				return (int) (ColumnConstants.MAX_INTEGER_BYTES_AS_STRING * maxListLength);
+			case BOOLEAN_LIST:
+				if(maxListLength == null){
+					throw new IllegalArgumentException("maxListLength cannot be null for List types");
+				}
+				return (int) (ColumnConstants.MAX_BOOLEAN_BYTES_AS_STRING * maxListLength);
+			case ENTITYID_LIST:
+				if(maxListLength == null){
+					throw new IllegalArgumentException("maxListLength cannot be null for List types");
+				}
+				return (int) (ColumnConstants.MAX_ENTITY_ID_BYTES_AS_STRING * maxListLength);
 		}
 		throw new IllegalArgumentException("Unknown ColumnType: " + type);
-	}
-	
+		}
 	
 	/**
 	 * Calculate the amount of memory needed load the given row.
@@ -1066,6 +1137,8 @@ public class TableModelUtils {
 	 * @return
 	 */
 	public static Map<Long, Integer> createColumnIdToColumnIndexMapFromFirstRow(String[] rowValues, List<ColumnModel> schema) {
+		ValidateArgument.required(rowValues, "header");
+		ValidateArgument.required(schema, "schema");
 		Map<String, Long> nameMap = createNameToIDMap(schema);
 		// Build the map from the names
 		Map<Long, Integer> columnIdToColumnIndexMap = Maps.newHashMap();

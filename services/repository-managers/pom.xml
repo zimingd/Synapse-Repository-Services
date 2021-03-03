@@ -1,4 +1,5 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
@@ -13,6 +14,10 @@
 	<dependencies>
 
 		<!-- Sage Bionetworks Dependencies -->
+		<dependency>
+			<groupId>org.sagebionetworks</groupId>
+			<artifactId>lib-schema-id</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.sagebionetworks</groupId>
 			<artifactId>lib-models</artifactId>
@@ -54,7 +59,15 @@
 			<groupId>org.sagebionetworks</groupId>
 			<artifactId>simple-http-client</artifactId>
 		</dependency>
-
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>JSON-Java</artifactId>
+		</dependency>
+		<!-- JSON schema validation library -->
+		<dependency>
+			<groupId>com.github.everit-org.json-schema</groupId>
+			<artifactId>org.everit.json.schema</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.sagebionetworks</groupId>
 			<artifactId>lib-logging</artifactId>
@@ -157,11 +170,6 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk</artifactId>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
 			<groupId>org.quartz-scheduler</groupId>
 			<artifactId>quartz</artifactId>
 		</dependency>
@@ -183,26 +191,10 @@
 			<artifactId>commons-fileupload</artifactId>
 		</dependency>
 
-		<dependency>
-			<groupId>com.atlassian.jira</groupId>
-			<artifactId>jira-rest-java-client-api</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>com.atlassian.jira</groupId>
-			<artifactId>jira-rest-java-client-core</artifactId>
-		</dependency>
-
-		<!-- Dependency needed by jira-rest-java-client-core but it's not automatically included for some reason? -->
-		<dependency>
-			<groupId>io.atlassian.fugue</groupId>
-			<artifactId>fugue</artifactId>
-		</dependency>
-
 		<!-- JSON -->
 		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
+			<groupId>org.sagebionetworks</groupId>
+			<artifactId>schema-to-pojo-org-json</artifactId>
 		</dependency>
 
 		<dependency>
@@ -215,7 +207,7 @@
 			<groupId>com.googlecode.json-simple</groupId>
 			<artifactId>json-simple</artifactId>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-jdk15on</artifactId>
@@ -225,11 +217,18 @@
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcpkix-jdk15on</artifactId>
 		</dependency>
-		
+
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-ext-jdk15on</artifactId>
 		</dependency>
+
+		<!-- Velocity - Used to templatize IAM policy documents -->
+		<dependency>
+			<groupId>org.apache.velocity</groupId>
+			<artifactId>velocity</artifactId>
+		</dependency>
+
 	</dependencies>
 
 	<build>
@@ -245,7 +244,6 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>javacc-maven-plugin</artifactId>
-				<version>2.6</version>
 				<executions>
 					<execution>
 						<id>jjtree-javacc</id>
@@ -261,14 +259,11 @@
 					</execution>
 				</executions>
 			</plugin>
-
-			<plugin>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<argLine>-Xmx1024m -Xms128m</argLine>
-				</configuration>
-			</plugin>
 		</plugins>
 	</build>
 
+	<properties>
+		<jacoco.branch.minumum>0.70</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.80</jacoco.line.minumum>
+	</properties>
 </project>

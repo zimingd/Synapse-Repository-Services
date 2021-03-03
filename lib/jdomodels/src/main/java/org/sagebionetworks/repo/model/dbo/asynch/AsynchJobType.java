@@ -14,6 +14,10 @@ import org.sagebionetworks.repo.model.migration.AsyncMigrationRequest;
 import org.sagebionetworks.repo.model.migration.AsyncMigrationResponse;
 import org.sagebionetworks.repo.model.report.DownloadStorageReportRequest;
 import org.sagebionetworks.repo.model.report.DownloadStorageReportResponse;
+import org.sagebionetworks.repo.model.schema.CreateSchemaRequest;
+import org.sagebionetworks.repo.model.schema.CreateSchemaResponse;
+import org.sagebionetworks.repo.model.schema.GetValidationSchemaRequest;
+import org.sagebionetworks.repo.model.schema.GetValidationSchemaResponse;
 import org.sagebionetworks.repo.model.table.DownloadFromTableRequest;
 import org.sagebionetworks.repo.model.table.DownloadFromTableResult;
 import org.sagebionetworks.repo.model.table.QueryBundleRequest;
@@ -24,6 +28,8 @@ import org.sagebionetworks.repo.model.table.TableUpdateTransactionRequest;
 import org.sagebionetworks.repo.model.table.TableUpdateTransactionResponse;
 import org.sagebionetworks.repo.model.table.UploadToTablePreviewRequest;
 import org.sagebionetworks.repo.model.table.UploadToTablePreviewResult;
+import org.sagebionetworks.repo.model.table.ViewColumnModelRequest;
+import org.sagebionetworks.repo.model.table.ViewColumnModelResponse;
 
 /**
  * This enum maps types to classes.
@@ -51,7 +57,13 @@ public enum AsynchJobType  {
 	
 	ADD_FILES_TO_DOWNLOAD_LIST(AddFileToDownloadListRequest.class, AddFileToDownloadListResponse.class),
 
-	STORAGE_REPORT(DownloadStorageReportRequest.class, DownloadStorageReportResponse.class);
+	STORAGE_REPORT(DownloadStorageReportRequest.class, DownloadStorageReportResponse.class),
+	
+	JSON_SCHEMA_CREATE(CreateSchemaRequest.class, CreateSchemaResponse.class),
+	
+	VIEW_COLUMN_MODEL_REQUEST(ViewColumnModelRequest.class, ViewColumnModelResponse.class),
+	
+	GET_VALIDATION_SCHEMA(GetValidationSchemaRequest.class, GetValidationSchemaResponse.class);
 
 	private Class<? extends AsynchronousRequestBody> requestClass;
 	private Class<? extends AsynchronousResponseBody> responseClass;

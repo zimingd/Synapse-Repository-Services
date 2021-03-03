@@ -1,7 +1,7 @@
 package org.sagebionetworks.repo.manager.table;
 
-import static org.sagebionetworks.table.cluster.utils.ColumnConstants.MY_SQL_MAX_BYTES_PER_ROW;
-import static org.sagebionetworks.table.cluster.utils.ColumnConstants.MY_SQL_MAX_COLUMNS_PER_TABLE;
+import static org.sagebionetworks.repo.model.table.ColumnConstants.MY_SQL_MAX_BYTES_PER_ROW;
+import static org.sagebionetworks.repo.model.table.ColumnConstants.MY_SQL_MAX_COLUMNS_PER_TABLE;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,11 +13,14 @@ import java.util.Set;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.DatastoreException;
+import org.sagebionetworks.repo.model.EntityType;
+import org.sagebionetworks.repo.model.NodeDAO;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.dao.table.ColumnModelDAO;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
+import org.sagebionetworks.repo.model.entity.IdAndVersionBuilder;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.table.ColumnChange;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -30,6 +33,7 @@ import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.table.cluster.ColumnChangeDetails;
 import org.sagebionetworks.table.cluster.utils.TableModelUtils;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -44,9 +48,11 @@ import com.google.common.collect.Lists;
 public class ColumnModelManagerImpl implements ColumnModelManager {
 
 	public static final String COLUMN_TYPE_ERROR_TEMPLATE = "A %1$s column cannot be changed to %2$s";
-	
 	@Autowired
 	ColumnModelDAO columnModelDao;
+	
+	@Autowired
+	NodeDAO nodeDao;
 	
 	@Autowired
 	AuthorizationManager authorizationManager;
@@ -138,13 +144,21 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 			//integers and strings can be any type of facet
 			case INTEGER:
 			case STRING:
-				break;
+					break;
 			//booleans, userIds, and entityIds can only be faceted by enumeration
 			case USERID:
 			case ENTITYID:
+			case SUBMISSIONID:
+			case EVALUATIONID:
 			case BOOLEAN:
-				if(facetType != FacetType.enumeration)
-					throw new IllegalArgumentException("Boolean columns can only be enumeration faceted");
+			case BOOLEAN_LIST:
+			case STRING_LIST:
+			case DATE_LIST:
+			case INTEGER_LIST:
+			case USERID_LIST:
+			case ENTITYID_LIST:
+					if(facetType != FacetType.enumeration)
+					throw new IllegalArgumentException(columnType + " columns can only be enumeration faceted");
 				break;
 			//doubles and dates can only be range faceted
 			case DOUBLE:
@@ -158,7 +172,6 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 			}
 		}
 	}
-	
 
 	@Override
 	public ColumnModel getColumnModel(UserInfo user, String columnId) throws DatastoreException, NotFoundException {
@@ -175,7 +188,7 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 	public List<ColumnModel> getAndValidateColumnModels(List<String> ids)
 			throws DatastoreException, NotFoundException {
 		ValidateArgument.required(ids, "ColumnModel IDs");
-		List<ColumnModel> fromDb =  columnModelDao.getColumnModel(ids);
+		List<ColumnModel> fromDb =  columnModelDao.getColumnModels(ids);
 		Map<String, ColumnModel> resultMap = TableModelUtils.createIdToColumnModelMap(fromDb);
 		// column IDs must be unique.
 		Set<String> visitedIds = new HashSet<>(fromDb.size());
@@ -209,7 +222,7 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 	
 
 	@Override
-	public List<ColumnModel> bindDefaultColumnsToObjectVersion(IdAndVersion idAndVersion) {
+	public List<ColumnModel> bindCurrentColumnsToVersion(IdAndVersion idAndVersion) {
 		// Lookup the current columns for the given object
 		List<String> currentSchema = columnModelDao.getColumnModelIdsForObject(IdAndVersion.newBuilder().setId(idAndVersion.getId()).build());
 		// bind the current schema to the given id and version pair.
@@ -290,7 +303,8 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 		// validate the schema change
 		List<ColumnModel> allColumns = new LinkedList<>(oldSchema);
 		allColumns.addAll(newSchema);
-		validateSchemaChange(allColumns, changes);
+		EntityType entityType = nodeDao.getNodeTypeById(tableId);
+		validateSchemaChange(allColumns, changes, entityType);
 		return newSchemaIds;
 	}
 	
@@ -308,7 +322,7 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 	 * @param allColumns All of the columns including the old and new schemas.
 	 * @param chagnes
 	 */
-	static public void validateSchemaChange(List<ColumnModel> allColumns, List<ColumnChange> changes){
+	static public void validateSchemaChange(List<ColumnModel> allColumns, List<ColumnChange> changes, EntityType entityType){
 		// Map the IDs to columns
 		Map<String, ColumnModel> idToColumnMap = new HashMap<>(allColumns.size());
 		for(ColumnModel cm: allColumns){
@@ -324,7 +338,7 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 			if(change.getOldColumnId() != null){
 				oldColumn = idToColumnMap.get(change.getOldColumnId());
 			}
-			validateColumnChange(oldColumn, newColumn);
+			validateColumnChange(oldColumn, newColumn, entityType);
 		}
 	}
 	
@@ -333,13 +347,22 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 	 * @param oldColumn
 	 * @param newColumn
 	 */
-	static void validateColumnChange(ColumnModel oldColumn, ColumnModel newColumn){
+	static void validateColumnChange(ColumnModel oldColumn, ColumnModel newColumn, EntityType entityType){
 		if(oldColumn != null && newColumn != null){
 			if(isFileHandleColumn(oldColumn) && !isFileHandleColumn(newColumn)){
 				throw new IllegalArgumentException(String.format(COLUMN_TYPE_ERROR_TEMPLATE, ColumnType.FILEHANDLEID, newColumn.getColumnType()));
 			}
 			if(isFileHandleColumn(newColumn) && !isFileHandleColumn(oldColumn)){
 				throw new IllegalArgumentException(String.format(COLUMN_TYPE_ERROR_TEMPLATE, oldColumn.getColumnType(), ColumnType.FILEHANDLEID));
+			}
+
+			//table can not support changing schema to or from list types
+			if(entityType == EntityType.table){
+				if( (ColumnTypeListMappings.isList(oldColumn.getColumnType()) || ColumnTypeListMappings.isList(newColumn.getColumnType()))
+					&& !oldColumn.getColumnType().equals(newColumn.getColumnType())//keeping the same type for operations such as rename are allowed
+				){
+					throw new IllegalArgumentException("Can not perform schema change on _LIST type columns for Table Entities");
+				}
 			}
 		}
 	}
@@ -408,7 +431,7 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 				columnIds.add(change.getOldColumnId());
 			}
 		}
-		List<ColumnModel> models = columnModelDao.getColumnModel(columnIds);
+		List<ColumnModel> models = columnModelDao.getColumnModels(columnIds);
 		Map<String, ColumnModel> map = TableModelUtils.createIdToColumnModelMap(models);
 		// Build up the results
 		List<ColumnChangeDetails> details = new LinkedList<>();
@@ -426,14 +449,48 @@ public class ColumnModelManagerImpl implements ColumnModelManager {
 		return details;
 	}
 
+	/**
+	 * The schema for the current version for any table/view only exists in the
+	 * database with a null version number. Therefore, calls to get the schema of
+	 * the current version are transformed to a representation with a null
+	 * version.
+	 * 
+	 * @param inputIdAndVersion
+	 * @return
+	 */
+	IdAndVersion removeVersionAsNeeded(IdAndVersion inputIdAndVersion) {
+		IdAndVersionBuilder resultBuilder = IdAndVersion.newBuilder();
+		resultBuilder.setId(inputIdAndVersion.getId());
+		if (inputIdAndVersion.getVersion().isPresent()) {
+			/*
+			 * The current version of any table is always 'in progress' and does not have a
+			 * schema bound to it. This means the schema for the current version always
+			 * matches the latest schema for the table. Therefore, when a caller explicitly
+			 * requests the schema of the current version, the latest schema is returned.
+			 */
+			long currentVersion = nodeDao.getCurrentRevisionNumber(inputIdAndVersion.getId().toString());
+			long inputVersion = inputIdAndVersion.getVersion().get();
+			if (inputVersion != currentVersion) {
+				// Only use the input version number when it is not the current version.
+				resultBuilder.setVersion(inputVersion);
+			}
+		}
+		return resultBuilder.build();
+	}
+	
 	@Override
-	public List<String> getColumnIdForTable(IdAndVersion idAndVersion) {
-		return columnModelDao.getColumnModelIdsForObject(idAndVersion);
+	public List<String> getColumnIdsForTable(IdAndVersion idAndVersion) {
+		return columnModelDao.getColumnModelIdsForObject(removeVersionAsNeeded(idAndVersion));
 	}
 
 	@Override
 	public List<ColumnModel> getColumnModelsForObject(IdAndVersion idAndVersion) {
-		return columnModelDao.getColumnModelsForObject(idAndVersion);
+		return columnModelDao.getColumnModelsForObject(removeVersionAsNeeded(idAndVersion));
+	}
+
+	@Override
+	public ColumnModel createColumnModel(ColumnModel columnModel) {
+		return columnModelDao.createColumnModel(columnModel);
 	}
 	
 }

@@ -1,11 +1,12 @@
 package org.sagebionetworks.repo.web.controller;
-
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.authorize;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
 import static org.sagebionetworks.repo.web.UrlHelpers.EVALUATION_ID_PATH_VAR_WITHOUT_BRACKETS;
 import static org.sagebionetworks.repo.web.UrlHelpers.ID_PATH_VARIABLE;
 
 import java.io.IOException;
 
-import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.AccessApproval;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.BatchAccessApprovalInfoRequest;
@@ -16,10 +17,13 @@ import org.sagebionetworks.repo.model.RestrictableObjectDescriptor;
 import org.sagebionetworks.repo.model.RestrictableObjectType;
 import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
+import org.sagebionetworks.repo.model.dataaccess.AccessApprovalNotificationRequest;
+import org.sagebionetworks.repo.model.dataaccess.AccessApprovalNotificationResponse;
 import org.sagebionetworks.repo.model.dataaccess.AccessorGroupRequest;
 import org.sagebionetworks.repo.model.dataaccess.AccessorGroupResponse;
 import org.sagebionetworks.repo.model.dataaccess.AccessorGroupRevokeRequest;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -65,6 +69,7 @@ public class AccessApprovalController {
 	 * @throws InvalidModelException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify,authorize})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL, method = RequestMethod.POST)
 	public @ResponseBody
@@ -84,6 +89,7 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_WITH_APPROVAL_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -107,6 +113,7 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_GROUP, method = RequestMethod.POST)
 	public @ResponseBody AccessorGroupResponse listAccessorGroup(
@@ -114,6 +121,25 @@ public class AccessApprovalController {
 			@RequestBody AccessorGroupRequest request
 			) throws UnauthorizedException, NotFoundException {	
 		return serviceProvider.getAccessApprovalService().listAccessorGroup(userId, request);
+	}
+	
+	/**
+	 * Fetches the notifications sent for an access requirement and a list of recipients.
+	 * This service is only available for ACT.
+	 * 
+	 * @param userId
+	 * @param accessApproval
+	 * @return
+	 * @throws UnauthorizedException If the user is not an ACT member
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_NOTIFICATIONS, method = RequestMethod.POST)
+	public @ResponseBody
+	AccessApprovalNotificationResponse listNotifications(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@RequestBody AccessApprovalNotificationRequest request) throws UnauthorizedException {
+		return serviceProvider.getAccessApprovalService().listNotificationsRequest(userId, request);
 	}
 
 	/**
@@ -125,6 +151,7 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify,authorize})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_GROUP_REVOKE, method = RequestMethod.PUT)
 	public void revokeGroup(
@@ -143,6 +170,7 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_INFO, method = RequestMethod.POST)
 	public @ResponseBody BatchAccessApprovalInfoResponse getBatchAccessApprovalInfo(
@@ -164,11 +192,12 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@Deprecated
-	@ResponseStatus(HttpStatus.OK)
+	@ResponseStatus(HttpStatus.GONE)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_WITH_ENTITY_ID, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<AccessApproval> getEntityAccessApprovals(
+	String getEntityAccessApprovals(
 				@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 				@PathVariable(value= ID_PATH_VARIABLE) String entityId,
 				@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false) Long limit,
@@ -177,7 +206,7 @@ public class AccessApprovalController {
 		RestrictableObjectDescriptor subjectId = new RestrictableObjectDescriptor();
 		subjectId.setId(entityId);
 		subjectId.setType(RestrictableObjectType.ENTITY);
-		return serviceProvider.getAccessApprovalService().getAccessApprovals(userId, subjectId, limit, offset);
+		return "See "+UrlHelpers.ACCESS_APPROVAL_INFO;
 	}
 
 	/**
@@ -192,11 +221,12 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@Deprecated
-	@ResponseStatus(HttpStatus.OK)
+	@ResponseStatus(HttpStatus.GONE)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_WITH_TEAM_ID, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<AccessApproval> getTeamAccessApprovals(
+	String getTeamAccessApprovals(
 				@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 				@PathVariable String id,
 				@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false) Long limit,
@@ -205,7 +235,7 @@ public class AccessApprovalController {
 		RestrictableObjectDescriptor subjectId = new RestrictableObjectDescriptor();
 		subjectId.setId(id);
 		subjectId.setType(RestrictableObjectType.TEAM);
-		return serviceProvider.getAccessApprovalService().getAccessApprovals(userId, subjectId, limit, offset);
+		return "See "+UrlHelpers.ACCESS_APPROVAL_INFO;
 	}
 
 	/**
@@ -220,11 +250,12 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@Deprecated
-	@ResponseStatus(HttpStatus.OK)
+	@ResponseStatus(HttpStatus.GONE)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_WITH_EVALUATION_ID, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<AccessApproval> getEvaluationAccessApprovals(
+	String getEvaluationAccessApprovals(
 				@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 				@PathVariable(value= EVALUATION_ID_PATH_VAR_WITHOUT_BRACKETS) String evaluationId,
 				@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false) Long limit,
@@ -233,7 +264,7 @@ public class AccessApprovalController {
 		RestrictableObjectDescriptor subjectId = new RestrictableObjectDescriptor();
 		subjectId.setId(evaluationId);
 		subjectId.setType(RestrictableObjectType.EVALUATION);
-		return serviceProvider.getAccessApprovalService().getAccessApprovals(userId, subjectId, limit, offset);
+		return "See "+UrlHelpers.ACCESS_APPROVAL_INFO;
 	}
 
 	/**
@@ -244,25 +275,29 @@ public class AccessApprovalController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify,authorize})
 	@Deprecated
-	@ResponseStatus(HttpStatus.OK)
+	@ResponseStatus(HttpStatus.GONE)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL_WITH_APPROVAL_ID, method = RequestMethod.DELETE)
-	public void deleteAccessApproval(
+	public String deleteAccessApproval(
 				@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String approvalId) throws DatastoreException, UnauthorizedException, NotFoundException {
-		serviceProvider.getAccessApprovalService().deleteAccessApproval(userId, approvalId);
+		return "See "+UrlHelpers.ACCESS_APPROVAL;
 	}
 
 	/**
 	 * Revoke all Access Approvals an accessor may have for a given Access Requirement.
 	 * This service is only available to the ACT.
+	 * Note: requirementId must be the ID of an 
+	 * <a href="${org.sagebionetworks.repo.model.ACTAccessRequirement}">ACT AccessRequirement</a>.
+	 * 
 	 * @param userId - The user who is making the request
 	 * @param accessRequirementId - The access requirement to look for
 	 * @param accessorId - The user whose access is being revoked
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
-	@Deprecated
+	@RequiredScope({modify,authorize})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_APPROVAL, method = RequestMethod.DELETE)
 	public void revokeAccessApprovals(

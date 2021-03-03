@@ -3,11 +3,16 @@ package org.sagebionetworks.auth.services;
 import org.sagebionetworks.repo.manager.AuthenticationManager;
 import org.sagebionetworks.repo.manager.MessageManager;
 import org.sagebionetworks.repo.manager.UserManager;
+import org.sagebionetworks.repo.manager.authentication.PersonalAccessTokenManager;
 import org.sagebionetworks.repo.manager.oauth.AliasAndType;
 import org.sagebionetworks.repo.manager.oauth.OAuthManager;
 import org.sagebionetworks.repo.model.AuthorizationUtils;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.auth.AccessTokenGenerationRequest;
+import org.sagebionetworks.repo.model.auth.AccessTokenGenerationResponse;
+import org.sagebionetworks.repo.model.auth.AccessTokenRecord;
+import org.sagebionetworks.repo.model.auth.AccessTokenRecordList;
 import org.sagebionetworks.repo.model.auth.ChangePasswordInterface;
 import org.sagebionetworks.repo.model.auth.LoginRequest;
 import org.sagebionetworks.repo.model.auth.LoginResponse;
@@ -25,7 +30,9 @@ import org.sagebionetworks.repo.model.principal.PrincipalAlias;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
+@Service
 public class AuthenticationServiceImpl implements AuthenticationService {
 
 
@@ -40,6 +47,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	
 	@Autowired
 	private MessageManager messageManager;
+
+	@Autowired
+	private PersonalAccessTokenManager personalAccessTokenManager;
 
 	@Override
 	@WriteTransaction
@@ -101,7 +111,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	public void deleteSecretKey(Long principalId) throws NotFoundException {
 		authManager.changeSecretKey(principalId);
 	}
-
 	
 	@Override
 	public boolean hasUserAcceptedTermsOfUse(Long userId) throws NotFoundException {
@@ -189,5 +198,29 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 	public PrincipalAlias lookupUserForAuthentication(String alias) {
 		return userManager.lookupUserByUsernameOrEmail(alias);
 	}
-	
+
+	@Override
+	public AccessTokenGenerationResponse createPersonalAccessToken(Long userId, String accessToken, AccessTokenGenerationRequest request, String oauthEndpoint) {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return personalAccessTokenManager.issueToken(userInfo, accessToken, request, oauthEndpoint);
+	}
+
+	@Override
+	public AccessTokenRecordList getPersonalAccessTokenRecords(Long userId, String nextPageToken) {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return personalAccessTokenManager.getTokenRecords(userInfo, nextPageToken);
+	}
+
+	@Override
+	public AccessTokenRecord getPersonalAccessTokenRecord(Long userId, Long tokenId) {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return personalAccessTokenManager.getTokenRecord(userInfo, tokenId.toString());
+	}
+
+	@Override
+	public void revokePersonalAccessToken(Long userId, Long tokenId) {
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		personalAccessTokenManager.revokeToken(userInfo, tokenId.toString());
+	}
+
 }

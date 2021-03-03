@@ -17,7 +17,9 @@ import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.RestrictableObjectDescriptor;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
+import org.sagebionetworks.repo.model.oauth.OAuthScope;
 import org.sagebionetworks.repo.model.subscription.SubscriptionObjectType;
 import org.sagebionetworks.repo.web.NotFoundException;
 
@@ -95,17 +97,6 @@ public interface AuthorizationManager {
 	 * @throws NotFoundException 
 	 */
 	AuthorizationStatus canAccessRawFileHandleById(UserInfo userInfo, String fileHandleId) throws NotFoundException;
-
-	/**
-	 * 
-	 * @param userInfo
-	 * @param fileHandleId
-	 * @return whether access is granted and, if not, a String giving the reason why
-	 * @throws NotFoundException
-	 */
-	@Deprecated
-	void canAccessRawFileHandlesByIds(UserInfo userInfo, List<String> fileHandleId, Set<String> allowed, Set<String> disallowed)
-			throws NotFoundException;
 	
 	/**
 	 * Given a list of FileHandleIds, can the user download each file?
@@ -194,7 +185,7 @@ public interface AuthorizationManager {
 	 * @param originalBenefactors
 	 * @return
 	 */
-	Set<Long> getAccessibleBenefactors(UserInfo userInfo, Set<Long> originalBenefactors);
+	Set<Long> getAccessibleBenefactors(UserInfo userInfo, ObjectType objectType, Set<Long> originalBenefactors);
 
 	/**
 	 * Check user access to an subscribable object
@@ -221,13 +212,14 @@ public interface AuthorizationManager {
 	/**
 	 * 
 	 * @param userInfo
+	 * @param oauthScopes
 	 * @param service
 	 * @param type
 	 * @param name
 	 * @param actionTypes
 	 * @return the permitted actions for the given user on the given repository
 	 */
-	public Set<String> getPermittedDockerActions(UserInfo userInfo, String service, String type, String name, String actionTypes);
+	public Set<String> getPermittedDockerActions(UserInfo userInfo, List<OAuthScope> oauthScopes, String service, String type, String name, String actionTypes);
 
 	/**
 	 * Validate and throw exception for HasAccessorRequirement

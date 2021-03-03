@@ -1,15 +1,10 @@
 package org.sagebionetworks.repo.manager.table;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-
 import org.sagebionetworks.common.util.progress.ProgressCallback;
 import org.sagebionetworks.common.util.progress.ProgressingCallable;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityType;
+import org.sagebionetworks.repo.model.EntityTypeUtils;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.dao.table.RowHandler;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
@@ -31,6 +26,8 @@ import org.sagebionetworks.repo.model.table.TableConstants;
 import org.sagebionetworks.repo.model.table.TableFailedException;
 import org.sagebionetworks.repo.model.table.TableStatus;
 import org.sagebionetworks.repo.model.table.TableUnavailableException;
+import org.sagebionetworks.repo.model.table.ViewObjectType;
+import org.sagebionetworks.repo.model.table.ViewScopeType;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.table.cluster.ConnectionFactory;
 import org.sagebionetworks.table.cluster.SqlQuery;
@@ -50,10 +47,15 @@ import org.sagebionetworks.workers.util.semaphore.LockUnavilableException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.BadSqlGrammarException;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+
 public class TableQueryManagerImpl implements TableQueryManager {
 
-	public static final int READ_LOCK_TIMEOUT_SEC = 60;
-	
 	public static final long MAX_ROWS_PER_CALL = 100;
 
 	@Autowired
@@ -108,7 +110,7 @@ public class TableQueryManagerImpl implements TableQueryManager {
 			if (isRowCountEqualToMaxRowsPerPage(bundle, maxRowsPerPage)) {
 				long nextOffset = (query.getOffset() == null ? 0 : query.getOffset()) + maxRowsPerPage;
 				QueryNextPageToken nextPageToken = TableQueryUtils.createNextPageToken(query.getSql(), query.getSort(),
-						nextOffset, query.getLimit(), query.getIsConsistent(), query.getSelectedFacets());
+						nextOffset, query.getLimit(), query.getSelectedFacets());
 				bundle.getQueryResult().setNextPageToken(nextPageToken);
 			}
 			return bundle;
@@ -144,6 +146,7 @@ public class TableQueryManagerImpl implements TableQueryManager {
 		ValidateArgument.required(query, "Query");
 		ValidateArgument.required(query.getSql(), "Query");
 		// 1. Parse the SQL string
+
 		QuerySpecification model = parserQuery(query.getSql());
 		// We now have the table's ID.
 		String tableId = model.getTableName();
@@ -153,21 +156,20 @@ public class TableQueryManagerImpl implements TableQueryManager {
 		EntityType tableType = tableManagerSupport.validateTableReadAccess(user, idAndVersion);
 
 		// 3. Get the table's schema
-		List<ColumnModel> columnModels = tableManagerSupport.getColumnModelsForTable(idAndVersion);
+		List<ColumnModel> columnModels = tableManagerSupport.getTableSchema(idAndVersion);
 		if (columnModels.isEmpty()) {
 			throw new EmptyResultException("Table schema is empty for: " + tableId, tableId);
 		}
-
 		// 4. Add row level filter as needed.
-		if (EntityType.entityview.equals(tableType)) {
+		if (EntityTypeUtils.isViewType(tableType)) {
 			// Table views must have a row level filter applied to the query
 			model = addRowLevelFilter(user, model);
 		}
 		// Return the prepared query.
-		return new SqlQueryBuilder(model).tableSchema(columnModels).overrideOffset(query.getOffset())
-				.overrideLimit(query.getLimit()).maxBytesPerPage(maxBytesPerPage).isConsistent(query.getIsConsistent())
+		return new SqlQueryBuilder(model, user.getId()).tableSchema(columnModels).overrideOffset(query.getOffset())
+				.overrideLimit(query.getLimit()).maxBytesPerPage(maxBytesPerPage)
 				.includeEntityEtag(query.getIncludeEntityEtag()).selectedFacets(query.getSelectedFacets())
-				.sortList(query.getSort()).tableType(tableType).build();
+				.sortList(query.getSort()).additionalFilters(query.getAdditionalFilters()).tableType(tableType).build();
 	}
 
 	/**
@@ -181,7 +183,6 @@ public class TableQueryManagerImpl implements TableQueryManager {
 	 * @param limit
 	 * @param runQuery
 	 * @param runCount
-	 * @param isConsistent
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
@@ -194,33 +195,21 @@ public class TableQueryManagerImpl implements TableQueryManager {
 			final RowHandler rowHandler, final QueryOptions options)
 			throws DatastoreException, NotFoundException, TableUnavailableException, TableFailedException,
 			LockUnavilableException, EmptyResultException {
-		// consistent queries are run with a read lock on the table and include the
-		// current etag.
-		if (query.isConsistent()) {
-			// run with the read lock
-			IdAndVersion idAndVersion = IdAndVersion.parse(query.getTableId());
-			return tryRunWithTableReadLock(progressCallback, idAndVersion,
-					new ProgressingCallable<QueryResultBundle>() {
-
-						@Override
-						public QueryResultBundle call(ProgressCallback callback) throws Exception {
-							// We can only run this query if the table is available.
-							final TableStatus status = validateTableIsAvailable(query.getTableId());
-							// run the query
-							QueryResultBundle bundle = queryAsStreamAfterAuthorization(progressCallback, query,
-									rowHandler, options);
-							// add the status to the result
-							if (rowHandler != null) {
-								// the etag is only returned for consistent queries.
-								bundle.getQueryResult().getQueryResults().setEtag(status.getLastTableChangeEtag());
-							}
-							return bundle;
-						}
-					});
-		} else {
-			// run without a read lock.
-			return queryAsStreamAfterAuthorization(progressCallback, query, rowHandler, options);
-		}
+		// run with a read lock on the table and include the current etag.
+		IdAndVersion idAndVersion = IdAndVersion.parse(query.getTableId());
+		return tryRunWithTableReadLock(progressCallback, idAndVersion, (ProgressCallback callback) -> {
+					// We can only run this query if the table is available.
+					final TableStatus status = validateTableIsAvailable(query.getTableId());
+					// run the query
+					QueryResultBundle bundle = queryAsStreamAfterAuthorization(progressCallback, query,
+							rowHandler, options);
+					// add the status to the result
+					if (rowHandler != null) {
+						// the etag is only returned for consistent queries.
+						bundle.getQueryResult().getQueryResults().setEtag(status.getLastTableChangeEtag());
+					}
+					return bundle;
+				});
 	}
 
 	/**
@@ -238,7 +227,7 @@ public class TableQueryManagerImpl implements TableQueryManager {
 			throws TableUnavailableException, TableFailedException, EmptyResultException {
 
 		try {
-			return tableManagerSupport.tryRunWithTableNonexclusiveLock(callback, idAndversion, READ_LOCK_TIMEOUT_SEC,
+			return tableManagerSupport.tryRunWithTableNonexclusiveLock(callback, idAndversion,
 					runner);
 		} catch (RuntimeException | TableUnavailableException | EmptyResultException | TableFailedException e) {
 			// runtime exceptions are unchanged.
@@ -260,7 +249,6 @@ public class TableQueryManagerImpl implements TableQueryManager {
 	 * @param limit
 	 * @param runQuery
 	 * @param runCount
-	 * @param isConsistent
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
@@ -320,6 +308,11 @@ public class TableQueryManagerImpl implements TableQueryManager {
 		if(options.runSumFileSizes()) {
 			SumFileSizes sumFileSizes = runSumFileSize(queryToRun, indexDao);
 			bundle.setSumFileSizes(sumFileSizes);
+		}
+		
+		if(options.returnLastUpdatedOn()) {
+			Date lastUpdatedOn = tableManagerSupport.getLastChangedOn(idAndVersion);
+			bundle.setLastUpdatedOn(lastUpdatedOn);
 		}
 
 		return bundle;
@@ -397,10 +390,6 @@ public class TableQueryManagerImpl implements TableQueryManager {
 	 */
 	public static void setDefaultsValues(Query query) {
 		ValidateArgument.required(query, "query");
-		if (query.getIsConsistent() == null) {
-			// default to true
-			query.setIsConsistent(true);
-		}
 		if (query.getIncludeEntityEtag() == null) {
 			// default to false
 			query.setIncludeEntityEtag(false);
@@ -553,7 +542,7 @@ public class TableQueryManagerImpl implements TableQueryManager {
 				boolean isGreaterThan = rowIds.size() > MAX_ROWS_PER_CALL;
 				result.setGreaterThan(isGreaterThan);
 				// Use the rowIds to calculate the sum of the file sizes.
-				long sumFileSizesBytes = indexDao.getSumOfFileSizes(rowIds);
+				long sumFileSizesBytes = indexDao.getSumOfFileSizes(ViewObjectType.ENTITY, rowIds);
 				result.setSumFileSizesBytes(sumFileSizesBytes);
 			} catch (SimpleAggregateQueryException e) {
 				// zero results will be returned for this case.
@@ -676,8 +665,9 @@ public class TableQueryManagerImpl implements TableQueryManager {
 		} catch (BadSqlGrammarException e) { // table has not been created yet
 			tableBenefactors = Collections.emptySet();
 		}
+		ViewScopeType scopeType = tableManagerSupport.getViewScopeType(idAndVersion);
 		// Get the sub-set of benefactors visible to the user.
-		Set<Long> accessibleBenefactors = tableManagerSupport.getAccessibleBenefactors(user, tableBenefactors);
+		Set<Long> accessibleBenefactors = tableManagerSupport.getAccessibleBenefactors(user, scopeType, tableBenefactors);
 		return buildBenefactorFilter(query, accessibleBenefactors);
 	}
 

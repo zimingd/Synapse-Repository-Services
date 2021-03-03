@@ -1,0 +1,17 @@
+{
+	"description": "<a href=\"https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter\">OIDC Core 1.0 Claims Request</a> value",
+	"properties": {
+		"essential": {
+			"type": "boolean"
+		},
+		"value": {
+			"type": "string"
+		},
+		"values": {
+			"type": "array",
+			"items":{
+				"type": "string"
+			}
+		}
+	}
+}

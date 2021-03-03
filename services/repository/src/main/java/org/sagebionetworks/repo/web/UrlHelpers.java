@@ -1,5 +1,11 @@
 package org.sagebionetworks.repo.web;
 
+import org.sagebionetworks.repo.model.Annotations;
+import org.sagebionetworks.repo.model.PrefixConst;
+import org.sagebionetworks.repo.model.ServiceConstants;
+import org.sagebionetworks.repo.model.ServiceConstants.AttachmentType;
+
+import javax.servlet.http.HttpServletRequest;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.Collections;
@@ -7,13 +13,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import javax.servlet.http.HttpServletRequest;
-
-import org.sagebionetworks.repo.model.Annotations;
-import org.sagebionetworks.repo.model.PrefixConst;
-import org.sagebionetworks.repo.model.ServiceConstants;
-import org.sagebionetworks.repo.model.ServiceConstants.AttachmentType;
 
 /**
  * UrlHelpers is responsible for the formatting of all URLs exposed by the
@@ -36,7 +35,7 @@ public class UrlHelpers {
 	public static final String REPO_PATH			= "/repo/v1";
 	public static final String DOCKER_PATH			= "/docker/v1";
 	public static final String DOCKER_REGISTRY_PATH	= "/dockerRegistryListener/v1";
-	
+
 	/**
 	 * Used for batch requests
 	 */
@@ -49,10 +48,14 @@ public class UrlHelpers {
 	public static final String ACCESS_TYPE_PARAM	= "accessType";
 	
 	public static final String BUNDLE				= "/bundle";
+
+	public static final String BUNDLE_V2			= "/bundle2";
 	
 	public static final String GENERATED_BY			= "/generatedBy";
 	
 	public static final String GENERATED			= "/generated";
+
+	public static final String CREATE				= "/create";
 
 	/**
 	 * All administration URLs must start with this URL or calls will be
@@ -91,7 +94,7 @@ public class UrlHelpers {
 	public static final String ACL = "/acl";
 	
 	public static final String BENEFACTOR = "/benefactor";
-	
+
 	/**
 	 * The request parameter to enforce ACL inheritance of child nodes.
 	 */
@@ -104,10 +107,19 @@ public class UrlHelpers {
 	public static final String ANNOTATIONS = "/annotations";
 
 	/**
+	 * URL suffix for entity annotations
+	 *
+	 */
+	public static final String ANNOTATIONS_V2 = "/annotations2";
+
+	/**
 	 * URL suffix for locationable entity S3Token
 	 * 
 	 */
 	public static final String S3TOKEN = "/s3Token";
+
+	/** URL suffix for STS (Security Token Service). */
+	public static final String STS = "/sts";
 
 	/**
 	 * Used to get the path of a entity.
@@ -119,7 +131,6 @@ public class UrlHelpers {
 	 */
 	public static final String SCHEMA = "/schema";
 	
-	public static final String REGISTRY = "/registry";
 	/**
 	 * The Effective schema is the flattened schema of an entity.
 	 */
@@ -179,8 +190,10 @@ public class UrlHelpers {
 	public static final String ASYNCHRONOUS_JOB_CANCEL = ASYNCHRONOUS_JOB_ID + "/cancel";
 	public static final String ADMIN_ASYNCHRONOUS_JOB = ADMIN + ASYNCHRONOUS_JOB;
 	public static final String ADMIN_ASYNCHRONOUS_JOB_ID = ADMIN + ASYNCHRONOUS_JOB_ID;
-	
+
 	public static final String ADMIN_ID_GEN_EXPORT = ADMIN + "/id/generator/export";
+	public static final String ADMIN_OAUTH_CLIENT_VERIFICATION = ADMIN + "/oauth2/client/{clientId}/verified";
+	
 
 	/**
 	 * All of the base URLs for Synapse objects with ID.
@@ -199,8 +212,12 @@ public class UrlHelpers {
 	
 	public static final String ENTITY_BUNDLE = ENTITY+BUNDLE;
 	public static final String ENTITY_ID_BUNDLE = ENTITY_ID+BUNDLE;
+	public static final String ENTITY_BUNDLE_V2 = ENTITY+BUNDLE_V2;
+	public static final String ENTITY_ID_BUNDLE_V2 = ENTITY_ID+BUNDLE_V2;
+	public static final String ENTITY_BUNDLE_V2_CREATE = ENTITY+BUNDLE_V2+CREATE;
 	public static final String ENTITY_ID_ACL = ENTITY_ID+ACL;
 	public static final String ENTITY_ID_ID_BENEFACTOR = ENTITY_ID+BENEFACTOR;
+	public static final String ENTITY_ID_STS = ENTITY_ID + STS;
 
 	public static final String FILE= "/file";
 	public static final String FILE_PREVIEW = "/filepreview";
@@ -214,6 +231,12 @@ public class UrlHelpers {
 	public static final String COPY = "/copy";
 	public static final String FILE_HANDLES_COPY = FILE_HANDLES + COPY;
 	public static final String ENTITY_DATA_TYPE = ENTITY_ID+"/datatype";
+	public static final String ENTITY_BIND_JSON_SCHEMA = ENTITY_ID+"/schema/binding";
+	
+	public static final String ENTITY_ID_JSON = ENTITY_ID+"/json";
+	public static final String ENTITY_ID_VALIDATION = ENTITY_ID+"/schema/validation";
+	public static final String ENTITY_ID_VALIDATION_STATISTICS = ENTITY_ID_VALIDATION+"/statistics";
+	public static final String ENTITY_ID_VALIDATION_INVALID = ENTITY_ID_VALIDATION+"/invalid";
 	
 	public static final String BULK_FILE_DOWNLOAD = FILE + "/bulk";
 	public static final String BULK_FILE_DOWNLOAD_ASYNC_START = BULK_FILE_DOWNLOAD + ASYNC_START_REQUEST;
@@ -288,6 +311,11 @@ public class UrlHelpers {
 	public static final String ENTITY_ANNOTATIONS 	= ENTITY_ID+ANNOTATIONS;
 
 	/**
+	 * All of the base URLs for Synapse objects's Annotations.
+	 */
+	public static final String ENTITY_ANNOTATIONS_V2 	= ENTITY_ID+ANNOTATIONS_V2;
+
+	/**
 	 * All of the base URLs for locationable entity s3Tokens
 	 */
 	public static final String ENTITY_S3TOKEN	= ENTITY_ID+S3TOKEN;
@@ -313,9 +341,19 @@ public class UrlHelpers {
 	public static final String ENTITY_VERSION_ANNOTATIONS =		ENTITY_VERSION_NUMBER+ANNOTATIONS;
 
 	/**
+	 * Get the annotations of a specific version of an AnnotaitonV2
+	 */
+	public static final String ENTITY_VERSION_ANNOTATIONS_V2 =		ENTITY_VERSION_NUMBER+ANNOTATIONS_V2;
+
+	/**
 	 * Get the bundle for a specific version of an entity
 	 */
 	public static final String ENTITY_VERSION_NUMBER_BUNDLE = ENTITY_VERSION_NUMBER+BUNDLE;
+
+	/**
+	 * Get the bundle for a specific version of an entity
+	 */
+	public static final String ENTITY_VERSION_NUMBER_BUNDLE_V2 = ENTITY_VERSION_NUMBER+BUNDLE_V2;
 
 	/**
 	 * Get the generating activity for the current version of an entity
@@ -326,6 +364,8 @@ public class UrlHelpers {
 	 * Get the generating activity for a specific version of an entity
 	 */
 	public static final String ENTITY_VERSION_GENERATED_BY = ENTITY_VERSION_NUMBER+GENERATED_BY;
+	
+	public static final String ENTITY_VERSION_FILE_HANDLE = ENTITY_VERSION_NUMBER + "/filehandle";
 
 	/**
 	 * DOI (Digital Object Identifier).
@@ -335,6 +375,52 @@ public class UrlHelpers {
 	public static final String DOI_LOCATE = DOI + "/locate";
 	public static final String DOI_ASYNC_START = DOI + ASYNC_START_REQUEST;
 	public static final String DOI_ASYNC_GET = DOI + ASYNC_GET_REQUEST;
+	
+	/**
+	 * Form  API URIs
+	 * 
+	 */
+	public static final String FORM = "/form";
+	public static final String FORM_DATA = FORM+"/data";
+	public static final String FORM_GROUP = FORM+"/group";
+	public static final String FORM_GROUP_ID = FORM_GROUP+"/{id}";
+	public static final String FORM_GROUP_ACL = FORM_GROUP_ID+"/acl";
+	public static final String FORM_DATA_ID = FORM_DATA+"/{id}";
+	public static final String FORM_DATA_SUBMIT = FORM_DATA+"/{id}/submit";
+	public static final String FORM_LIST = FORM_DATA+"/list";
+	public static final String FORM_LIST_REVIEWER = FORM_DATA+"/list/reviewer";
+	
+	/**
+	 * Schema API URIs
+	 * 
+	 */
+	public static final String JSON_SCHEMA = "/schema";
+	public static final String ORGANIZATION = JSON_SCHEMA+"/organization";
+	public static final String ORGANIZATION_LIST = ORGANIZATION+"/list";
+	public static final String ORGANIZATION_ID = ORGANIZATION+"/{id}";
+	public static final String ORGANIZATION_ID_ACL = ORGANIZATION_ID+"/acl";
+	public static final String JSON_SCHEMA_TYPE = JSON_SCHEMA+"/type";
+	public static final String JSON_SCHEMA_TYPE_CREATE = JSON_SCHEMA_TYPE+"/create";
+	public static final String JSON_SCHEMA_TYPE_ASYNCH_START = JSON_SCHEMA_TYPE_CREATE+ASYNC_START_REQUEST;
+	public static final String JSON_SCHEMA_TYPE_ASYNCH_GET = JSON_SCHEMA_TYPE_CREATE+ASYNC_GET_REQUEST;
+	public static final String JSON_SCHEMA_TYPE_REG = JSON_SCHEMA_TYPE+"/registered";
+	
+	public static final String JSON_SCHEMA_TYPE_VALIDATION = JSON_SCHEMA_TYPE+"/validation";
+	public static final String JSON_SCHEMA_TYPE_VALIDATION_START = JSON_SCHEMA_TYPE_VALIDATION+ASYNC_START_REQUEST;
+	public static final String JSON_SCHEMA_TYPE_VALIDATION_GET = JSON_SCHEMA_TYPE_VALIDATION+ASYNC_GET_REQUEST;
+	
+	/*
+	 * The regular expression is needed in the path variable due to:
+	 * https://stackoverflow.com/questions/3526523/spring-mvc-pathvariable-getting-
+	 * truncated
+	 */
+	public static final String JSON_SHCEMA_TYPE_REG_ID = JSON_SCHEMA_TYPE_REG+"/{id:.+}";
+	
+	public static final String FORM_DATA_ACCEPT = FORM_DATA_ID+"/accept";
+	public static final String FORM_DATA_REJECT = FORM_DATA_ID+"/reject";
+	
+	public static final String JSON_SCHEMA_LIST = JSON_SCHEMA+"/list";
+	public static final String JSON_SCHEMA_VERSIONS_LIST = JSON_SCHEMA+"/version/list";
 
 	/**
 	 * Clears the Synapse DOI table (by administrators only).
@@ -410,32 +496,12 @@ public class UrlHelpers {
 	 * Purges the trash can for the current user.
 	 */
 	public static final String TRASHCAN_PURGE = TRASHCAN + "/purge";
-	
-	/**
-	 * Purges the trash can for the current user of all trash items with no children trash items.
-	 */
-	public static final String TRASHCAN_PURGE_LEAVES = TRASHCAN + "/purgeleaves";
 
 	/**
 	 * Views the current trash can.
 	 */
 	public static final String TRASHCAN_PURGE_ENTITY = TRASHCAN_PURGE + ID;
-
-	/**
-	 * Views everything in the trash can.
-	 */
-	public static final String ADMIN_TRASHCAN_VIEW = ADMIN + TRASHCAN_VIEW;
-
-	/**
-	 * Purges everything in the trash can.
-	 */
-	public static final String ADMIN_TRASHCAN_PURGE = ADMIN + TRASHCAN_PURGE;
 	
-	/**
-	 * Purges all trash items in the trash can with no children trash items.
-	 */
-	public static final String ADMIN_TRASHCAN_PURGE_LEAVES = ADMIN + TRASHCAN_PURGE_LEAVES;
-
 	/**
 	 * URL path for query controller
 	 * 
@@ -474,18 +540,27 @@ public class UrlHelpers {
 	public static final String ACCESS_REQUIREMENT_CONVERSION = ACCESS_REQUIREMENT+"/conversion";
 	public static final String ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID_SUBJECTS = ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID+"/subjects";
 
-	public static final String ENTITY_ACCESS_REQUIREMENT_UNFULFILLED_WITH_ID = ENTITY_ID+"/accessRequirementUnfulfilled";
-
 	public static final String ACCESS_REQUIREMENT_VERSION = ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID + "/version";
 
 	public static final String ACCESS_APPROVAL = "/accessApproval";
-	public static final String ACCESS_APPROVALS = "/accessApprovals";
 	public static final String ACCESS_APPROVAL_WITH_ENTITY_ID = ENTITY_ID+ACCESS_APPROVAL;
 	public static final String ACCESS_APPROVAL_WITH_APPROVAL_ID = ACCESS_APPROVAL+"/{approvalId}";
 	public static final String ACCESS_APPROVAL_GROUP = ACCESS_APPROVAL+"/group";
 	public static final String ACCESS_APPROVAL_GROUP_REVOKE = ACCESS_APPROVAL_GROUP+"/revoke";
+	public static final String ACCESS_APPROVAL_NOTIFICATIONS = ACCESS_APPROVAL + "/notifications";
 
 	public static final String ACCESS_APPROVAL_INFO = ACCESS_APPROVAL+"/information";
+
+	public static final String FILE_HANDLE = "/fileHandle";
+	public static final String FILE_HANDLE_COPY = FILE_HANDLE + "/{handleIdToCopyFrom}/copy";
+	public static final String FILE_HANDLE_HANDLE_ID = FILE_HANDLE + "/{handleId}";
+	public static final String FILE_HANDLE_PREVIEW = FILE_HANDLE_HANDLE_ID + "/filepreview";
+	public static final String FILE_HANDLE_BATCH = FILE_HANDLE + "/batch";
+	public static final String EXTERNAL_FILE_HANDLE = "/externalFileHandle";
+	public static final String EXTERNAL_FILE_HANDLE_S3 = EXTERNAL_FILE_HANDLE + "/s3";
+	public static final String EXTERNAL_FILE_HANDLE_GOOGLE_CLOUD = EXTERNAL_FILE_HANDLE + "/googleCloud";
+	public static final String EXTERNAL_FILE_HANDLE_PROXY = EXTERNAL_FILE_HANDLE + "/proxy";
+
 
 	/**
 	 * URL prefix for Users in a UserGroup
@@ -543,6 +618,21 @@ public class UrlHelpers {
 	 * Storage usage summaries, aggregated by entities, for administrators.
 	 */
 	public static final String ADMIN_STORAGE_SUMMARY_PER_ENTITY = ADMIN_STORAGE_SUMMARY + "/perEntity";
+
+	/**
+	 * Principal/User information removal for administrators.
+	 */
+	public static final String ADMIN_REDACT_USER = ADMIN + "/redact/user/{principalId}";
+
+	/**
+	 * Feature management endpoint
+	 */
+	public static final String ADMIN_FEATURE = ADMIN + "/feature";
+	
+	/**
+	 * Enable/disable a feature
+	 */
+	public static final String ADMIN_FEATURE_STATUS = ADMIN_FEATURE +"/{feature}/status";
 
 	/**
 	 * Public access for Synapse user and group info
@@ -647,7 +737,14 @@ public class UrlHelpers {
 	public static final String EVALUATION_WITH_NAME = EVALUATION + "/name/{name}";
 	public static final String EVALUATION_COUNT = EVALUATION + "/count";
 	public static final String EVALUATION_AVAILABLE = EVALUATION+"/available";
-	
+
+	//EvaluationRounds
+	public static final String EVALUATION_ROUND = EVALUATION_WITH_ID + "/round";
+	public static final String EVALUATION_ROUND_ID_PATH_VAR = "{roundId}";
+	public static final String EVALUATION_ROUND_WITH_ROUND_ID = EVALUATION_ROUND + "/" + EVALUATION_ROUND_ID_PATH_VAR;
+	public static final String EVALUATION_SUBMISSIONQUOTA_MIGRATION = EVALUATION_WITH_ID + "/migratequota";
+
+
 	public static final String PARTICIPANT = EVALUATION_WITH_ID + "/participant";
 	public static final String PARTICIPANT_WITH_ID = PARTICIPANT + "/{partId}";
 	public static final String PARTICIPANT_COUNT = PARTICIPANT + "/count";
@@ -665,10 +762,8 @@ public class UrlHelpers {
 	public static final String SUBMISSION_COUNT = SUBMISSION_WITH_EVAL_ID + "/count";
 	public static final String SUBMISSION_CONTRIBUTOR = SUBMISSION_WITH_ID+"/contributor";
 	
-	public static final String ACCESS_REQUIREMENT_WITH_EVALUATION_ID = EVALUATION_WITH_ID+ACCESS_REQUIREMENT;
-	public static final String EVALUATION_ACCESS_REQUIREMENT_UNFULFILLED_WITH_ID = EVALUATION_WITH_ID+"/accessRequirementUnfulfilled";
 	public static final String ACCESS_APPROVAL_WITH_EVALUATION_ID = EVALUATION_WITH_ID+ACCESS_APPROVAL;
-
+	
 	public static final String EVALUATION_ACL = EVALUATION + ACL;
 	public static final String EVALUATION_ID_ACL = EVALUATION + "/" + EVALUATION_ID_PATH_VAR + ACL;
 	public static final String EVALUATION_ID_PERMISSIONS = EVALUATION + "/" + EVALUATION_ID_PATH_VAR + PERMISSIONS;
@@ -812,6 +907,9 @@ public class UrlHelpers {
 	public static final String TABLE_COLUMNS_OF_SCOPE = COLUMN+"/view/scope";
 	public static final String TABLE_SQL_TRANSFORM = TABLE+"/sql/transform";
 	public static final String TABLE_SNAPSHOT = ENTITY_TABLE+"/snapshot";
+	
+	public static final String VIEW_COLUMNS_FROM_SCOPE_ASYNC_START = TABLE_COLUMNS_OF_SCOPE + ASYNC_START_REQUEST;
+	public static final String VIEW_COLUMNS_FROM_SCOPE_ASYNC_GET = TABLE_COLUMNS_OF_SCOPE + ASYNC_GET_REQUEST;
 
 	public static final String ADMIN_TABLE_REBUILD = ADMIN + ENTITY_TABLE + "/rebuild";
 	public static final String ADMIN_TABLE_ADD_INDEXES = ADMIN + ENTITY_TABLE + "/addindexes";
@@ -826,6 +924,7 @@ public class UrlHelpers {
 	public static final String NAME_FRAGMENT_FILTER = "fragment";
 	public static final String MEMBER_TYPE_FILTER = "memberType";
 	public static final String TEAM_ID_ICON = TEAM_ID+"/icon";
+	public static final String TEAM_ID_ICON_PREVIEW = TEAM_ID_ICON+"/preview";
 	private static final String MEMBER = "/member";
 	public static final String PRINCIPAL_ID_PATH_VARIABLE = "principalId";
 	public static final String PRINCIPAL_ID = "/{"+PRINCIPAL_ID_PATH_VARIABLE+"}";
@@ -845,9 +944,8 @@ public class UrlHelpers {
 	public static final String TEAM_ID_ACL = TEAM_ID+"/acl";
 	
 	public static final String ACCESS_REQUIREMENT_WITH_TEAM_ID = TEAM_ID+ACCESS_REQUIREMENT;
-	public static final String TEAM_ACCESS_REQUIREMENT_UNFULFILLED_WITH_ID = TEAM_ID+"/accessRequirementUnfulfilled";
 	public static final String ACCESS_APPROVAL_WITH_TEAM_ID = TEAM_ID+ACCESS_APPROVAL;
-
+	
 	// membership invitation
 	public static final String MEMBERSHIP_INVITATION = "/membershipInvitation";
 	public static final String MEMBERSHIP_INVITATION_ID = MEMBERSHIP_INVITATION+ID;
@@ -899,9 +997,11 @@ public class UrlHelpers {
 	@Deprecated
 	public static final String PROJECTS_FOR_TEAM = PrefixConst.PROJECT + TEAM + "/{teamId}";
 
-	public static final String PROJECTS = "/projects/{type}";
+	public static final String PROJECTS = "/projects";
 	public static final String PROJECTS_USER = PROJECTS + USER + "/{principalId}";
-	public static final String PROJECTS_TEAM = PROJECTS + TEAM + "/{teamId}";
+	public static final String PROJECTS_DEPRECATED = "/projects/{deprecatedType}";
+	public static final String PROJECTS_USER_DEPRECATED = PROJECTS_DEPRECATED + USER + "/{principalId}";
+	public static final String PROJECTS_TEAM_DEPRECATED = PROJECTS_DEPRECATED + TEAM + "/{teamId}";
 	public static final String PROJECTS_SORT_PARAM = "sort";
 	public static final String PROJECTS_SORT_DIRECTION_PARAM = "sortDirection";
 
@@ -917,7 +1017,7 @@ public class UrlHelpers {
 	// verified user services
 	public static final String VERIFICATION_SUBMISSION = "/verificationSubmission";
 	public static final String VERIFICATION_SUBMISSION_ID = VERIFICATION_SUBMISSION+ID;
-	public static final String VERIFICATION_SUBMISSION_ID_STATE = "/verificationSubmission"+ID+"/state";
+	public static final String VERIFICATION_SUBMISSION_ID_STATE = VERIFICATION_SUBMISSION_ID+"/state";
 
 	// Discussion Services
 	public static final String FORUM = "/forum";
@@ -994,11 +1094,16 @@ public class UrlHelpers {
 	public static final String DATA_ACCESS_SUBMISSION_ID_CANCEL = DATA_ACCESS_SUBMISSION_ID +"/cancellation";
 	public static final String ACCESS_REQUIREMENT_ID_LIST_SUBMISSION =
 			ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID + "/submissions";
+	public static final String ACCESS_REQUIREMENT_ID_LIST_APPROVED_SUBMISISON_INFO =
+			ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID + "/approvedSubmissionInfo";
 	public static final String ACCESS_REQUIREMENT_ID_STATUS =
 			ACCESS_REQUIREMENT_WITH_REQUIREMENT_ID + "/status";
 	public static final String RESTRICTION_INFORMATION = "/restrictionInformation";
 	public static final String DATA_ACCESS_SUBMISSION_OPEN_SUBMISSIONS = DATA_ACCESS_SUBMISSION+"/openSubmissions";
 	public static final String ACCESS_APPROVAL_BATCH = ACCESS_APPROVAL+"/batch";
+	
+	// Statistics Services
+	public static final String STATISTICS = "/statistics";
 
 	/**
 	 * APIs for DynamoDB related operations.
@@ -1026,12 +1131,47 @@ public class UrlHelpers {
 
 	public static final String AUTH_TERMS_OF_USE = "/termsOfUse";
 	public static final String AUTH_SECRET_KEY = "/secretKey";
-	
+
+	public static final String AUTH_PERSONAL_ACCESS_TOKEN = "/personalAccessToken";
+	public static final String AUTH_PERSONAL_ACCESS_TOKEN_ID = AUTH_PERSONAL_ACCESS_TOKEN + ID;
+
 	public static final String AUTH_OAUTH_2 = "/oauth2";
 	public static final String AUTH_OAUTH_2_AUTH_URL = AUTH_OAUTH_2+"/authurl";
 	public static final String AUTH_OAUTH_2_SESSION = AUTH_OAUTH_2+"/session";
 	public static final String AUTH_OAUTH_2_ALIAS = AUTH_OAUTH_2+"/alias";
 	public static final String AUTH_OAUTH_2_ACCOUNT = AUTH_OAUTH_2+"/account";
+	public static final String WELL_KNOWN = "/.well-known";
+	// The OIDC spec' defines the following as <issuer>/.well-known/openid-configuration
+	// See https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+	// implicitiy the <issuer> URI is <host>/auth/v1, so the openid config 
+	// is .../auth/v1/.well-known/openid-configuration
+	public static final String WELL_KNOWN_OPENID_CONFIGURATION = WELL_KNOWN+"/openid-configuration";
+
+	/**
+	 * OpenID Connect URL constants
+	 */
+	public static final String OAUTH_2_CLIENT = AUTH_OAUTH_2+"/client";
+	public static final String OAUTH_2_CLIENT_ID = OAUTH_2_CLIENT+ID;
+	public static final String OAUTH_2_CLIENT_SECRET = OAUTH_2_CLIENT+"/secret"+ID;
+	public static final String OAUTH_2_CONSENT = AUTH_OAUTH_2+"/consent";
+	public static final String OAUTH_2_CONSENT_CHECK = AUTH_OAUTH_2+"/consentcheck";
+	public static final String OAUTH_2_TOKEN = AUTH_OAUTH_2+"/token";
+	public static final String OAUTH_2_USER_INFO = AUTH_OAUTH_2+"/userinfo";
+	public static final String OAUTH_2_JWKS = AUTH_OAUTH_2+"/jwks";
+	public static final String OAUTH_2_AUTH_REQUEST_DESCRIPTION = AUTH_OAUTH_2+"/description";
+	public static final String OAUTH_2_REVOKE = AUTH_OAUTH_2+"/revoke";
+	public static final String OAUTH_2_TOKEN_ID = OAUTH_2_TOKEN + "/{tokenId}";
+	public static final String OAUTH_2_TOKEN_ID_METADATA = OAUTH_2_TOKEN_ID + "/metadata";
+
+	// Endpoints for users to audit OAuth 2 tokens
+	public static final String OAUTH_2_AUDIT = AUTH_OAUTH_2 + "/audit";
+	public static final String OAUTH_2_AUDIT_TOKENS_ID = OAUTH_2_AUDIT+"/tokens/{tokenId}";
+	public static final String OAUTH_2_AUDIT_TOKENS_ID_METADATA = OAUTH_2_AUDIT_TOKENS_ID+"/metadata";
+	public static final String OAUTH_2_AUDIT_TOKENS_ID_REVOKE = OAUTH_2_AUDIT_TOKENS_ID+"/revoke";
+	public static final String OAUTH_2_AUDIT_CLIENTS = OAUTH_2_AUDIT + "/grantedClients";
+	public static final String OAUTH_2_AUDIT_CLIENT_TOKENS = OAUTH_2_AUDIT_CLIENTS + "/{clientId}/tokens";
+	public static final String OAUTH_2_AUDIT_CLIENT_REVOKE = OAUTH_2_AUDIT_CLIENTS + "/{clientId}/revoke";
+
 
 	public static final String AUTH_LOGIN = "/login";
 	
@@ -1050,7 +1190,13 @@ public class UrlHelpers {
 	 * API for updating a file
 	 * @see PLFM-4108
 	 */
-	public static final String ADMIN_UPDATE_FILE = ADMIN + "/updateFile";;
+	public static final String ADMIN_UPDATE_FILE = ADMIN + "/updateFile";
+	
+	/**
+	 * Request parameter to get the next page of a paginated query response.
+	 */
+	public static final String NEXT_PAGE_TOKEN_PARAM = "nextPageToken";
+
 
 	static {
 		@SuppressWarnings("rawtypes")

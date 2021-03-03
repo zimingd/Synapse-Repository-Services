@@ -21,7 +21,7 @@ import org.sagebionetworks.repo.model.table.TableConstants;
 import org.sagebionetworks.repo.model.table.UploadToTablePreviewRequest;
 import org.sagebionetworks.repo.model.table.UploadToTablePreviewResult;
 import org.sagebionetworks.table.cluster.utils.CSVUtils;
-import org.sagebionetworks.table.cluster.utils.ColumnConstants;
+import org.sagebionetworks.repo.model.table.ColumnConstants;
 
 import au.com.bytecode.opencsv.CSVReader;
 
@@ -74,12 +74,8 @@ public class UploadPreviewBuilder {
 	 */
 	public UploadToTablePreviewResult buildResult() throws IOException {
 		UploadToTablePreviewResult results = new UploadToTablePreviewResult();
-		// Is the first row a header?
-		header = null;
-		if (isFirstLineHeader) {
-			header = reader.readNext();
-			schema = new ColumnModel[header.length];
-		}
+		// Process the header if present
+		processHeader();
 		// First gather data by scanning the rows
 		scanRows();
 		// fix the schema as needed
@@ -92,6 +88,18 @@ public class UploadPreviewBuilder {
 		results.setRowsScanned(new Long(rowsScanned));
 		results.setSampleRows(extractSampleRows());
 		return results;
+	}
+	
+	private void processHeader() throws IOException {
+		// Is the first row a header?
+		header = null;
+		if (isFirstLineHeader) {
+			header = reader.readNext();
+			if (header == null) {
+				throw new IllegalArgumentException("Expected the first line to be the header but was empty.");
+			}
+			schema = new ColumnModel[header.length];
+		}
 	}
 
 	/**

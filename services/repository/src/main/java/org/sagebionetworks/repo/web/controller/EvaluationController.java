@@ -1,16 +1,23 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.sagebionetworks.evaluation.model.BatchUploadResponse;
 import org.sagebionetworks.evaluation.model.Evaluation;
+import org.sagebionetworks.evaluation.model.EvaluationRound;
+import org.sagebionetworks.evaluation.model.EvaluationRoundListRequest;
+import org.sagebionetworks.evaluation.model.EvaluationRoundListResponse;
 import org.sagebionetworks.evaluation.model.Submission;
 import org.sagebionetworks.evaluation.model.SubmissionBundle;
 import org.sagebionetworks.evaluation.model.SubmissionContributor;
@@ -20,6 +27,7 @@ import org.sagebionetworks.evaluation.model.SubmissionStatusEnum;
 import org.sagebionetworks.evaluation.model.TeamSubmissionEligibility;
 import org.sagebionetworks.evaluation.model.UserEvaluationPermissions;
 import org.sagebionetworks.reflection.model.PaginatedResults;
+import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.ACLInheritanceException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
@@ -33,6 +41,7 @@ import org.sagebionetworks.repo.model.query.QueryTableResults;
 import org.sagebionetworks.repo.queryparser.ParseException;
 import org.sagebionetworks.repo.web.DeprecatedServiceException;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -81,6 +90,15 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * A convenience object to transport a Submission and its accompanying SubmissionStatus in a single
  * web service call.
  * </li>
+ * <li> <a href="${org.sagebionetworks.repo.model.table.SubmissionView}">SubmissionView</a>: 
+ * A submission view can be created using the 
+ * <a href="${org.sagebionetworks.repo.web.controller.EntityController}">Entity Services</a> providing
+ * as scope a list of evaluation ids, in order to query the set of submissions through 
+ * the <a href="${POST.entity.id.table.query.async.start}">Table Query Services</a>.
+ * <a href="${org.sagebionetworks.repo.model.annotation.v2.Annotations}">Annotations</a> set in 
+ * the submissionAnnotations property of a <a href="${org.sagebionetworks.evaluation.model.SubmissionStatus}">SubmissionStatus</a> 
+ * can be exposed in the view.
+ * </li>
  * </ul>
  * </p>
  * 
@@ -116,6 +134,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.EVALUATION, method = RequestMethod.POST)
 	public @ResponseBody
@@ -137,19 +156,18 @@ public class EvaluationController {
 	 * 
 	 * @param userId
 	 * @param evalId - the ID of the desired Evaluation
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_ID, method = RequestMethod.GET)
 	public @ResponseBody
 	Evaluation getEvaluation(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String evalId,
-			HttpServletRequest request
+			@PathVariable String evalId
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
 		return serviceProvider.getEvaluationService().getEvaluation(userId, evalId);
@@ -158,37 +176,14 @@ public class EvaluationController {
 	/**
 	 * Gets Evaluations tied to a project. 
 	 * 
-	 * <p>
-	 * <b>Note:</b> The caller must be granted the <a
-	 * href="${org.sagebionetworks.repo.model.ACCESS_TYPE}"
-	 * >ACCESS_TYPE.READ</a> on the specified Evaluations.
-	 * </p>
-	 * 
-	 * @param id - the ID of the Project.
-	 */
-	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_CONTENT_SOURCE, method = RequestMethod.GET)
-	public @ResponseBody
-	PaginatedResults<Evaluation> getEvaluationsByContentSourcePaginated(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String id, 
-			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
-			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
-			HttpServletRequest request
-			) throws DatastoreException, NotFoundException
-	{
-		return serviceProvider.getEvaluationService().getEvaluationByContentSource(userId, id, limit, offset, request);
-	}
-	
-	/**
-	 * Gets a collection of Evaluations, within a given range.
-	 * 
-	 * <p>
-	 * <b>Note:</b> The response will contain only those Evaluations on which the caller must is
+	 * <b>Note:</b> The response will contain only those Evaluations on which the caller is
 	 * granted the <a href="${org.sagebionetworks.repo.model.ACCESS_TYPE}">ACCESS_TYPE.READ</a>
-	 * permission.
-	 * </p> 
+	 * permission, unless specified otherwise with the accessType parameter.
 	 * 
+	 * @param id the ID of the project
+	 * @param accessType The type of access for the user to filter for, optional and defaults to <a href="${org.sagebionetworks.repo.model.ACCESS_TYPE}">ACCESS_TYPE.READ</a>
+	 * @param activeOnly If 'true' then return only those evaluations with rounds defined and for which the current time is in one of the rounds.
+	 * @param evaluationIds an optional, comma-delimited list of evaluation IDs to which the response is limited
 	 * @param offset
 	 *            The offset index determines where this page will start from.
 	 *            An index of 0 is the first entity. When null it will default
@@ -200,16 +195,64 @@ public class EvaluationController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_CONTENT_SOURCE, method = RequestMethod.GET)
+	public @ResponseBody
+	PaginatedResults<Evaluation> getEvaluationsByContentSourcePaginated(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String id, 
+			@RequestParam(value = UrlHelpers.ACCESS_TYPE_PARAM, required = false, defaultValue="READ") ACCESS_TYPE accessType,
+			@RequestParam(value = ServiceConstants.ACTIVE_ONLY_PARAM, required=false, defaultValue="false") boolean activeOnly,
+			@RequestParam(value = ServiceConstants.EVALUATION_IDS_PARAM, required = false) String evaluationIds,
+			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
+			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit
+			) throws DatastoreException, NotFoundException
+	{
+		List<Long> ids = stringToEvaluationIds(evaluationIds);
+		
+		return serviceProvider.getEvaluationService().getEvaluationByContentSource(userId, id, accessType, activeOnly, ids, limit, offset);
+	}
+	
+	/**
+	 * Gets a collection of Evaluations, within a given range.
+	 * 
+	 * <p>
+	 * <b>Note:</b> The response will contain only those Evaluations on which the caller is
+	 * granted the <a href="${org.sagebionetworks.repo.model.ACCESS_TYPE}">ACCESS_TYPE.READ</a>
+	 * permission, unless specified otherwise with the accessType parameter.
+	 * </p> 
+	 * 
+	 * @param accessType The type of access for the user to filter for, optional and defaults to <a href="${org.sagebionetworks.repo.model.ACCESS_TYPE}">ACCESS_TYPE.READ</a>
+	 * @param activeOnly If 'true' then return only those evaluations with rounds defined and for which the current time is in one of the rounds.
+	 * @param evaluationIds an optional, comma-delimited list of evaluation IDs to which the response is limited
+	 * @param offset
+	 *            The offset index determines where this page will start from.
+	 *            An index of 0 is the first entity. When null it will default
+	 *            to 0.
+	 * @param limit
+	 *            Limits the number of entities that will be fetched for this
+	 *            page. When null it will default to 10.
+	 * @return
+	 * @throws DatastoreException
+	 * @throws NotFoundException
+	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION, method = RequestMethod.GET)
 	public @ResponseBody
 	PaginatedResults<Evaluation> getEvaluationsPaginated(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@RequestParam(value = UrlHelpers.ACCESS_TYPE_PARAM, required = false, defaultValue="READ") ACCESS_TYPE accessType,
+			@RequestParam(value = ServiceConstants.ACTIVE_ONLY_PARAM, required=false, defaultValue="false") boolean activeOnly,
+			@RequestParam(value = ServiceConstants.EVALUATION_IDS_PARAM, required = false) String evaluationIds,
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit
-			) throws DatastoreException, NotFoundException
-	{
-		return serviceProvider.getEvaluationService().getEvaluationsInRange(userId, limit, offset);
+			) throws DatastoreException, NotFoundException {
+		
+		List<Long> ids = stringToEvaluationIds(evaluationIds);
+		
+		return serviceProvider.getEvaluationService().getEvaluations(userId, accessType, activeOnly, ids, limit, offset);
 	}
 	
 	/**
@@ -231,38 +274,28 @@ public class EvaluationController {
 	 *            Limits the number of entities that will be fetched for this
 	 *            page. When null it will default to 10.
 	 * @param userId
-	 * @param request
 	 * @param evaluationIds an optional, comma-delimited list of evaluation IDs to which the response is limited
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_AVAILABLE, method = RequestMethod.GET)
 	public @ResponseBody
 	PaginatedResults<Evaluation> getAvailableEvaluationsPaginated(
+			@RequestParam(value = ServiceConstants.ACTIVE_ONLY_PARAM, required=false, defaultValue="false") boolean activeOnly,
 			@RequestParam(value = ServiceConstants.EVALUATION_IDS_PARAM, required = false) String evaluationIds,
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId
 			) throws DatastoreException, NotFoundException
 	{
-		List<Long> evalIds = new ArrayList<Long>();
-		if (evaluationIds!=null) {
-			String[] evalIdStrings = evaluationIds.split(ServiceConstants.BATCH_PARAM_VALUE_SEPARATOR);
-			for (String s : evalIdStrings) {
-				Long l;
-				try {
-					l = Long.parseLong(s);
-				} catch (NumberFormatException e) {
-					throw new InvalidModelException("Expected an evaluation ID but found "+s);
-				}
-				evalIds.add(l);
-			}
-		}
-		return serviceProvider.getEvaluationService().getAvailableEvaluationsInRange(userId, limit, offset, evalIds, request);
-	}	
+		
+		List<Long> ids = stringToEvaluationIds(evaluationIds);
+		
+		return serviceProvider.getEvaluationService().getAvailableEvaluations(userId, activeOnly, ids, limit, offset);
+	}
 
 	/**
 	 * Finds an Evaluation by name.
@@ -280,6 +313,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws UnsupportedEncodingException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_NAME, method = RequestMethod.GET)
 	public @ResponseBody
@@ -322,6 +356,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_ID, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -350,10 +385,10 @@ public class EvaluationController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WITH_ID, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void deleteEvaluation(
+	public void deleteEvaluation(
 			@PathVariable String evalId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
@@ -372,6 +407,7 @@ public class EvaluationController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_SUBMISSION_ELIGIBILITY, method = RequestMethod.GET)
 	public @ResponseBody
@@ -420,7 +456,6 @@ public class EvaluationController {
 	 * A signed, serialized token is appended to create the complete URL:
 	 * <a href="${org.sagebionetworks.repo.model.message.NotificationSettingsSignedToken}">NotificationSettingsSignedToken</a>.
 	 * In normal operation, this parameter should be omitted.
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws InvalidModelException
@@ -430,6 +465,7 @@ public class EvaluationController {
 	 * @throws ACLInheritanceException
 	 * @throws ParseException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.SUBMISSION, method = RequestMethod.POST)
 	public @ResponseBody
@@ -439,15 +475,15 @@ public class EvaluationController {
 			@RequestParam(value = AuthorizationConstants.SUBMISSION_ELIGIBILITY_HASH_PARAM, required = false) String submissionEligibilityHash,
 			@RequestParam(value = AuthorizationConstants.CHALLENGE_ENDPOINT_PARAM, defaultValue = ServiceConstants.CHALLENGE_ENDPOINT) String challengeEndpoint,
 			@RequestParam(value = AuthorizationConstants.NOTIFICATION_UNSUBSCRIBE_ENDPOINT_PARAM, defaultValue = ServiceConstants.NOTIFICATION_UNSUBSCRIBE_ENDPOINT) String notificationUnsubscribeEndpoint,
-			@RequestBody Submission submission,
-			HttpServletRequest request
+			@RequestBody Submission submission
 			) throws DatastoreException, InvalidModelException, NotFoundException, JSONObjectAdapterException, UnauthorizedException, ACLInheritanceException, ParseException
 	{
 		return serviceProvider.getEvaluationService().createSubmission(
-				userId, submission, entityEtag, submissionEligibilityHash, request, challengeEndpoint, notificationUnsubscribeEndpoint);
+				userId, submission, entityEtag, submissionEligibilityHash, challengeEndpoint, notificationUnsubscribeEndpoint);
 	}
 
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.GONE)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_CONTRIBUTOR, method = RequestMethod.POST)
 	public @ResponseBody
@@ -467,6 +503,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({view,modify})
 	@RequestMapping(value = UrlHelpers.ADMIN + UrlHelpers.SUBMISSION_CONTRIBUTOR, method = RequestMethod.POST)
 	public @ResponseBody
 	SubmissionContributor addSubmissionContributor(
@@ -493,6 +530,7 @@ public class EvaluationController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -535,6 +573,7 @@ public class EvaluationController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_STATUS, method = RequestMethod.GET)
 	public @ResponseBody
@@ -588,6 +627,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_STATUS, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -634,6 +674,7 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_STATUS_BATCH, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -663,10 +704,10 @@ public class EvaluationController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_ID, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void deleteSubmission(
+	public void deleteSubmission(
 			@PathVariable String subId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws DatastoreException, UnauthorizedException, NotFoundException
 	{
@@ -692,12 +733,12 @@ public class EvaluationController {
 	 *            page. When null it will default to 10, max value 100.
 	 * @param userId
 	 * @param statusString
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_EVAL_ID_ADMIN, method = RequestMethod.GET)
 	public @ResponseBody
@@ -706,15 +747,14 @@ public class EvaluationController {
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString,
-			HttpServletRequest request
+			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
 		SubmissionStatusEnum status = null;
 		if (statusString.length() > 0) {
 			status = SubmissionStatusEnum.valueOf(statusString.toUpperCase().trim());
 		}		
-		return serviceProvider.getEvaluationService().getAllSubmissions(userId, evalId, status, limit, offset, request);
+		return serviceProvider.getEvaluationService().getAllSubmissions(userId, evalId, status, limit, offset);
 	}
 	
 	/**
@@ -739,12 +779,12 @@ public class EvaluationController {
 	 *            Limits the number of entities that will be fetched for this
 	 *            page. When null it will default to 10, max value 100.
 	 * @param statusString
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_STATUS_WITH_EVAL_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -753,15 +793,14 @@ public class EvaluationController {
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString,
-			HttpServletRequest request
+			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
 		SubmissionStatusEnum status = null;
 		if (statusString.length() > 0) {
 			status = SubmissionStatusEnum.valueOf(statusString.toUpperCase().trim());
 		}
-		return serviceProvider.getEvaluationService().getAllSubmissionStatuses(userId, evalId, status, limit, offset, request);
+		return serviceProvider.getEvaluationService().getAllSubmissionStatuses(userId, evalId, status, limit, offset);
 	}
 	
 	/**
@@ -783,12 +822,12 @@ public class EvaluationController {
 	 *            page. When null it will default to 10, max value 100.
 	 * @param userId
 	 * @param statusString
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_EVAL_ID_ADMIN_BUNDLE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -797,15 +836,14 @@ public class EvaluationController {
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString,
-			HttpServletRequest request
+			@RequestParam(value = UrlHelpers.STATUS, defaultValue = "") String statusString
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
 		SubmissionStatusEnum status = null;
 		if (statusString.length() > 0) {
 			status = SubmissionStatusEnum.valueOf(statusString.toUpperCase().trim());
 		}		
-		return serviceProvider.getEvaluationService().getAllSubmissionBundles(userId, evalId, status, limit, offset, request);
+		return serviceProvider.getEvaluationService().getAllSubmissionBundles(userId, evalId, status, limit, offset);
 	}
 	
 	/**
@@ -821,12 +859,12 @@ public class EvaluationController {
 	 *            Limits the number of entities that will be fetched for this
 	 *            page. When null it will default to 10.
 	 * @param userId
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_EVAL_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -834,11 +872,10 @@ public class EvaluationController {
 			@PathVariable String evalId,
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
-		return serviceProvider.getEvaluationService().getMyOwnSubmissionsByEvaluation(evalId, userId, limit, offset, request);
+		return serviceProvider.getEvaluationService().getMyOwnSubmissionsByEvaluation(evalId, userId, limit, offset);
 	}
 	
 	/**
@@ -856,12 +893,12 @@ public class EvaluationController {
 	 *            Limits the number of entities that will be fetched for this
 	 *            page. When null it will default to 10.
 	 * @param userId
-	 * @param request
 	 * @return
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_WITH_EVAL_ID_BUNDLE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -869,11 +906,10 @@ public class EvaluationController {
 			@PathVariable String evalId,
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) long limit,
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			HttpServletRequest request
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId
 			) throws DatastoreException, UnauthorizedException, NotFoundException 
 	{
-		return serviceProvider.getEvaluationService().getMyOwnSubmissionBundlesByEvaluation(evalId, userId, limit, offset, request);
+		return serviceProvider.getEvaluationService().getMyOwnSubmissionBundlesByEvaluation(evalId, userId, limit, offset);
 	}
 	
 	/**
@@ -891,9 +927,9 @@ public class EvaluationController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.SUBMISSION_FILE, method = RequestMethod.GET)
-	public @ResponseBody
-	void redirectURLForFileHandle(
+	public void redirectURLForFileHandle(
 			@PathVariable String subId,
 			@PathVariable String fileHandleId,
 			@RequestParam (required = false) Boolean redirect,
@@ -917,6 +953,7 @@ public class EvaluationController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.SUBMISSION_COUNT, method = RequestMethod.GET)
 	public @ResponseBody
@@ -935,22 +972,22 @@ public class EvaluationController {
 	 * 
 	 * @param id 
 	 * @param userId 
-	 * @param accessType 
-	 * @param request 
+	 * @param accessType  
 	 * @return the access types that the given user has to the given resource
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value={UrlHelpers.EVALUATION_WITH_ID+UrlHelpers.ACCESS}, method=RequestMethod.GET)
 	public @ResponseBody BooleanResult hasAccess(
 			@PathVariable String evalId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = UrlHelpers.ACCESS_TYPE_PARAM, required = true) String accessType,
-			HttpServletRequest request) throws DatastoreException, NotFoundException, UnauthorizedException {
+			@RequestParam(value = UrlHelpers.ACCESS_TYPE_PARAM, required = true) String accessType
+			) throws DatastoreException, NotFoundException, UnauthorizedException {
 		// pass it along.
-		return new BooleanResult(serviceProvider.getEvaluationService().hasAccess(evalId, userId, request, accessType));
+		return new BooleanResult(serviceProvider.getEvaluationService().hasAccess(evalId, userId, accessType));
 	}
 
 	/**
@@ -960,6 +997,7 @@ public class EvaluationController {
 	 * @return        The ACL created.
 	 */
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ACL, method = RequestMethod.POST)
 	public @ResponseBody AccessControlList
@@ -981,6 +1019,7 @@ public class EvaluationController {
 	 * @param acl     The ACL being updated.
 	 * @return        The updated ACL.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ACL, method = RequestMethod.PUT)
 	public @ResponseBody AccessControlList
@@ -1000,6 +1039,7 @@ public class EvaluationController {
 	 *
 	 */
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ID_ACL, method = RequestMethod.DELETE)
 	public void deleteAcl()
@@ -1017,6 +1057,7 @@ public class EvaluationController {
 	 * @param evalId  The ID of the evaluation whose ACL is being retrieved.
 	 * @return        The ACL requested.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ID_ACL, method = RequestMethod.GET)
 	public @ResponseBody AccessControlList
@@ -1035,6 +1076,7 @@ public class EvaluationController {
 	 * @param evalId  The ID of the evaluation over which the user permission are being retrieved.
 	 * @return  The requested user permissions.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_ID_PERMISSIONS, method = RequestMethod.GET)
 	public @ResponseBody UserEvaluationPermissions
@@ -1121,8 +1163,10 @@ public class EvaluationController {
 	 * @throws ParseException 
 	 * @throws  
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_QUERY, method = RequestMethod.GET)
+	@Deprecated
 	public @ResponseBody 
 	QueryTableResults query(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
@@ -1139,6 +1183,7 @@ public class EvaluationController {
 	 * @param userId
 	 * @param subId
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.EVALUATION_SUBMISSION_CANCALLATION, method = RequestMethod.PUT)
 	public @ResponseBody void requestToCancelSubmission(
@@ -1146,4 +1191,208 @@ public class EvaluationController {
 			@PathVariable String subId) {
 		serviceProvider.getEvaluationService().processCancelSubmissionRequest(userId, subId);
 	}
+
+
+	/**
+	 * Creates a new EvaluationRound to associate with a Evaluation.
+	 * You must have UPDATE permissions for the associated Evaluation in order to create an EvaluationRound.
+	 *
+	 * This is a replacement for the deprecated <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * which is a property inside of <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>.
+	 *
+	 * EvaluationRounds define a fixed time period during which submissions to an Evaluation queue are accepted.
+	 * Limits to the number of allowed submissions may be defined inside a EvaluationRound.
+	 *
+	 * @param userId
+	 * @return
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 * @throws NotFoundException
+	 * @throws JSONObjectAdapterException
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.CREATED)
+	@RequestMapping(value = UrlHelpers.EVALUATION_ROUND, method = RequestMethod.POST)
+	public @ResponseBody
+	EvaluationRound createEvaluationRound(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String evalId,
+			@RequestBody EvaluationRound evaluationRound)
+	{
+		if(evaluationRound.getEvaluationId() == null){
+			evaluationRound.setEvaluationId(evalId);
+		}
+		if(!evalId.equals(evaluationRound.getEvaluationId())){
+			throw new IllegalArgumentException("EvaluationId in URL path:"+ evalId +" does not match evaluationId in request body:"+ evaluationRound.getEvaluationId());
+		}
+		return serviceProvider.getEvaluationService().createEvaluationRound(userId, evaluationRound);
+	}
+
+	/**
+	 * Retrieve an existing EvaluationRound associated with a Evaluation.
+	 * You must have READ permissions for the associated Evaluation in order to retrieve an EvaluationRound.
+	 *
+	 * This is a replacement for the deprecated <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * which is a property inside of <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>.
+	 *
+	 * EvaluationRounds define a fixed time period during which submissions to an Evaluation queue are accepted.
+	 * Limits to the number of allowed submissions may be defined inside a EvaluationRound.
+	 *
+	 * @param userId
+	 * @return
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 * @throws NotFoundException
+	 * @throws JSONObjectAdapterException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EVALUATION_ROUND_WITH_ROUND_ID, method = RequestMethod.GET)
+	public @ResponseBody
+	EvaluationRound getEvaluationRound(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String evalId,
+			@PathVariable String roundId)
+	{
+		return serviceProvider.getEvaluationService().getEvaluationRound(userId, evalId, roundId);
+	}
+
+	/**
+	 * Retrieve all EvaluationRounds associated with a Evaluation.
+	 * You must have READ permissions for the associated Evaluation in order to retrieve all EvaluationRounds.
+	 *
+	 * This is a replacement for the deprecated <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * which is a property inside of <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>.
+	 *
+	 * EvaluationRounds define a fixed time period during which submissions to an Evaluation queue are accepted.
+	 * Limits to the number of allowed submissions may be defined inside a EvaluationRound.
+	 *
+	 * @param userId
+	 * @return
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 * @throws NotFoundException
+	 * @throws JSONObjectAdapterException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EVALUATION_ROUND + UrlHelpers.LIST, method = RequestMethod.POST)
+	public @ResponseBody
+	EvaluationRoundListResponse getAllEvaluationRounds(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String evalId,
+			@RequestBody EvaluationRoundListRequest request)
+	{
+		return serviceProvider.getEvaluationService().getAllEvaluationRounds(userId, evalId, request);
+	}
+
+	/**
+	 * Update an existing EvaluationRound to associate with a Evaluation.
+	 * You must have UPDATE permissions for the associated Evaluation in order to update an EvaluationRound.
+	 *
+	 * This is a replacement for the deprecated <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * which is a property inside of <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>.
+	 *
+	 * EvaluationRounds define a fixed time period during which submissions to an Evaluation queue are accepted.
+	 * Limits to the number of allowed submissions may be defined inside a EvaluationRound.
+	 *
+	 * @param userId
+	 * @return
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 * @throws NotFoundException
+	 * @throws JSONObjectAdapterException
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EVALUATION_ROUND_WITH_ROUND_ID, method = RequestMethod.PUT)
+	public @ResponseBody
+	EvaluationRound updateEvaluationRound(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String evalId,
+			@PathVariable String roundId,
+			@RequestBody EvaluationRound evaluationRound)
+	{
+		if(!evalId.equals(evaluationRound.getEvaluationId())){
+			throw new IllegalArgumentException("evalId in URL path:"+ evalId +" does not match evaluationId in request body:"+ evaluationRound.getEvaluationId());
+		}
+		if(!roundId.equals(evaluationRound.getId())){
+			throw new IllegalArgumentException("roundId in URL path:"+ roundId +" does not match id in request body:"+ evaluationRound.getId());
+		}
+		return serviceProvider.getEvaluationService().updateEvaluationRound(userId, evaluationRound);
+	}
+
+	/**
+	 * Delete an existing EvaluationRound to associate with a Evaluation.
+	 * You must have UPDATE permissions for the associated Evaluation in order to delete an EvaluationRound.
+	 *
+	 * This is a replacement for the deprecated <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * which is a property inside of <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>.
+	 *
+	 * EvaluationRounds define a fixed time period during which submissions to an Evaluation queue are accepted.
+	 * Limits to the number of allowed submissions may be defined inside a EvaluationRound.
+	 *
+	 * @param userId
+	 * @return
+	 * @throws DatastoreException
+	 * @throws InvalidModelException
+	 * @throws NotFoundException
+	 * @throws JSONObjectAdapterException
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@RequestMapping(value = UrlHelpers.EVALUATION_ROUND_WITH_ROUND_ID, method = RequestMethod.DELETE)
+	public @ResponseBody
+	void deleteEvaluationRound(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String evalId,
+			@PathVariable String roundId)
+	{
+		serviceProvider.getEvaluationService().deleteEvaluationRound(userId, evalId, roundId);
+	}
+
+	/**
+	 * Migrates the DEPRECATED <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>
+	 * in the "quota" field of an <a href="${org.sagebionetworks.evaluation.model.Evaluation}">Evaluation</a>
+	 * into one or many <a href="${org.sagebionetworks.evaluation.model.EvaluationRound}">EvaluationRound</a>
+	 * (depending on the "numberOfRounds" defined in the
+	 * <a href="${org.sagebionetworks.evaluation.model.SubmissionQuota}">SubmissionQuota</a>)
+	 *
+	 * <p>
+	 * <b>Note:</b> The caller must be granted the <a
+	 * href="${org.sagebionetworks.repo.model.ACCESS_TYPE}"
+	 * >ACCESS_TYPE.UPDATE</a> on the specified Evaluation.
+	 * </p>
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EVALUATION_SUBMISSIONQUOTA_MIGRATION, method = RequestMethod.POST)
+	public @ResponseBody
+	void migrateEvaluationSubmission(
+			@PathVariable String evalId,
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId)
+	{
+		serviceProvider.getEvaluationService().migrateEvaluationSubmissionQuota(userId, evalId);
+	}
+
+	// For some unknown reason binding a List<Long> with a @RequestParam is not working with our setup 
+	// (Leaving this static method here as this is a feature present since spring 3, more investigation is needed)
+	private static List<Long> stringToEvaluationIds(String value) {
+		if (value == null || value.isEmpty()) {
+			return Collections.emptyList();
+		}
+		String[] evalIdStrings = value.split(ServiceConstants.BATCH_PARAM_VALUE_SEPARATOR);
+		List<Long> evalIds = new ArrayList<>();
+		for (String s : evalIdStrings) {
+			Long l;
+			try {
+				l = Long.parseLong(s);
+			} catch (NumberFormatException e) {
+				throw new InvalidModelException("Expected an evaluation ID but found "+s);
+			}
+			evalIds.add(l);
+		}
+		return evalIds;
+	}
+
 }

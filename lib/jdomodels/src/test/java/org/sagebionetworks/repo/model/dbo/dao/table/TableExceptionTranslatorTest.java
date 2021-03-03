@@ -1,16 +1,6 @@
 package org.sagebionetworks.repo.model.dbo.dao.table;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.anySetOf;
-import static org.mockito.Mockito.when;
-
-import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
+import com.google.common.collect.Sets;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,11 +11,20 @@ import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.google.common.collect.Sets;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anySetOf;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TableExceptionTranslatorTest {
-	
+
 	@Mock
 	ColumnNameProvider mockColumnNameProvider;
 	
@@ -54,7 +53,7 @@ public class TableExceptionTranslatorTest {
 		int vendorCode = 1366;
 		SQLException sqlException = new SQLException(reason, sqlState, vendorCode);
 		String task = "StatementCallback";
-		String sql = "ALTER TABLE TEMP9974056 CHANGE COLUMN _C123_ _C456_ BIGINT(20) DEFAULT NULL COMMENT 'INTEGER'";
+		String sql = "ALTER TABLE TEMP9974056 CHANGE COLUMN _C123_ _C456_ BIGINT DEFAULT NULL COMMENT 'INTEGER'";
 		uncategorizedSQLException = new UncategorizedSQLException(task, sql,sqlException);
 		
 		task = "PreparedStatementCallback";
@@ -122,7 +121,7 @@ public class TableExceptionTranslatorTest {
 	}
 	
 	/**
-	 * This is also a test for PLFM-4466
+	 * This is also a test for PLFM-4466 and PLFM-6392
 	 */
 	@Test
 	public void testTranslateExceptionBadSqlGrammarException() {
@@ -131,10 +130,12 @@ public class TableExceptionTranslatorTest {
 		assertNotNull(result);
 		assertTrue(result instanceof IllegalArgumentException);
 		IllegalArgumentException illegalArg = (IllegalArgumentException)result;
-		assertEquals("Unknown column 'foo' in 'where clause'", illegalArg.getMessage());
+		assertEquals("Unknown column 'foo' in 'where clause'" +
+						TableExceptionTranslator.UNQUOTED_KEYWORDS_ERROR_MESSAGE,
+				illegalArg.getMessage());
 		assertEquals(badSqlException, illegalArg.getCause());
 	}
-	
+
 	@Test
 	public void testTranslateExceptionNonRuntime() {
 		Exception unknown = new Exception("This is an unknown type");

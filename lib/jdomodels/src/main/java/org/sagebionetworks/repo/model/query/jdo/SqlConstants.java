@@ -21,9 +21,11 @@ public class SqlConstants {
 	public static final String COL_NODE_ETAG 			= "ETAG";
 	public static final String COL_NODE_CREATED_BY 		= "CREATED_BY";
 	public static final String COL_NODE_CREATED_ON 		= "CREATED_ON";
+	public static final String COL_NODE_MODIFIED_ON 	= "MODIFIED_ON";
 	public static final String COL_NODE_TYPE			= "NODE_TYPE";
 	public static final String COL_NODE_ACL				= "NODE_ACL";
-	public static final String COL_CURRENT_REV			= "CURRENT_REV_NUM";
+	public static final String COL_NODE_CURRENT_REV			= "CURRENT_REV_NUM";
+	public static final String COL_NODE_MAX_REV			= "MAX_REV_NUM";
 	public static final String COL_NODE_ALIAS 			= "ALIAS";
 	public static final String DDL_FILE_NODE			="schema/Node-ddl.sql";
 	
@@ -34,9 +36,8 @@ public class SqlConstants {
 	public static final String COL_REVISION_ACTIVITY_ID		= "ACTIVITY_ID";
 	public static final String COL_REVISION_LABEL			= "LABEL";
 	public static final String COL_REVISION_COMMENT			= "COMMENT";
-	public static final String COL_REVISION_ANNOS_BLOB		= "ANNOTATIONS";
 	public static final String COL_REVISION_ENTITY_PROPERTY_ANNOTATIONS_BLOB = "ENTITY_PROPERTY_ANNOTATIONS";
-	public static final String COL_REVISION_USER_ANNOTATIONS_V1_BLOB = "USER_ANNOTATIONS_V1";
+	public static final String COL_REVISION_USER_ANNOS_JSON	= "USER_ANNOTATIONS";
 	public static final String COL_REVISION_REF_BLOB		= "REFERENCE";
 	public static final String COL_REVISION_MODIFIED_BY		= "MODIFIED_BY";
 	public static final String COL_REVISION_MODIFIED_ON		= "MODIFIED_ON";
@@ -77,7 +78,105 @@ public class SqlConstants {
 	public static final String COL_STORAGE_LOCATION_CREATED_ON		= "CREATED_ON";
 	public static final String COL_STORAGE_LOCATION_CREATED_BY		= "CREATED_BY";
 	public static final String COL_STORAGE_LOCATION_DATA_HASH		= "DATA_HASH";
-
+	
+	// form processing
+	// FormGroup
+	public static final String TABLE_FORM_GROUP 			= "FORM_GROUP";
+	public static final String COL_FORM_GROUP_ID 			= "GROUP_ID";
+	public static final String COL_FORM_GROUP_NAME 			= "NAME";
+	public static final String COL_FORM_GROUP_CREATED_ON 	= "CREATED_ON";
+	public static final String COL_FORM_GROUP_CREATED_BY 	= "CREATED_BY";
+	public static final String DDL_FILE_FORM_GROUP 			= "schema/FormGroup-ddl.sql";
+	
+	// Form data
+	public static final String TABLE_FORM_DATA 					= "FORM_DATA";
+	public static final String COL_FORM_DATA_ID 				= "ID";
+	public static final String COL_FORM_DATA_ETAG				= "ETAG";
+	public static final String COL_FORM_DATA_NAME 				= "NAME";
+	public static final String COL_FORM_DATA_CREATED_ON 		= "CREATED_ON";
+	public static final String COL_FORM_DATA_CREATED_BY 		= "CREATED_BY";
+	public static final String COL_FORM_DATA_MODIFIED_ON 		= "MODIFIED_ON";
+	public static final String COL_FORM_DATA_GROUP_ID 			= "GROUP_ID";
+	public static final String COL_FORM_DATA_FILE_ID 			= "FILE_HANDLE_ID";
+	public static final String COL_FORM_DATA_SUBMITTED_ON  		= "SUBMITTED_ON";
+	public static final String COL_FORM_DATA_REVIEWED_ON 		= "REVIEWED_ON";
+	public static final String COL_FORM_DATA_REVIEWED_BY		= "REVIEWED_BY";
+	public static final String COL_FORM_DATA_STATE	 			= "STATE";
+	public static final String COL_FORM_DATA_REJECTION_MESSAGE 	= "REJECTION_MESSAGE";
+	public static final String DDL_FILE_FORM_DATA 				= "schema/FormData-ddl.sql";
+	
+	// object-schema related tables
+	public static final String TABLE_ORGANIZATION				= "ORGANIZATION";
+	public static final String COL_ORGANIZATION_ID 				= "ID";
+	public static final String COL_ORGANIZATION_NAME			= "NAME";
+	public static final String COL_ORGANIZATION_CREATED_ON 		= "CREATED_ON";
+	public static final String COL_ORGANIZATION_CREATED_BY 		= "CREATED_BY";
+	public static final String DDL_FILE_ORGANIZATION 			= "schema/Organization-ddl.sql";
+	
+	// Json-Schema
+	public static final String TABLE_JSON_SCHEMA			= "JSON_SCHEMA";
+	public static final String COL_JSON_SCHEMA_ID			= "SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_ORG_ID		= "ORGANIZATION_ID";
+	public static final String COL_JSON_SCHEMA_NAME			= "SCHEMA_NAME";
+	public static final String COL_JSON_SCHEMA_CREATED_BY	= "CREATED_BY";
+	public static final String COL_JSON_SCHEMA_CREATED_ON	= "CREATED_ON";
+	public static final String DDL_FILE_JSON_SCHEMA			= "schema/JsonSchema-ddl.sql";
+	
+	// Json-Schema blobs
+	public static final String TABLE_JSON_SCHEMA_BLOB		= "JSON_SCHEMA_BLOB";
+	public static final String COL_JSON_SCHEMA_BLOB_ID		= "BLOB_ID";
+	public static final String COL_JSON_SCHEMA_BLOB_BLOB	= "JSON_BLOB";
+	public static final String COL_JSON_SCHEMA_BLOB_SHA256	= "SHA_256_HEX";
+	public static final String DDL_FILE_JSON_SCHEMA_BLOB	= "schema/JsonSchemaBlob-ddl.sql";
+	
+	// Json-Schema-Version
+	public static final String TABLE_JSON_SCHEMA_VERSION 		= "JSON_SCHEMA_VERSION";
+	public static final String COL_JSON_SCHEMA_VER_ID			= "VERSION_ID";
+	public static final String COL_JSON_SCHEMA_VER_SCHEMA_ID 	= "SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_VER_SEMANTIC		= "SEMANTIC_VERSION";
+	public static final String COL_JSON_SCHEMA_VER_CREATED_BY	= "CREATED_BY";
+	public static final String COL_JSON_SCHEMA_VER_CREATED_ON	= "CREATED_ON";
+	public static final String COL_JSON_SCHEMA_VER_BLOB_ID		= "BLOB_ID";
+	public static final String DDL_FILE_JSON_SCHEMA_VERSION		= "schema/JsonSchemaVersion-ddl.sql";
+	
+	// JSON schema latest version.
+	public static final String TABLE_JSON_SCHEMA_LATEST_VERSION		= "JSON_SCHEMA_LATEST_VERSION";
+	public static final String COL_JSON_SCHEMA_LATEST_VER_SCHEMA_ID	= "SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_LATEST_VER_ETAG		= "ETAG";
+	public static final String COL_JSON_SCHEMA_LATEST_VER_VER_ID	= "VERSION_ID";
+	public static final String DDL_FILE_JSON_SCHEMA_LATEST_VERSION	="schema/JsonSchemaLatestVersion-ddl.sql";
+	
+	// Json-Schema-Dependency
+	public static final String TABLE_JSON_SCHEMA_DEPENDENCY						= "JSON_SCHEMA_DEPENDENCY";
+	public static final String COL_JSON_SCHEMA_DEPENDENCY_VERSION_ID			= "VERSION_ID";
+	public static final String COL_JSON_SCHEMA_DEPEPNDENCY_DEPENDS_ON_SCHEMA_ID	= "DEPENDS_ON_SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_DEPENDENCY_DEPENDS_ON_VERSION_ID	= "DEPENDS_ON_VERSION_ID";
+	public static final String DDL_FILE_JSON_SCHEMA_DEPENDS						= "schema/JsonSchemaDependency-ddl.sql";
+	
+	// Json-Schema Object binding
+	public static final String TABLE_JSON_SCHEMA_OBJECT_BINDING			= "JSON_SCHEMA_OBJECT_BINDING";
+	public static final String COL_JSON_SCHEMA_BINDING_BIND_ID			= "BIND_ID";
+	public static final String COL_JSON_SCHEMA_BINDING_SCHEMA_ID		= "SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_BINDING_VERSION_ID		= "VERSION_ID";
+	public static final String COL_JONS_SCHEMA_BINDING_OBJECT_ID		= "OBJECT_ID";
+	public static final String COL_JSON_SCHEMA_BINDING_OBJECT_TYPE		= "OBJECT_TYPE";
+	public static final String COL_JSON_SCHEMA_BINDING_CREATED_BY		= "CREATED_BY";
+	public static final String COL_JSON_SCHEMA_BINDING_CREATED_ON		= "CREATED_ON";
+	public static final String DDL_FILE_JSON_SCHEMA_BINDING				= "schema/JsonSchemaBindObject-ddl.sql";
+	
+	// Table to track JSON schema validation results.
+	public static final String TABLE_SCHEMA_VALIDATION_RESULTS			= "JSON_SCHEMA_VALIDATION_RESULTS";
+	public static final String COL_JSON_SCHEMA_VALIDATION_OBJECT_ID		= "OBJECT_ID";
+	public static final String COL_JSON_SCHEMA_VALIDATION_OBJECT_TYPE	= "OBJECT_TYPE";
+	public static final String COL_JSON_SCHEMA_VALIDATION_OBJECT_ETAG	= "OBJECT_ETAG";
+	public static final String COL_JSON_SCHEMA_VALIDATION_SCHEMA_ID		= "SCHEMA_ID";
+	public static final String COL_JSON_SCHEMA_VALIDATION_IS_VALID		= "IS_VALID";
+	public static final String COL_JSON_SCHEMA_VALIDATION_VALIDATED_ON	= "VALIDATED_ON";
+	public static final String COL_JSON_SCHEMA_VALIDATION_ERROR_MESSAGE = "ERROR_MESSAGE";
+	public static final String COL_JSON_SCHEMA_VALIDATION_ALL_ERRORS	= "ALL_ERROR_MESSAGES";
+	public static final String COL_JSON_SCHEMA_VALIDATION_EXCEPTION		= "VALIDATION_EXCEPTION";
+	public static final String DDL_FILE_JSON_SCHEMA_VALIDATION_RESULTS	= "schema/JsonSchemaValidationResults-ddl.sql";
+	
 	// The Project Stats table
 	public static final String TABLE_PROJECT_STAT				= "PROJECT_STAT";
 	public static final String COL_PROJECT_STAT_ID				= "ID";
@@ -181,21 +280,22 @@ public class SqlConstants {
  	public static final String DDL_MESSAGE_CONTENT                  = "schema/MessageContent-ddl.sql";
  	
  	// Message to user
- 	public static final String TABLE_MESSAGE_TO_USER                = "MESSAGE_TO_USER";
- 	public static final String COL_MESSAGE_TO_USER_MESSAGE_ID       = "MESSAGE_ID";
- 	public static final String COL_MESSAGE_TO_USER_ROOT_ID          = "ROOT_MESSAGE_ID";
- 	public static final String COL_MESSAGE_TO_USER_REPLY_TO_ID      = "IN_REPLY_TO";
- 	public static final String COL_MESSAGE_TO_USER_SUBJECT          = "SUBJECT";
- 	public static final String COL_MESSAGE_TO_USER_SENT       		= "SENT";
- 	public static final String COL_MESSAGE_TO_USER_TO	     		= "TO";
- 	public static final String COL_MESSAGE_TO_USER_CC       		= "CC";
- 	public static final String COL_MESSAGE_TO_USER_BCC       		= "BCC";
- 	public static final String COL_MESSAGE_NOTIFICATIONS_ENDPOINT   = "NOTIFICATIONS_ENDPOINT";
- 	public static final String COL_MESSAGE_PROFILE_SETTING_ENDPOINT = "PROFILE_SETTING_ENDPOINT";
- 	public static final String COL_MESSAGE_WITH_UNSUBSCRIBE_LINK    = "WITH_UNSUBSCRIBE_LINK";
- 	public static final String COL_MESSAGE_WITH_PROFILE_SETTING_LINK = "WITH_PROFILE_SETTING_LINK";
- 	public static final String COL_MESSAGE_IS_NOTIFICATION_MESSAGE  = "IS_NOTIFICATION_MESSAGE";
- 	public static final String DDL_MESSAGE_TO_USER                  = "schema/MessageToUser-ddl.sql";
+ 	public static final String TABLE_MESSAGE_TO_USER                		= "MESSAGE_TO_USER";
+ 	public static final String COL_MESSAGE_TO_USER_MESSAGE_ID       		= "MESSAGE_ID";
+ 	public static final String COL_MESSAGE_TO_USER_ROOT_ID          		= "ROOT_MESSAGE_ID";
+ 	public static final String COL_MESSAGE_TO_USER_REPLY_TO_ID      		= "IN_REPLY_TO";
+ 	public static final String COL_MESSAGE_TO_USER_SUBJECT          		= "SUBJECT";
+ 	public static final String COL_MESSAGE_TO_USER_SENT       				= "SENT";
+ 	public static final String COL_MESSAGE_TO_USER_TO	     				= "TO";
+ 	public static final String COL_MESSAGE_TO_USER_CC       				= "CC";
+ 	public static final String COL_MESSAGE_TO_USER_BCC       				= "BCC";
+ 	public static final String COL_MESSAGE_NOTIFICATIONS_ENDPOINT   		= "NOTIFICATIONS_ENDPOINT";
+ 	public static final String COL_MESSAGE_PROFILE_SETTING_ENDPOINT 		= "PROFILE_SETTING_ENDPOINT";
+ 	public static final String COL_MESSAGE_WITH_UNSUBSCRIBE_LINK    		= "WITH_UNSUBSCRIBE_LINK";
+ 	public static final String COL_MESSAGE_WITH_PROFILE_SETTING_LINK		= "WITH_PROFILE_SETTING_LINK";
+ 	public static final String COL_MESSAGE_IS_NOTIFICATION_MESSAGE 			= "IS_NOTIFICATION_MESSAGE";
+ 	public static final String COL_MESSAGE_OVERRIDE_NOTIFICATION_SETTINGS 	= "OVERRIDE_NOTIFICATION_SETTINGS";
+ 	public static final String DDL_MESSAGE_TO_USER                  		= "schema/MessageToUser-ddl.sql";
  	
  	// Message recipient
  	public static final String TABLE_MESSAGE_RECIPIENT              = "MESSAGE_RECIPIENT";
@@ -234,7 +334,7 @@ public class SqlConstants {
 	public static final String COL_FILES_STORAGE_LOCATION_ID		= "STORAGE_LOCATION_ID";
 	public static final String COL_FILES_ENDPOINT					= "ENDPOINT";
 	public static final String COL_FILES_IS_PREVIEW					= "IS_PREVIEW";
-	public static final String DDL_FILES							= "schema/Files-ddl.sql";
+	public static final String DDL_FILES							= "schema/files/Files-ddl.sql";
 	
 	// multipart upload state
 	public static final String TABLE_MULTIPART_UPLOAD				= "MULTIPART_UPLOAD";
@@ -252,7 +352,11 @@ public class SqlConstants {
 	public static final String COL_MULTIPART_BUCKET					= "BUCKET";
 	public static final String COL_MULTIPART_KEY					= "FILE_KEY";
 	public static final String COL_MULTIPART_NUMBER_OF_PARTS		= "NUMBER_OF_PARTS";
-	public static final String COL_MULTIPART_DDL					= "schema/MutipartUpload-ddl.sql";
+	public static final String COL_MULTIPART_REQUEST_TYPE   		= "REQUEST_TYPE";
+	public static final String COL_MULTIPART_PART_SIZE				= "PART_SIZE";
+	public static final String COL_MULTIPART_SOURCE_FILE_HANDLE_ID	= "SOURCE_FILE_HANDLE_ID";
+	public static final String COL_MULTIPART_SOURCE_FILE_ETAG		= "SOURCE_FILE_ETAG";
+	public static final String COL_MULTIPART_DDL					= "schema/MultipartUpload-ddl.sql";
 	
 	// multipart upload part state
 	public static final String TABLE_MULTIPART_UPLOAD_PART_STATE	= "MULTIPART_UPLOAD_PART_STATE";
@@ -367,6 +471,8 @@ public class SqlConstants {
 	public static final String COL_TRASH_CAN_DELETED_BY         = "DELETED_BY";
 	public static final String COL_TRASH_CAN_DELETED_ON         = "DELETED_ON";
 	public static final String COL_TRASH_CAN_PARENT_ID          = "PARENT_ID";
+	public static final String COL_TRASH_CAN_PRIORITY_PURGE     = "PRIORITY_PURGE";
+	public static final String COL_TRASH_CAN_ETAG               = "ETAG";
 	public static final String DDL_FILE_TRASH_CAN               = "schema/TrashCan-ddl.sql";
 	
 	// The wiki page table
@@ -435,10 +541,11 @@ public class SqlConstants {
 	public static final String DDL_TABLE_ROW_CHANGE = "schema/TableRowChange-ddl.sql";
 	
 	// Tracks view scope.
-	public static final String TABLE_VIEW_TYPE				= "VIEW_TYPE";
-	public static final String COL_VIEW_TYPE_VIEW_ID		= "VIEW_ID";
-	public static final String COL_VIEW_TYPE_VIEW_TYPE_MASK	= "VIEW_TYPE_MASK";
-	public static final String COL_VIEW_TYPE_ETAG			= "ETAG";
+	public static final String TABLE_VIEW_TYPE					= "VIEW_TYPE";
+	public static final String COL_VIEW_TYPE_VIEW_ID			= "VIEW_ID";
+	public static final String COL_VIEW_TYPE_VIEW_OBJECT_TYPE	= "VIEW_OBJECT_TYPE";
+	public static final String COL_VIEW_TYPE_VIEW_TYPE_MASK		= "VIEW_TYPE_MASK";
+	public static final String COL_VIEW_TYPE_ETAG				= "ETAG";
 	public static final String DDL_VIEW_TYPE = "schema/ViewType-ddl.sql";
 	
 	// Tracks view scope.
@@ -446,6 +553,17 @@ public class SqlConstants {
 	public static final String COL_VIEW_SCOPE_VIEW_ID		= "VIEW_ID";
 	public static final String COL_VIEW_SCOPE_CONTAINER_ID	= "CONTAINER_ID";
 	public static final String DDL_VIEW_SCOPE = "schema/ViewScope-ddl.sql";
+	
+	// Metadata about view snapshots.
+	public static final String TABLE_VIEW_SNAPSHOT 			= "VIEW_SNAPSHOT";
+	public static final String COL_VIEW_SNAPSHOT_ID			= "SNAPSHOT_ID";
+	public static final String COL_VIEW_SNAPSHOT_VIEW_ID	= "VIEW_ID";
+	public static final String COL_VIEW_SNAPSHOT_VERSION	= "VERSION";
+	public static final String COL_VIEW_SNAPSHOT_CREATED_BY	= "CREATED_BY";
+	public static final String COL_VIEW_SNAPSHOT_CREATED_ON = "CREATED_ON";
+	public static final String COL_VIEW_SNAPSHOT_BUCKET		= "BUCKET_NAME";
+	public static final String COL_VIEW_SNAPSHOT_KEY		= "KEY";
+	public static final String DDL_VIEW_SNAPSHOT = "schema/ViewSnapshot-ddl.sql";
 		
 	public static final String TABLE_BOUND_COLUMN_OWNER		= "BOUND_COLUMN_OWNER";
 	public static final String COL_BOUND_OWNER_OBJECT_ID	= "OBJECT_ID";
@@ -559,14 +677,14 @@ public class SqlConstants {
 	public static final String V2_COL_WIKI_OWNERS_ETAG					= "ETAG";
 	public static final String V2_DDL_FILE_WIKI_ONWERS					= "schema/v2-WikiOwners-ddl.sql";
 	
-	// Download list
+	// Download list  - deprecated
 	public static final String TABLE_DOWNLOAD_LIST 				= "DOWNLOAD_LIST";
 	public static final String COL_DOWNLOAD_LIST_PRINCIPAL_ID 	= "PRINCIPAL_ID";
 	public static final String COL_DOWNLOAD_LIST_UPDATED_ON		= "UPDATED_ON";
 	public static final String COL_DOWNLOAD_LIST_ETAG			= "ETAG";
 	public static final String DDL_DOWNLOAD_LIST				= "schema/DownloadList-ddl.sql";
 	
-	// Download list item.
+	// Download list item. - deprecated
 	public static final String TABLE_DOWNLOAD_LIST_ITEM							= "DOWNLOAD_LIST_ITEM";
 	public static final String COL_DOWNLOAD_LIST_ITEM_PRINCIPAL_ID				= "PRINCIPAL_ID";
 	public static final String COL_DOWNLOAD_LIST_ITEM_ASSOCIATED_OBJECT_ID 		= "ASSOCIATED_OBJECT_ID";
@@ -574,7 +692,7 @@ public class SqlConstants {
 	public static final String COL_DOWNLOAD_LIST_ITEM_FILE_HANDLE_ID 			= "FILE_HANDLE_ID";
 	public static final String DDL_DOWNLOAD_LIST_ITEM							= "schema/DownloadListItem-ddl.sql";
 	
-	// Download order
+	// Download order - deprecated
 	public static final String TABLE_DOWNLOAD_ORDER					= "DOWNLOAD_ORDER";
 	public static final String COL_DOWNLOAD_ORDER_ID				= "ORDER_ID";
 	public static final String COL_DOWNLOAD_ORDER_CREATED_BY		= "CREATED_BY";
@@ -584,6 +702,21 @@ public class SqlConstants {
 	public static final String COL_DOWNLOAD_ORDER_TOTAL_NUM_FILES	= "TOTAL_NUM_FILES";
 	public static final String COL_DOWNLOAD_ORDER_FILES_BLOB		= "FILES_BLOB";
 	public static final String DDL_DOWNLOAD_ORDER					= "schema/DownloadOrder-ddl.sql";
+	
+	// Download list
+	public static final String TABLE_DOWNLOAD_LIST_V2 				= "DOWNLOAD_LIST_V2";
+	public static final String COL_DOWNLOAD_LIST_V2_PRINCIPAL_ID 	= "PRINCIPAL_ID";
+	public static final String COL_DOWNLOAD_LIST_V2_UPDATED_ON		= "UPDATED_ON";
+	public static final String COL_DOWNLOAD_LIST_V2_ETAG			= "ETAG";
+	public static final String DDL_DOWNLOAD_V2_LIST					= "schema/DownloadList-V2-ddl.sql";
+	
+	// Download list item.
+	public static final String TABLE_DOWNLOAD_LIST_ITEM_V2				= "DOWNLOAD_LIST_ITEM_V2";
+	public static final String COL_DOWNLOAD_LIST_ITEM_V2_PRINCIPAL_ID	= "PRINCIPAL_ID";
+	public static final String COL_DOWNLOAD_LIST_ITEM_V2_ENTITY_ID		= "ENTITY_ID";
+	public static final String COL_DOWNLOAD_LIST_ITEM_V2_VERION_NUMBER	= "VERSION_NUMBER";
+	public static final String COL_DOWNLOAD_LIST_ITEM_V2_ADDED_ON		= "ADDED_ON";
+	public static final String DDL_DOWNLOAD_LIST_ITEM_V2				= "schema/DownloadListItem-V2-ddl.sql";
 	
 	// Data type
 	public static final String TABLE_DATA_TYPE				= "DATA_TYPE";
@@ -638,18 +771,6 @@ public class SqlConstants {
 	public static final String COL_SHARED_SEMAPHORE_LOCK_TOKEN		= "LOCK_TOKEN";
 	public static final String COL_SHARED_SEMAPHORE_EXPIRES			= "EXPIRATION";
 
-	// Upload status
-	public static final String TABLE_UPLOAD_STATUS					= "UPLOAD_STATUS";
-	public static final String COL_UPLOAD_STATUS_ID					= "ID";
-	public static final String COL_UPLOAD_STATUS_STATE				= "STATE";
-	public static final String COL_UPLOAD_STATUS_STARTED_BY			= "STARTED_BY";
-	public static final String COL_UPLOAD_STATUS_STARTED_ON			= "STARTED_ON";
-	public static final String COL_UPLOAD_STATUS_PERCENT_COMPLETE	= "PERCENT_COMPLETE";
-	public static final String COL_UPLOAD_STATUS_ERROR_MESSAGE		= "ERROR_MESSAGE";
-	public static final String COL_UPLOAD_STATUS_FILE_HANDLE_IDS	= "FILE_HANDLE_IDS";
-	public static final String COL_UPLOAD_STATUS_RUNTIME_MS			= "RUNTIME_MS";
-	public static final String DDL_UPLOAD_STATUS					= "schema/UploadDaemonStatus-ddl.sql";
-	
 	// Credential
 	public static final String TABLE_CREDENTIAL             = "CREDENTIAL";
 	public static final String COL_CREDENTIAL_PRINCIPAL_ID  = "PRINCIPAL_ID";
@@ -672,6 +793,7 @@ public class SqlConstants {
 	public static final String TABLE_TEAM				= "TEAM";
 	public static final String COL_TEAM_ID				= "ID";
 	public static final String COL_TEAM_ETAG			= "ETAG";
+	public static final String COL_TEAM_ICON			= "ICON";
 	public static final String COL_TEAM_PROPERTIES		= "PROPERTIES";
 	public static final String DDL_FILE_TEAM = "schema/Team-ddl.sql";
 	
@@ -729,6 +851,7 @@ public class SqlConstants {
 	
 	public static final String TABLE_VERIFICATION_SUBMISSION = "VERIFICATION_SUBMISSION";
 	public static final String COL_VERIFICATION_SUBMISSION_ID = "ID";
+	public static final String COL_VERIFICATION_SUBMISSION_ETAG = "ETAG";
 	public static final String COL_VERIFICATION_SUBMISSION_CREATED_BY = "CREATED_BY";
 	public static final String COL_VERIFICATION_SUBMISSION_CREATED_ON = "CREATED_ON";
 	public static final String COL_VERIFICATION_SUBMISSION_SERIALIZED = "SERIALIZED";
@@ -741,6 +864,7 @@ public class SqlConstants {
 	public static final String COL_VERIFICATION_STATE_CREATED_BY = "CREATED_BY";
 	public static final String COL_VERIFICATION_STATE_CREATED_ON = "CREATED_ON";
 	public static final String COL_VERIFICATION_STATE_REASON = "REASON";
+	public static final String COL_VERIFICATION_STATE_NOTES = "NOTES";
 	public static final String COL_VERIFICATION_STATE_STATE = "STATE";
 	public static final String FK_VERIFICATION_STATE_VERIFICATION_ID = "VERI_STATE_VERI_ID";
 	public static final String FK_VERIFICATION_STATE_USER_ID = "VERI_STATE_USER_ID";
@@ -890,6 +1014,7 @@ public class SqlConstants {
 	public static final String COL_DATA_ACCESS_SUBMISSION_CREATED_ON = 				"CREATED_ON";
 	public static final String COL_DATA_ACCESS_SUBMISSION_ETAG = 					"ETAG";
 	public static final String COL_DATA_ACCESS_SUBMISSION_SUBMISSION_SERIALIZED = 	"SUBMISSION_SERIALIZED";
+	public static final String COL_DATA_ACCESS_SUBMISSION_RESEARCH_PROJECT_ID = 	"RESEARCH_PROJECT_ID";
 
 	// DataAccessSubmissionStatus
 	public static final String DDL_DATA_ACCESS_SUBMISSION_STATUS = 					"schema/DataAccessSubmissionStatus-ddl.sql";
@@ -910,6 +1035,137 @@ public class SqlConstants {
 	public static final String COL_DATA_ACCESS_SUBMISSION_SUBMITTER_CURRENT_SUBMISSION_ID = 	"CURRENT_SUBMISSION_ID";
 	public static final String COL_DATA_ACCESS_SUBMISSION_SUBMITTER_ACCESS_REQUIREMENT_ID = 	"ACCESS_REQUIREMENT_ID";
 	public static final String COL_DATA_ACCESS_SUBMISSION_SUBMITTER_ETAG = 						"ETAG";
+	
+	// OAuth related tables, columns etc,
+	public static final String DDL_OAUTH_SECTOR_IDENTIFIER = 							"schema/OAuthSectorIdentifier-ddl.sql";
+	public static final String TABLE_OAUTH_SECTOR_IDENTIFIER = 							"OAUTH_SECTOR_IDENTIFIER";
+	public static final String COL_OAUTH_SECTOR_IDENTIFIER_ID =							"ID";
+	public static final String COL_OAUTH_SECTOR_IDENTIFIER_URI = 						"URI";
+	public static final String COL_OAUTH_SECTOR_IDENTIFIER_SECRET = 					"SECRET";
+	public static final String COL_OAUTH_SECTOR_IDENTIFIER_CREATED_BY = 				"CREATED_BY";
+	public static final String COL_OAUTH_SECTOR_IDENTIFIER_CREATED_ON = 				"CREATED_ON";
+	
+	public static final String DDL_OAUTH_CLIENT = 										"schema/OAuthClient-ddl.sql";
+	public static final String TABLE_OAUTH_CLIENT = 									"OAUTH_CLIENT";
+	public static final String COL_OAUTH_CLIENT_ID = 									"ID";
+	public static final String COL_OAUTH_CLIENT_NAME = 									"NAME";
+	public static final String COL_OAUTH_CLIENT_SECRET_HASH = 							"SECRET_HASH";
+	public static final String COL_OAUTH_CLIENT_PROPERTIES = 							"PROPERTIES";
+	public static final String COL_OAUTH_CLIENT_ETAG = 									"ETAG";
+	public static final String COL_OAUTH_CLIENT_CREATED_BY = 							"CREATED_BY";
+	public static final String COL_OAUTH_CLIENT_CREATED_ON = 							"CREATED_ON";
+	public static final String COL_OAUTH_CLIENT_MODIFIED_ON = 							"MODIFIED_ON";
+	public static final String COL_OAUTH_CLIENT_SECTOR_IDENTIFIER_URI = 				"OAUTH_SECTOR_IDENTIFIER_URI";
+	public static final String COL_OAUTH_CLIENT_IS_VERIFIED = 							"IS_VERIFIED";
+
+	public static final String DDL_AUTHORIZATION_CONSENT = 								"schema/AuthorizationConsent-ddl.sql";
+	public static final String TABLE_AUTHORIZATION_CONSENT = 							"AUTHORIZATION_CONSENT";
+	public static final String COL_AUTHORIZATION_CONSENT_ID = 							"ID";
+	public static final String COL_AUTHORIZATION_CONSENT_ETAG = 						"ETAG";
+	public static final String COL_AUTHORIZATION_CONSENT_USER_ID = 						"USER_ID";
+	public static final String COL_AUTHORIZATION_CONSENT_CLIENT_ID = 					"CLIENT_ID";
+	public static final String COL_AUTHORIZATION_CONSENT_SCOPE_HASH = 					"SCOPE_HASH";
+	public static final String COL_AUTHORIZATION_CONSENT_GRANTED_ON = 					"GRANTED_ON";
+
+	public static final String DDL_OAUTH_REFRESH_TOKEN = 								"schema/OAuthRefreshToken-ddl.sql";
+	public static final String TABLE_OAUTH_REFRESH_TOKEN = 								"OAUTH_REFRESH_TOKEN";
+	public static final String COL_OAUTH_REFRESH_TOKEN_ID =								"ID";
+	public static final String COL_OAUTH_REFRESH_TOKEN_HASH =							"TOKEN_HASH";
+	public static final String COL_OAUTH_REFRESH_TOKEN_NAME =							"NAME";
+	public static final String COL_OAUTH_REFRESH_TOKEN_PRINCIPAL_ID =					"PRINCIPAL_ID";
+	public static final String COL_OAUTH_REFRESH_TOKEN_CLIENT_ID =						"CLIENT_ID";
+	public static final String COL_OAUTH_REFRESH_TOKEN_SCOPES =							"SCOPES";
+	public static final String COL_OAUTH_REFRESH_TOKEN_CLAIMS =							"CLAIMS";
+	public static final String COL_OAUTH_REFRESH_TOKEN_LAST_USED =						"LAST_USED";
+	public static final String COL_OAUTH_REFRESH_TOKEN_CREATED_ON =						"CREATED_ON";
+	public static final String COL_OAUTH_REFRESH_TOKEN_MODIFIED_ON =					"MODIFIED_ON";
+	public static final String COL_OAUTH_REFRESH_TOKEN_ETAG =							"ETAG";
+
+	public static final String DDL_PERSONAL_ACCESS_TOKEN = 								"schema/PersonalAccessToken-ddl.sql";
+	public static final String TABLE_PERSONAL_ACCESS_TOKEN = 							"PERSONAL_ACCESS_TOKEN";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_ID =							"ID";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_NAME =							"NAME";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_PRINCIPAL_ID =					"PRINCIPAL_ID";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_SCOPES =						"SCOPES";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_CLAIMS =						"CLAIMS";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_CREATED_ON =					"CREATED_ON";
+	public static final String COL_PERSONAL_ACCESS_TOKEN_LAST_USED =					"LAST_USED";
+
+	// Status table for monthly statistics
+	public static final String TABLE_STATISTICS_MONTHLY_STATUS =						"STATISTICS_MONTHLY_STATUS";
+	public static final String DDL_STATISTICS_MONTHLY_STATUS =							"schema/statistics/StatisticsMonthlyStatus-ddl.sql";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_OBJECT_TYPE =				"OBJECT_TYPE";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_MONTH =					"MONTH";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_STATUS =					"STATUS";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_LAST_STARTED_ON =			"LAST_STARTED_ON";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_LAST_UPDATED_ON =			"LAST_UPDATED_ON";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_ERROR_MESSAGE	=			"ERROR_MESSAGE";
+	public static final String COL_STATISTICS_MONTHLY_STATUS_ERROR_DETAILS = 			"ERROR_DETAILS";
+	
+	// Status table for monthly statistics
+	public static final String TABLE_STATISTICS_MONTHLY_PROJECT_FILES =					"STATISTICS_MONTHLY_PROJECT_FILES";
+	public static final String DDL_STATISTICS_MONTHLY_PROJECT_FILES =					"schema/statistics/StatisticsMonthlyProjectFiles-ddl.sql";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_PROJECT_ID =		"PROJECT_ID";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_MONTH =				"MONTH";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_EVENT_TYPE =		"EVENT_TYPE";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_FILES_COUNT =		"FILES_COUNT";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_USERS_COUNT =		"USERS_COUNT";
+	public static final String COL_STATISTICS_MONTHLY_PROJECT_FILES_LAST_UPDATED_ON =	"LAST_UPDATED_ON";
+	
+	// Table constants related to SES Notifications
+	public static final String TABLE_SES_NOTIFICATIONS = 								"SES_NOTIFICATIONS";
+	public static final String DDL_SES_NOTIFICATIONS = 									"schema/ses/SESNotifications-ddl.sql";
+	public static final String COL_SES_NOTIFICATIONS_ID = 								"ID";
+	public static final String COL_SES_NOTIFICATIONS_INSTANCE_NUMBER = 					"INSTANCE_NUMBER";
+	public static final String COL_SES_NOTIFICATIONS_CREATED_ON = 						"CREATED_ON";
+	public static final String COL_SES_NOTIFICATIONS_SES_MESSAGE_ID = 					"SES_MESSAGE_ID";
+	public static final String COL_SES_NOTIFICATIONS_SES_FEEDBACK_ID = 					"SES_FEEDBACK_ID";
+	public static final String COL_SES_NOTIFICATIONS_TYPE = 							"NOTIFICATION_TYPE";
+	public static final String COL_SES_NOTIFICATIONS_SUBTYPE = 							"NOTIFICATION_SUBTYPE";
+	public static final String COL_SES_NOTIFICATIONS_REASON = 							"NOTIFICATION_REASON";
+	public static final String COL_SES_NOTIFICATIONS_BODY = 							"NOTIFICATION_BODY";
+	
+	// Table constants related to emails that are quarantined
+	public static final String TABLE_QUARANTINED_EMAILS = 								"QUARANTINED_EMAILS";
+	public static final String DDL_QUARANTINED_EMAILS = 								"schema/ses/QuarantinedEmails-ddl.sql";
+	public static final String COL_QUARANTINED_EMAILS_ID = 								"ID";
+	public static final String COL_QUARANTINED_EMAILS_EMAIL = 							"EMAIL";
+	public static final String COL_QUARANTINED_EMAILS_ETAG = 							"ETAG";
+	public static final String COL_QUARANTINED_EMAILS_CREATED_ON = 						"CREATED_ON";
+	public static final String COL_QUARANTINED_EMAILS_UPDATED_ON = 						"UPDATED_ON";
+	public static final String COL_QUARANTINED_EMAILS_EXPIRES_ON = 						"EXPIRES_ON";
+	public static final String COL_QUARANTINED_EMAILS_REASON = 							"REASON";
+	public static final String COL_QUARANTINED_EMAILS_REASON_DETAILS =					"REASON_DETAILS";
+	public static final String COL_QUARANTINED_EMAILS_SES_MESSAGE_ID = 					"SES_MESSAGE_ID";
+	
+	// DataAccessNotification
+	public static final String DDL_DATA_ACCESS_NOTIFICATION = 							"schema/DataAccessNotification-ddl.sql";
+	public static final String TABLE_DATA_ACCESS_NOTIFICATION = 						"DATA_ACCESS_NOTIFICATION";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_ID = 						"ID";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_ETAG = 						"ETAG";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_TYPE = 						"NOTIFICATION_TYPE";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_REQUIREMENT_ID = 			"REQUIREMENT_ID";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_RECIPIENT_ID = 				"RECIPIENT_ID";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_APPROVAL_ID = 				"ACCESS_APPROVAL_ID";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_SENT_ON = 					"SENT_ON";
+	public static final String COL_DATA_ACCESS_NOTIFICATION_MESSAGE_ID = 				"MESSAGE_ID";	
+	
+	// Feature testing
+	public static final String DDL_FEATURE_STATUS =										"schema/testing/FeatureStatus-ddl.sql";
+	public static final String TABLE_FEATURE_STATUS = 									"FEATURE_STATUS";
+	public static final String COL_FEATURE_STATUS_ID = 									"ID";
+	public static final String COL_FEATURE_STATUS_ETAG = 								"ETAG";
+	public static final String COL_FEATURE_STATUS_TYPE = 								"FEATURE_TYPE";
+	public static final String COL_FEATURE_STATUS_ENABLED =								"ENABLED";
+	
+	// The file associations scanner status
+	public static final String DDL_FILES_SCANNER_STATUS = 								"schema/files/FilesScannerStatus-ddl.sql";
+	public static final String TABLE_FILES_SCANNER_STATUS = 							"FILES_SCANNER_STATUS";
+	public static final String COL_FILES_SCANNER_STATUS_ID = 							"ID";
+	public static final String COL_FILES_SCANNER_STATUS_STARTED_ON = 					"STARTED_ON";
+	public static final String COL_FILES_SCANNER_STATUS_UPDATED_ON = 					"UPDATED_ON";
+	public static final String COL_FILES_SCANNER_STATUS_JOBS_STARTED_COUNT = 			"JOBS_STARTED_COUNT";
+	public static final String COL_FILES_SCANNER_STATUS_JOBS_COMPLETED_COUNT = 			"JOBS_COMPLETED_COUNT";
 
 	// This seems to be the name of the id column for all tables.
 	public static final String COLUMN_ID		= "id";

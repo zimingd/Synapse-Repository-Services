@@ -1,39 +1,33 @@
 package org.sagebionetworks.repo.model.dbo.persistence;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityType;
-import org.sagebionetworks.repo.model.NamedAnnotations;
+import org.sagebionetworks.repo.model.NodeConstants;
 import org.sagebionetworks.repo.model.Reference;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.dao.NodeUtils;
 import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
-import org.sagebionetworks.repo.model.jdo.AnnotationUtils;
-import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @ContextConfiguration(locations = { "classpath:jdomodels-test-context.xml" })
 public class DBORevisionTest {
 	
@@ -47,7 +41,7 @@ public class DBORevisionTest {
 	
 	private DBONode node;
 
-	@After
+	@AfterEach
 	public void after() throws DatastoreException {
 		if(dboBasicDao != null && toDelete != null){
 			for(Long id: toDelete){
@@ -58,7 +52,7 @@ public class DBORevisionTest {
 		}
 	}
 	
-	@Before
+	@BeforeEach
 	public void before() throws DatastoreException, UnsupportedEncodingException{
 		toDelete = new LinkedList<Long>();
 		// Create a node to create revisions of.
@@ -68,7 +62,8 @@ public class DBORevisionTest {
 		Long createdById = BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId();
 		node.setCreatedBy(createdById);
 		node.setCreatedOn(System.currentTimeMillis());
-		node.setCurrentRevNumber(null);
+		node.setCurrentRevNumber(NodeConstants.DEFAULT_VERSION_NUMBER);
+		node.setMaxRevNumber(NodeConstants.DEFAULT_VERSION_NUMBER);
 		node.setDescription("A basic description".getBytes("UTF-8"));
 		node.seteTag("0");
 		node.setName("DBORevisionTest.baseNode");
@@ -82,13 +77,14 @@ public class DBORevisionTest {
 		DBORevision rev = new DBORevision();
 		rev.setOwner(node.getId());
 		rev.setRevisionNumber(new Long(1));
-		rev.setAnnotations(null);
 		rev.setReference(null);
 		rev.setComment(null);
 		rev.setLabel(""+rev.getRevisionNumber());
 		Long createdById = BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId();
 		rev.setModifiedBy(createdById);
 		rev.setModifiedOn(System.currentTimeMillis());
+		rev.setUserAnnotationsJSON("{}");
+		rev.setEntityPropertyAnnotations("some data".getBytes(StandardCharsets.UTF_8));
 		// Now create it
 		rev = dboBasicDao.createNew(rev);
 		// Make sure we can get it
@@ -98,7 +94,6 @@ public class DBORevisionTest {
 		DBORevision clone = dboBasicDao.getObjectByPrimaryKey(DBORevision.class, params);
 		assertEquals(rev, clone);
 		// Update with some values
-		clone.setAnnotations("Fake annotations".getBytes("UTF-8"));
 		Reference ref = new Reference();
 		byte[] blob = NodeUtils.compressReference(ref);
 		clone.setReference(blob);
@@ -111,30 +106,19 @@ public class DBORevisionTest {
 	}
 
 	@Test
-	public void testNamedAnnotationRemovalTranslator() throws IOException {
+	public void testUserAnnotationTranslator_differentJSONFormat(){
 		//create a new DBORevision just to get the translator. Since getTranslator is not static, this ensures that
 		// the translator is modifying passed in params instead of the fields of the DBORevision object that created it
 		MigratableTableTranslation<DBORevision,DBORevision> translator = new DBORevision().getTranslator();
 
+		String JSON = "{\"annotations\":{\"anno1\":{\"type\":\"DOUBLE\",\"value\":[\"1.2\"]}}}";
+
+
 		DBORevision revision = new DBORevision();
+		revision.setUserAnnotationsJSON(JSON);
 
-		NamedAnnotations namedAnnotations = new NamedAnnotations();
-		namedAnnotations.getPrimaryAnnotations().addAnnotation("primaryKey", "primaryValue");
-		namedAnnotations.getAdditionalAnnotations().addAnnotation("additionalKey", "additionalValue");
-
-		revision.setAnnotations(AnnotationUtils.compressAnnotations(namedAnnotations));
-
+		//noting should change if the json is in a different format.
 		DBORevision modified = translator.createDatabaseObjectFromBackup(revision);
-
-		//should be same reference as translator only modified fields
-		assertSame(revision, modified);
-		assertNull(modified.getAnnotations());
-
-		assertNotNull(modified.getEntityPropertyAnnotations());
-		assertNotNull(modified.getUserAnnotationsV1());
-		byte[] expectedEntityPropertyAnnotationBytes = AnnotationUtils.compressAnnotationsV1(namedAnnotations.getPrimaryAnnotations());
-		byte[] expectedUserAnnotationV1Bytes = AnnotationUtils.compressAnnotationsV1(namedAnnotations.getAdditionalAnnotations());
-		assertArrayEquals(expectedEntityPropertyAnnotationBytes, modified.getEntityPropertyAnnotations());
-		assertArrayEquals(expectedUserAnnotationV1Bytes, modified.getUserAnnotationsV1());
+		assertEquals(JSON, modified.getUserAnnotationsJSON());
 	}
 }

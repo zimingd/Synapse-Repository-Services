@@ -27,6 +27,10 @@
             "description": "TODO: Auto-generated description"
         },
         {
+            "name": "EVALUATION_ROUND",
+            "description": "Rounds defined within a specific Evaluation"
+        },
+        {
             "name": "SUBMISSION",
             "description": "TODO: Auto-generated description"
         },
@@ -93,6 +97,18 @@
         {
             "name": "REPLY",
             "description": "TODO: Auto-generated description"
+        },
+        {
+            "name": "FORM_GROUP",
+            "description": "Grouping of from data."
+        },
+        {
+            "name": "ORGANIZATION",
+            "description": "User defined schemas are governed by an Organization."
+        },
+        {
+            "name": "FORM_DATA",
+            "description": "Data of a form."
         },
         {
             "name": "ENTITY_VIEW",

@@ -1,6 +1,9 @@
 package org.sagebionetworks.repo.model.dbo.dao;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -8,6 +11,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import org.apache.commons.io.IOUtils;
 import org.sagebionetworks.repo.model.annotation.Annotations;
 import org.sagebionetworks.repo.model.annotation.DoubleAnnotation;
 import org.sagebionetworks.repo.model.annotation.LongAnnotation;
@@ -61,29 +65,14 @@ public class TestUtils {
 		return meta;
 	}
 
-	/**
-	 * Helper to create a S3FileHandle
-	 *
-	 * @return
-	 */
 	public static GoogleCloudFileHandle createGoogleCloudFileHandle(String createdById, String fileHandleId) {
 		return createGoogleCloudFileHandle(createdById, 123, fileHandleId);
 	}
 
-	/**
-	 * Helper to create a S3FileHandle
-	 *
-	 * @return
-	 */
 	public static GoogleCloudFileHandle createGoogleCloudFileHandle(String createdById, int sizeInBytes, String fileHandleId) {
 		return createGoogleCloudFileHandle(createdById, sizeInBytes, "content type", fileHandleId);
 	}
 
-	/**
-	 * Helper to create a S3FileHandle
-	 *
-	 * @return
-	 */
 	public static GoogleCloudFileHandle createGoogleCloudFileHandle(String createdById, int sizeInBytes, String contentType, String fileHandleId) {
 		GoogleCloudFileHandle meta = new GoogleCloudFileHandle();
 		meta.setBucketName("bucketName");
@@ -202,7 +191,7 @@ public class TestUtils {
 			if (i % 2 == 1) { // odd numbered annotations are null
 				sa2.setValue(null);
 			} else {
-				sa2.setValue("not null");
+				sa2.setValue("not null "+(100-i));
 			}
 			stringAnnos.add(sa2);
 		}
@@ -240,5 +229,13 @@ public class TestUtils {
 		return setting;
 	}
 	
+	public static String loadFromClasspath(String fileName) throws IOException {
+		try(InputStream in = TestUtils.class.getClassLoader().getResourceAsStream(fileName)) {
+			if (in == null) {
+				throw new IllegalArgumentException("Cannot find file " + fileName + " on classpath.");
+			}
+			return IOUtils.toString(in, StandardCharsets.UTF_8);
+		}
+	}
 	
 }

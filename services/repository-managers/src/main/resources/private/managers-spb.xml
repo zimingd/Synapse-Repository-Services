@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xmlns:aop="http://www.springframework.org/schema/aop"
-	xmlns:tx="http://www.springframework.org/schema/tx"
-	xmlns:util="http://www.springframework.org/schema/util"
-	xmlns:context="http://www.springframework.org/schema/context"
-	xsi:schemaLocation="
-       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
-       http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-3.0.xsd
+	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xmlns:aop="http://www.springframework.org/schema/aop"
+	   xmlns:util="http://www.springframework.org/schema/util"
+	   xmlns:context="http://www.springframework.org/schema/context"
+	   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+
        http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-3.0.xsd
        http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd
-       http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd
-       ">
+       http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd">
 
-    <context:annotation-config />
+	<context:annotation-config />
+    <context:component-scan base-package="org.sagebionetworks.repo.manager" annotation-config="false"/>
 	<!-- Turn on Spring's autoproxy using AspectJ's @Aspect annotations. -->
 	<aop:aspectj-autoproxy />
 
@@ -27,8 +25,6 @@
 	<bean id="entityManager" class="org.sagebionetworks.repo.manager.EntityManagerImpl">
 		<property name="allowCreationOfOldEntities" ref="stackConfiguration.allowCreationOfOldEntities"/>
 	</bean>
-	
-	<bean id="entityQueryManager" class="org.sagebionetworks.repo.manager.EntityQueryManagerImpl" />
 
 	<!-- Activity manager -->
 	<bean id="activityManager" class="org.sagebionetworks.repo.manager.ActivityManagerImpl" />
@@ -40,7 +36,53 @@
 	<bean id="CloudMailInManager" class="org.sagebionetworks.repo.manager.CloudMailInManagerImpl" />
 	
 	<bean id="dockerManager" class="org.sagebionetworks.repo.manager.DockerManagerImpl" />
-	
+
+	<bean id="companyClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.CompanyClaimProvider"/>
+	<bean id="emailClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.EmailClaimProvider"/>
+	<bean id="emailVerifiedClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.EmailVerifiedClaimProvider"/>
+	<bean id="familyNameClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.FamilyNameClaimProvider"/>
+	<bean id="givenNameClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.GivenNameClaimProvider"/>
+	<bean id="isCertifiedClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.IsCertifiedClaimProvider"/>
+	<bean id="isValidatedClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.IsValidatedClaimProvider"/>
+	<bean id="orcidClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.OrcidClaimProvider"/>
+	<bean id="teamClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.TeamClaimProvider"/>
+	<bean id="userIdClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.UserIdClaimProvider"/>
+	<bean id="userNameClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.UserNameClaimProvider"/>
+	<bean id="validatedAtClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedAtClaimProvider"/>
+	<bean id="validatedCompanyClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedCompanyClaimProvider"/>
+	<bean id="validatedEmailClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedEmailClaimProvider"/>
+	<bean id="validatedFamilyNameClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedFamilyNameClaimProvider"/>
+	<bean id="validatedGivenNameClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedGivenNameClaimProvider"/>
+	<bean id="validatedLocationClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedLocationClaimProvider"/>
+	<bean id="validatedOrcidClaimProvider" class="org.sagebionetworks.repo.manager.oauth.claimprovider.ValidatedOrcidClaimProvider"/>
+
+	<bean id="oidcManager" class="org.sagebionetworks.repo.manager.oauth.OpenIDConnectManagerImpl">
+		<property name="claimProviders">
+			<map>
+				<entry key="company" value-ref="companyClaimProvider" />
+				<entry key="email" value-ref="emailClaimProvider" />
+				<entry key="email_verified" value-ref="emailVerifiedClaimProvider" />
+				<entry key="family_name" value-ref="familyNameClaimProvider" />
+				<entry key="given_name" value-ref="givenNameClaimProvider" />
+				<entry key="is_certified" value-ref="isCertifiedClaimProvider" />
+				<entry key="is_validated" value-ref="isValidatedClaimProvider" />
+				<entry key="orcid" value-ref="orcidClaimProvider" />
+				<entry key="team" value-ref="teamClaimProvider" />
+				<entry key="userid" value-ref="userIdClaimProvider" />
+				<entry key="user_name" value-ref="userNameClaimProvider" />
+				<entry key="validated_at" value-ref="validatedAtClaimProvider" />
+				<entry key="validated_company" value-ref="validatedCompanyClaimProvider" />
+				<entry key="validated_email" value-ref="validatedEmailClaimProvider" />
+				<entry key="validated_family_name" value-ref="validatedFamilyNameClaimProvider" />
+				<entry key="validated_given_name" value-ref="validatedGivenNameClaimProvider" />
+				<entry key="validated_location" value-ref="validatedLocationClaimProvider" />
+				<entry key="validated_orcid" value-ref="validatedOrcidClaimProvider" />
+			</map>
+		</property>
+	</bean>
+
+	<bean id="oauthClientManager" class="org.sagebionetworks.repo.manager.oauth.OAuthClientManagerImpl" />
+
 	<bean id="googleOAuth2Provider" class="org.sagebionetworks.repo.manager.oauth.GoogleOAuth2Provider">
 		<constructor-arg ref="stackConfiguration.oAuth2GoogleClientId" index="0" />
 		<constructor-arg ref="stackConfiguration.oAuth2GoogleClientSecret" index="1" />
@@ -68,14 +110,7 @@
 		</property>
 
 	</bean>
-
-	<!-- Trash manager -->
-	<bean id="trashManager" class="org.sagebionetworks.repo.manager.trash.TrashManagerImpl" />
-	
-	<bean id="multipartManager" class="org.sagebionetworks.repo.manager.file.MultipartManagerImpl" />
-	
-	<bean id="multipartManagerV2" class="org.sagebionetworks.repo.manager.file.MultipartManagerV2Impl"  />
-	
+		
 	<bean name="userThrottleMemoryCountingSemaphore" class="org.sagebionetworks.repo.model.semaphore.MemoryCountingSemaphoreImpl" scope="singleton">
 		<constructor-arg index="0">
 		<bean class="org.sagebionetworks.common.util.ClockImpl"/>
@@ -88,34 +123,8 @@
 	
 	<bean id="semaphoreManager" class="org.sagebionetworks.repo.manager.SemaphoreManagerImpl" />
 	
-	<!-- The thread pool used by the asynchronous fileupload primary daemons -->
-	<bean id="uploadFileDaemonThreadPoolPrimary"
-		class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="targetClass">
-			<value>java.util.concurrent.Executors</value>
-		</property>
-		<property name="targetMethod">
-			<value>newFixedThreadPool</value>
-		</property>
-		<property name="arguments" ref="stackConfiguration.fileMultipartUploadDaemonMainMaxThreads"/>
-	</bean>
-
-	<!-- The thread pool used by the asynchronous fileupload secondary daemons -->
-	<bean id="uploadFileDaemonThreadPoolSecondary"
-		class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="targetClass">
-			<value>java.util.concurrent.Executors</value>
-		</property>
-		<property name="targetMethod">
-			<value>newFixedThreadPool</value>
-		</property>
-		<property name="arguments" ref="stackConfiguration.fileMultipartUploadDaemonCopyPartMaxThreads"/>
-	</bean>
-	
 	<!-- File Upload manager -->
-	<bean id="fileHandleManager" class="org.sagebionetworks.repo.manager.file.FileHandleManagerImpl" init-method="initialize" >
-	    <property name="multipartUploadDaemonTimeoutMS" ref="stackConfiguration.fileMultipartUploadDaemonTimeoutMS"/>
-	</bean>
+	<bean id="fileHandleManager" class="org.sagebionetworks.repo.manager.file.FileHandleManagerImpl" init-method="initialize" />
 	
 	<!-- The preview manager -->
 	<bean id="previewManager" class="org.sagebionetworks.repo.manager.file.preview.PreviewManagerImpl" init-method="initialize">
@@ -163,85 +172,19 @@
 	
 	<bean id="referenceUtil" class="org.sagebionetworks.repo.util.ReferenceUtilImpl" />
 	
-	<bean id="fileHandleAssociationManager"
-		class="org.sagebionetworks.repo.manager.file.FileHandleAssociationManagerImpl">
-		<property name="providerMap">
-			<map>
-				<entry key="TableEntity">
-					<bean
-						class="org.sagebionetworks.repo.manager.table.TableFileHandleAssociationProvider" />
-				</entry>
-				<entry key="VerificationSubmission">
-					<bean
-						class="org.sagebionetworks.repo.manager.VerificationFileHandleAssociationProvider" />
-				</entry>
-				<entry key="FileEntity">
-					<bean
-						class="org.sagebionetworks.repo.manager.file.FileEntityFileHandleAssociationProvider" />
-				</entry>
-				<entry key="WikiAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.wiki.WikiAttachmentFileHandleAssociationProvider" />
-				</entry>
-				<entry key="WikiMarkdown">
-					<bean
-						class="org.sagebionetworks.repo.manager.wiki.WikiMarkdownFileHandleAssociationProvider" />
-				</entry>
-				<entry key="UserProfileAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.UserProfileFileHandleAssociationProvider" />
-				</entry>
-				<entry key="TeamAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.team.TeamFileHandleAssociationProvider" />
-				</entry>
-				<entry key="SubmissionAttachment">
-					<bean
-						class="org.sagebionetworks.evaluation.manager.SubmissionFileHandleAssociationProvider" />
-				</entry>
-				<entry key="MessageAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.MessageFileHandleAssociationProvider" />
-				</entry>
-				<entry key="AccessRequirementAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.dataaccess.AccessRequirementFileHandleAssociationProvider" />
-				</entry>
-				<entry key="DataAccessRequestAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.dataaccess.RequestFileHandleAssociationProvider" />
-				</entry>
-				<entry key="DataAccessSubmissionAttachment">
-					<bean
-						class="org.sagebionetworks.repo.manager.dataaccess.SubmissionFileHandleAssociationProvider" />
-				</entry>
-			</map>
-		</property>
-	</bean>
-
-	<bean id="authorizationManager"
-		class="org.sagebionetworks.repo.manager.AuthorizationManagerImpl" />
+	<bean id="authorizationManager" class="org.sagebionetworks.repo.manager.AuthorizationManagerImpl" />
 		
-	<bean id="fileHandleAuthorizationManager"
-		class="org.sagebionetworks.repo.manager.file.FileHandleAuthorizationManagerImpl" />	
-
 	<bean id="entityPermissionsManager" class="org.sagebionetworks.repo.manager.EntityPermissionsManagerImpl" />
 
 	<bean id="userProfileManager" class="org.sagebionetworks.repo.manager.UserProfileManagerImpl" />
 
 	<bean id="projectSettingsManager" class="org.sagebionetworks.repo.manager.ProjectSettingsManagerImpl" />
 
-	<bean id="accessRequirementManager" class="org.sagebionetworks.repo.manager.AccessRequirementManagerImpl" />
-
-	<bean id="accessApprovalManager" class="org.sagebionetworks.repo.manager.AccessApprovalManagerImpl" />
-
 	<bean id="userManager" class="org.sagebionetworks.repo.manager.UserManagerImpl" />
 
 	<bean id="userCredentialValidator" class="org.sagebionetworks.repo.manager.UserCredentialValidatorImpl" />
 
 	<bean id="authManager" class="org.sagebionetworks.repo.manager.authentication.AuthenticationManagerImpl" />
-
-	<bean id="unsuccessfulLoginLockout" class="org.sagebionetworks.repo.manager.loginlockout.ExponentialBackoffLoginLockoutStatusImpl"/>
 
 	<bean id="passwordValidator" class="org.sagebionetworks.repo.manager.password.PasswordValidatorImpl"/>
 
@@ -251,7 +194,10 @@
 		factory-method="createAmazonSimpleEmailServiceClient"/>
     
 	<bean id="sesClient" class="org.sagebionetworks.repo.manager.principal.SynapseEmailServiceImpl"/>
-			
+
+	<bean id="amazonStsClient" class="org.sagebionetworks.aws.AwsClientFactory"
+		factory-method="createAmazonSecurityTokenServiceClient"/>
+
 	<bean id="messageManager" class="org.sagebionetworks.repo.manager.MessageManagerImpl" />
 	
 	<bean id="backupFileStream" class="org.sagebionetworks.repo.manager.migration.BackupFileStreamImpl" scope="singleton"/>
@@ -277,25 +223,10 @@
 		<constructor-arg value="10" />
 	</bean>
 
-	<bean id="stackStatusManager" class="org.sagebionetworks.repo.manager.StackStatusManagerImpl"
-		scope="singleton" />
-
 	<bean id="s3Utility" class="org.sagebionetworks.repo.manager.AmazonS3UtilityImpl"
 		scope="singleton" />
 
 	<bean id="schemaManager" class="org.sagebionetworks.repo.manager.SchemaManagerImpl"
-		scope="singleton" />
-		
-	<bean id="evaluationManager" class="org.sagebionetworks.evaluation.manager.EvaluationManagerImpl" 
-		scope="singleton" />
-		
-	<bean id="submissionEligibilityManager" class="org.sagebionetworks.evaluation.manager.SubmissionEligibilityManagerImpl" 
-		scope="singleton" />
-		
-	<bean id="submissionManager" class="org.sagebionetworks.evaluation.manager.SubmissionManagerImpl" 
-		scope="singleton" />
-
-	<bean id="evaluationPermissionsManager" class="org.sagebionetworks.evaluation.manager.EvaluationPermissionsManagerImpl"
 		scope="singleton" />
 		
 	<bean id="v2WikiManager" class="org.sagebionetworks.repo.manager.wiki.V2WikiManagerImpl" 
@@ -334,11 +265,6 @@
 		scope="singleton" factory-method="newFixedThreadPool">
 		<constructor-arg value="100" />
 	</bean>
-	
-	<bean id="tableManagerSupport" class="org.sagebionetworks.repo.manager.table.TableManagerSupportImpl" scope="singleton" />
-    
-    <bean id="tableIndexConnectionFactory" class="org.sagebionetworks.repo.manager.table.TableIndexConnectionFactoryImpl" scope="singleton" >
-    </bean>
     
     <bean id="asynchJobQueuePublisher" class="org.sagebionetworks.repo.manager.asynch.AsynchJobQueuePublisherImpl"
         init-method="initialize" scope="singleton" >
@@ -347,9 +273,6 @@
 	<bean id="jobHashProvider" class="org.sagebionetworks.repo.manager.asynch.JobHashProviderImpl" scope="singleton" />
 	
    	<bean id="asynchJobStatusManager" class="org.sagebionetworks.repo.manager.asynch.AsynchJobStatusManagerImpl" scope="singleton" />
-
-	<bean id="subStatusAnnoAsyncManager"
-		class="org.sagebionetworks.repo.model.dbo.dao.SubmissionStatusAnnotationsAsyncManagerImpl" />
 
 	<!-- The Discussion managers -->
 	<bean id="forumManager"
@@ -469,8 +392,6 @@
     
 	<bean id="challengeManager" class="org.sagebionetworks.repo.manager.ChallengeManagerImpl" scope="singleton"/>
     
-	<bean id="verificationManager" class="org.sagebionetworks.repo.manager.VerificationManagerImpl" scope="singleton"/>
-	
 	<bean id="tableEntityTransactionManager"
 		class="org.sagebionetworks.repo.manager.table.TableEntityTransactionManager"
 		scope="singleton"/>
@@ -488,6 +409,9 @@
 					<ref bean="tableEntityTransactionManager" />
 				</entry>
 				<entry key="entityview">
+					<ref bean="tableViewTransactionManager" />
+				</entry>
+				<entry key="submissionview">
 					<ref bean="tableViewTransactionManager" />
 				</entry>
 			</map>
@@ -508,22 +432,6 @@
 		class="org.sagebionetworks.repo.manager.dataaccess.SubmissionManagerImpl"
 		scope="singleton" />
 
-	<bean id="replicationMessageManager"
-		class="org.sagebionetworks.repo.manager.entity.ReplicationMessageManagerImpl"
-		scope="singleton" init-method="initialize">
-		<property name="replicationQueueName" value="#{stackConfiguration.getQueueName('TABLE_ENTITY_REPLICATION')}" />
-		<property name="reconciliationQueueName" value="#{stackConfiguration.getQueueName('ENTITY_REPLICATION_RECONCILIATION')}" />
-	</bean>
-
-	<bean id="replicationMessageThreadPool" class="java.util.concurrent.Executors"
-		scope="singleton" factory-method="newFixedThreadPool">
-		<constructor-arg value="5" />
-	</bean>
-
-	<bean id="replicationMessageManagerAsynch"
-		class="org.sagebionetworks.repo.manager.entity.ReplicationMessageManagerAsynchImpl"
-		scope="singleton" />
-
 	<bean id="bulkDownloadManager"
 		class="org.sagebionetworks.repo.manager.file.download.BulkDownloadManagerImpl"
 		scope="singleton" />
@@ -535,4 +443,8 @@
 	<bean id="storageReportManager"
 		  class="org.sagebionetworks.repo.manager.report.StorageReportManagerImpl"
 		  scope="singleton"/>
+		  
+	<bean id="oidcTokenHelper" class="org.sagebionetworks.repo.manager.oauth.OIDCTokenHelperImpl" scope="singleton" />
+	
+		  
 </beans>

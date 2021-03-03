@@ -20,8 +20,8 @@ import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.sagebionetworks.repo.model.UnmodifiableXStream;
 import org.sagebionetworks.repo.model.daemon.BackupAliasType;
@@ -29,8 +29,6 @@ import org.sagebionetworks.repo.model.dbo.AutoIncrementDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.FieldColumn;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.TableMapping;
-import org.sagebionetworks.repo.model.dbo.migration.MigratableTableDAOImpl;
-import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
 import org.sagebionetworks.repo.model.migration.MigrationType;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -43,6 +41,7 @@ import com.google.common.collect.Sets;
 @RunWith(MockitoJUnitRunner.class)
 public class MigratableTableDAOImplUnitTest {
 
+	@InjectMocks
 	private MigratableTableDAOImpl dao;
 	@Mock
 	private JdbcTemplate mockJdbcTemplate;
@@ -75,9 +74,8 @@ public class MigratableTableDAOImplUnitTest {
 	@SuppressWarnings("rawtypes")
 	@Before
 	public void before(){
-		mockJdbcTemplate = Mockito.mock(JdbcTemplate.class);
 		databaseObjectRegister = new ArrayList<MigratableDatabaseObject>();
-		dao = new MigratableTableDAOImpl(mockJdbcTemplate, databaseObjectRegister);
+		dao.setDatabaseObjectRegister(databaseObjectRegister);
 		
 		when(primaryMapping.getTableName()).thenReturn("primary_table_name");
 		when(primary.getTableMapping()).thenReturn(primaryMapping);
@@ -166,8 +164,34 @@ public class MigratableTableDAOImplUnitTest {
 		assertTrue(migrationTypeXMLStringWriter.toString().contains("VIEW__SCOPE"));
 	}
 	
-	public static class StubAutoIncrement implements MigratableDatabaseObject<StubAutoIncrement, StubAutoIncrement>, AutoIncrementDatabaseObject<StubAutoIncrement>{
+	@Test
+	public void testInitializeAliasTypeToXStreamMapWithSecondaryTypes(){
+		PrimaryClass primaryClass = new PrimaryClass();
+		MigratableTableDAOImpl.initializeAliasTypeToXStreamMap(Collections.singletonList(primaryClass));
+		
+		UnmodifiableXStream tableNameXStream = dao.getXStream(BackupAliasType.TABLE_NAME);
+		UnmodifiableXStream migrationTypeNameXStream = dao.getXStream(BackupAliasType.MIGRATION_TYPE_NAME);
 
+		assertNotSame(tableNameXStream, migrationTypeNameXStream);
+
+		StringWriter tableNameXMLStringWriter = new StringWriter();
+		StringWriter migrationTypeXMLStringWriter = new StringWriter();
+		
+		SecondaryClass secondaryClass = new SecondaryClass();
+
+		tableNameXStream.toXML(secondaryClass, tableNameXMLStringWriter);
+		migrationTypeNameXStream.toXML(secondaryClass, migrationTypeXMLStringWriter);
+		
+		String tableXML = tableNameXMLStringWriter.toString();
+		String typeXML = migrationTypeXMLStringWriter.toString();
+
+		assertEquals("<" +secondaryClass.getTableMapping().getTableName().replaceAll("_", "__")+ "/>", tableXML);
+		assertEquals("<" +secondaryClass.getMigratableTableType().name().replaceAll("_", "__")+ "/>", typeXML);
+
+	}
+	
+	public static class StubAutoIncrement implements MigratableDatabaseObject<StubAutoIncrement, StubAutoIncrement>, AutoIncrementDatabaseObject<StubAutoIncrement>{
+		
 		@Override
 		public TableMapping<StubAutoIncrement> getTableMapping() {
 			return new TableMapping<StubAutoIncrement>() {

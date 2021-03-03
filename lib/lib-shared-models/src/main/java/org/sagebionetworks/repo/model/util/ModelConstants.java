@@ -1,5 +1,11 @@
 package org.sagebionetworks.repo.model.util;
 
+import com.google.common.collect.Sets;
+import org.sagebionetworks.repo.model.ACCESS_TYPE;
+
+import java.util.Collections;
+import java.util.Set;
+
 import static org.sagebionetworks.repo.model.ACCESS_TYPE.CHANGE_PERMISSIONS;
 import static org.sagebionetworks.repo.model.ACCESS_TYPE.CHANGE_SETTINGS;
 import static org.sagebionetworks.repo.model.ACCESS_TYPE.CREATE;
@@ -15,19 +21,13 @@ import static org.sagebionetworks.repo.model.ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE;
 import static org.sagebionetworks.repo.model.ACCESS_TYPE.UPDATE;
 import static org.sagebionetworks.repo.model.ACCESS_TYPE.UPDATE_SUBMISSION;
 
-import java.util.Collections;
-import java.util.Set;
-
-import org.sagebionetworks.repo.model.ACCESS_TYPE;
-import com.google.common.collect.Sets;
-
 
 /**
  * This class includes constants that are shared by both the backend and the GWT Portal frontend
  */
 public class ModelConstants {
 
-	public static final String VALID_ENTITY_NAME_REGEX = "^[a-zA-Z0-9,_. \\-+()]+";
+	public static final String VALID_ENTITY_NAME_REGEX = "^[a-zA-Z0-9,_. \\-+()']+";
 
 	public static final Set<ACCESS_TYPE> ENTITY_ADMIN_ACCESS_PERMISSIONS =
 			Sets.newHashSet(READ, DOWNLOAD, UPDATE, DELETE, CREATE, CHANGE_PERMISSIONS, CHANGE_SETTINGS, MODERATE);

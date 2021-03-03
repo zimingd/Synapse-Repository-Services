@@ -8,15 +8,13 @@
     <version>develop-SNAPSHOT</version>
   </parent>
 
-  <groupId>org.sagebionetworks</groupId>
   <artifactId>client</artifactId>
   <packaging>pom</packaging>
   <name>Platform Clients</name>
 
   <modules>
-
     <module>synapseJavaClient</module>
-    <module>commandLineInterface</module>
+    <module>sample-code</module>
   </modules>
 
 </project>

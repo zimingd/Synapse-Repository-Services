@@ -29,6 +29,8 @@ import org.sagebionetworks.repo.model.RestrictableObjectType;
 import org.sagebionetworks.repo.model.RestrictionInformationRequest;
 import org.sagebionetworks.repo.model.RestrictionInformationResponse;
 import org.sagebionetworks.repo.model.RestrictionLevel;
+import org.sagebionetworks.repo.model.dataaccess.AccessApprovalNotificationRequest;
+import org.sagebionetworks.repo.model.dataaccess.AccessApprovalNotificationResponse;
 import org.sagebionetworks.repo.model.dataaccess.AccessRequirementConversionRequest;
 import org.sagebionetworks.repo.model.dataaccess.AccessRequirementStatus;
 import org.sagebionetworks.repo.model.dataaccess.AccessType;
@@ -44,6 +46,8 @@ import org.sagebionetworks.repo.model.dataaccess.Request;
 import org.sagebionetworks.repo.model.dataaccess.RequestInterface;
 import org.sagebionetworks.repo.model.dataaccess.ResearchProject;
 import org.sagebionetworks.repo.model.dataaccess.Submission;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfo;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPage;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionState;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionStatus;
@@ -86,7 +90,7 @@ public class ITDataAccessTest {
 	@After
 	public void after() throws Exception {
 		try {
-			adminSynapse.deleteAndPurgeEntityById(project.getId());
+			adminSynapse.deleteEntity(project);
 		} catch (SynapseNotFoundException e) {}
 	}
 
@@ -113,6 +117,9 @@ public class ITDataAccessTest {
 		conversionRequest.setCurrentVersion(actAR.getVersionNumber());
 		conversionRequest.setEtag(actAR.getEtag());
 		managedAR = (ManagedACTAccessRequirement) adminSynapse.convertAccessRequirement(conversionRequest);
+		
+		managedAR.setIsIDUPublic(true);
+		managedAR = (ManagedACTAccessRequirement) adminSynapse.updateAccessRequirement(managedAR);
 
 		assertNotNull(synapseOne.getSubjects(managedAR.getId().toString(), null));
 
@@ -193,7 +200,15 @@ public class ITDataAccessTest {
 		assertNotNull(submissions);
 		assertEquals(1, submissions.getResults().size());
 		assertEquals(submission, submissions.getResults().get(0));
-
+		
+		SubmissionInfoPage researchProjectPage = adminSynapse.listApprovedSubmissionInfo(managedAR.getId().toString(), null);
+		assertNotNull(researchProjectPage.getResults());
+		assertEquals(1, researchProjectPage.getResults().size());
+		SubmissionInfo submissionInfo = researchProjectPage.getResults().get(0);
+		assertEquals(submission.getResearchProjectSnapshot().getIntendedDataUseStatement(), 
+				submissionInfo.getIntendedDataUseStatement());
+		assertEquals(submission.getModifiedOn().getTime(), submissionInfo.getModifiedOn().getTime());
+		
 		AccessorGroupRequest accessorGroupRequest = new AccessorGroupRequest();
 		AccessorGroupResponse response = adminSynapse.listAccessorGroup(accessorGroupRequest);
 		assertNotNull(response);
@@ -204,6 +219,22 @@ public class ITDataAccessTest {
 		assertNotNull(synapseOne.getBatchAccessApprovalInfo(approvalInfoRequest ));
 
 		adminSynapse.revokeGroup(managedAR.getId().toString(), userId);
+	}
+	
+	// This test is used solely to verify the controller integration
+	@Test
+	public void testGetAccessAprovalNotifications() throws SynapseException {
+		
+		AccessApprovalNotificationRequest request = new AccessApprovalNotificationRequest();
+		
+		request.setRequirementId(actAR.getId());
+		request.setRecipientIds(Arrays.asList(userToDelete));
+		
+		AccessApprovalNotificationResponse result = adminSynapse.getAccessApprovalNotifications(request);
+		
+		assertNotNull(result);
+		assertEquals(actAR.getId(), result.getRequirementId());
+		assertTrue(result.getResults().isEmpty());
 	}
 
 }

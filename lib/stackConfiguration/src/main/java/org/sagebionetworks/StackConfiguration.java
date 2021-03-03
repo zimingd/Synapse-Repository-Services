@@ -8,6 +8,10 @@ import java.util.List;
  *
  */
 public interface StackConfiguration {
+	
+	String SERVICE_CLOUDMAILIN = "cloudmailin";
+	String SERVICE_DOCKER_REGISTRY = "docker.registry";
+	String SERVICE_ADMIN = "admin";
 
 	/**
 	 * Is this a production stack?
@@ -285,12 +289,6 @@ public interface StackConfiguration {
 	public String getWorkflowExecutionRetentionPeriodInDays();
 
 	/**
-	 * The maximum number of entities that can be moved into the trash can at one
-	 * time.
-	 */
-	public int getTrashCanMaxTrashable();
-
-	/**
 	 * Stack and instance: <stack>-<stack_instance>
 	 * 
 	 * @return
@@ -444,9 +442,9 @@ public interface StackConfiguration {
 	 * 
 	 * @return
 	 */
-	public String getJiraUserName();
+	public String getJiraUserEmail();
 
-	public String getJiraUserPassword();
+	public String getJiraUserApikey();
 
 	/**
 	 * Entity path for the root folder. This is to be bootstrapped.
@@ -474,6 +472,12 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public String getTableRowChangeBucketName();
+	
+	/**
+	 * S3 bucket for view snapshots.
+	 * @return
+	 */
+	public String getViewSnapshotBucketName();
 
 	/**
 	 * 
@@ -660,6 +664,11 @@ public interface StackConfiguration {
 
 	public String getDockerAuthorizationCertificate();
 
+	/**
+	 * Credentials for signing OIDC JSON Web Tokens
+	 */
+	public List<String> getOIDCSignatureRSAPrivateKeys();
+	
 	public List<String> getDockerRegistryHosts();
 
 	public List<String> getDockerReservedRegistryHosts();
@@ -783,5 +792,41 @@ public interface StackConfiguration {
 	 * @return
 	 */
 	public String getDecodedGoogleCloudServiceAccountCredentials();
+	
+	/**
+	 * Get the authorization endpoint that Synapse OAuth 2.0 clients will redirect 
+ 	 * the browser to, to prompt the user to authorize that client.
+ 	 * 
+	 * @return
+	 */
+	public String getOAuthAuthorizationEndpoint();
+	
+	/**
+	 * @return The maximum number of months to process for monthly statistics
+	 */
+	public int getMaximumMonthsForMonthlyStatistics();
 
+	/**
+	 * The ARN for the IAM Role that the StsManager uses. We call AssumeRole on this ARN to generate the temporary S3
+	 * credentials that we pass to the caller.
+	 */
+	String getTempCredentialsIamRoleArn();
+	
+	/**
+	 * @param serviceName Name of the service
+	 * @return The key used to authenticate the service with the given name
+	 */
+	String getServiceAuthKey(String serviceName);
+	
+	/**
+	 * @param serviceName Name of the service
+	 * @return The secret used to authenticate the service with the given name
+	 */
+	String getServiceAuthSecret(String serviceName);
+	
+	/**
+	 * @return The configured endpoint for the repository services prod stack
+	 */
+	String getRepositoryServiceProdEndpoint();
+	
 }

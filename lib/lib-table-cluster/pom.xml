@@ -47,6 +47,11 @@
 			<groupId>org.springframework</groupId>
 			<artifactId>spring-jdbc</artifactId>
 		</dependency>
+		
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-context</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>org.apache.commons</groupId>
@@ -114,11 +119,6 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk</artifactId>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
 			<groupId>commons-collections</groupId>
 			<artifactId>commons-collections</artifactId>
 			<version>20040616</version>
@@ -127,4 +127,9 @@
 		</dependency>
 
   	</dependencies>
+
+	<properties>
+		<jacoco.branch.minumum>0.60</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.80</jacoco.line.minumum>
+	</properties>
 </project>

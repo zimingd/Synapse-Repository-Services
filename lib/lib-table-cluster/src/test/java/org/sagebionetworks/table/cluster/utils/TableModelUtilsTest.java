@@ -1,11 +1,12 @@
 package org.sagebionetworks.table.cluster.utils;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ETAG;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ID;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_VERSION;
@@ -14,7 +15,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -25,12 +26,14 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.sagebionetworks.repo.model.dbo.dao.table.TableModelTestUtils;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.table.ColumnChange;
+import org.sagebionetworks.repo.model.table.ColumnConstants;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.PartialRow;
@@ -53,6 +56,7 @@ import org.sagebionetworks.table.cluster.ColumnChangeDetails;
 import org.sagebionetworks.table.cluster.ColumnTypeInfo;
 import org.sagebionetworks.table.model.SparseChangeSet;
 import org.sagebionetworks.table.model.SparseRow;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -79,7 +83,7 @@ public class TableModelUtilsTest {
 	ColumnModel columnOne;
 	ColumnModel columnTwo;
 	
-	@Before
+	@BeforeEach
 	public void before() {
 		validModel = new LinkedList<ColumnModel>();
 		columnOne = new ColumnModel();
@@ -162,11 +166,13 @@ public class TableModelUtilsTest {
 		assertEquals(Boolean.TRUE.toString(), TableModelUtils.validateRowValue(null, cm, 2, 2));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateBooleanFail() {
 		ColumnModel cm = new ColumnModel();
 		cm.setColumnType(ColumnType.BOOLEAN);
-		TableModelUtils.validateRowValue("some string", cm, 0, 0);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowValue("some string", cm, 0, 0);
+		});
 	}
 
 	@Test
@@ -236,6 +242,40 @@ public class TableModelUtilsTest {
 		cm.setDefaultValue("syn345.6");
 		assertEquals("syn345.6", TableModelUtils.validateRowValue(null, cm, 2, 3));
 	}
+	
+	@Test
+	public void testValidateSubmissionId() {
+		ColumnModel cm = new ColumnModel();
+		cm.setColumnType(ColumnType.SUBMISSIONID);
+		assertEquals("123", TableModelUtils.validateRowValue("123", cm, 0, 0));
+		try {
+			TableModelUtils.validateRowValue("true", cm, 1, 3);
+			fail("should have failed");
+		} catch (IllegalArgumentException e) {
+			assertEquals("Value at [1,3] was not a valid SUBMISSIONID. For input string: \"true\"", e.getMessage());
+		}
+		assertEquals(null, TableModelUtils.validateRowValue(null, cm, 2, 2));
+		// Set the default to boolean
+		cm.setDefaultValue("890");
+		assertEquals("890", TableModelUtils.validateRowValue(null, cm, 2, 3));
+	}
+	
+	@Test
+	public void testValidateEvaluationId() {
+		ColumnModel cm = new ColumnModel();
+		cm.setColumnType(ColumnType.EVALUATIONID);
+		assertEquals("123", TableModelUtils.validateRowValue("123", cm, 0, 0));
+		try {
+			TableModelUtils.validateRowValue("true", cm, 1, 3);
+			fail("should have failed");
+		} catch (IllegalArgumentException e) {
+			assertEquals("Value at [1,3] was not a valid EVALUATIONID. For input string: \"true\"", e.getMessage());
+		}
+		assertEquals(null, TableModelUtils.validateRowValue(null, cm, 2, 2));
+		// Set the default to boolean
+		cm.setDefaultValue("890");
+		assertEquals("890", TableModelUtils.validateRowValue(null, cm, 2, 3));
+	}
 
 	@Test
 	public void testValidateDate() {
@@ -303,13 +343,12 @@ public class TableModelUtilsTest {
 		assertEquals("some string", TableModelUtils.validateRowValue("some string", cm, 0, 0));
 		char[] tooLarge = new char[(int) (cm.getMaximumSize() + 1)];
 		Arrays.fill(tooLarge, 'b');
-		try {
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
 			TableModelUtils.validateRowValue(new String(tooLarge), cm, 1, 4);
-			fail("should have failed");
-		} catch (IllegalArgumentException e) {
-			assertEquals("Value at [1,4] was not a valid STRING. String '" + new String(tooLarge)
-					+ "' exceeds the maximum length of 555 characters. Consider using a FileHandle to store large strings.", e.getMessage());
-		}
+		});
+
+		assertEquals("Value at [1,4] was not a valid STRING. String '" + new String(tooLarge)
+				+ "' exceeds the maximum length of 555 characters.", exception.getMessage());
 		assertEquals(null, TableModelUtils.validateRowValue(null, cm, 2, 2));
 		// Set the default to boolean
 		cm.setDefaultValue("-89.3e12");
@@ -437,9 +476,83 @@ public class TableModelUtilsTest {
 			cm.setColumnType(type);
 			cm.setMaximumSize(555L);
 			cm.setDefaultValue(null);
-			assertEquals("Value of an empty string for a non-string should be treated as null", null,
-					TableModelUtils.validateRowValue("", cm, 0, 0));
+			assertNull(TableModelUtils.validateRowValue("", cm, 0, 0), "Value of an empty string for a non-string should be treated as null");
 		}
+	}
+
+	@Test
+	public void testValidateValue_StringList_valueListSizeTooLarge() {
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+		//make array list of 1 over limit
+		StringJoiner joiner = new StringJoiner(",", "[", "]");
+		for (int i = 0; i < ColumnConstants.MAX_ALLOWED_LIST_LENGTH + 1; i++) {
+			joiner.add("\"a\"");
+		}
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateValue(joiner.toString(), cm);
+		});
+
+		assertTrue(exception.getMessage().contains("value can not exceed 100 elements in list: "));
+	}
+
+	@Test
+	public void testValidateValue_StringList_valueNotJsonArray(){
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateValue("i am not a list", cm);
+		});
+
+		assertEquals("Not a JSON Array: i am not a list", exception.getMessage());
+	}
+
+	@Test
+	public void testValidateValue_StringList_valueListElementSizeExceeded(){
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+		cm.setMaximumSize(4L);
+		cm.setMaximumListLength(52L);
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateValue("[\"1\",\"12345\", \"123\"]", cm);
+		});
+
+		assertEquals("String '12345' exceeds the maximum length of 4 characters.", exception.getMessage());
+	}
+
+	@Test
+	public void testValidateValue_StringList_valueListLengthExceeded(){
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+		cm.setMaximumSize(54L);
+		cm.setMaximumListLength(2L);
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateValue("[\"1\",\"12345\", \"123\"]", cm);
+		});
+
+		assertEquals("Exceeds the maximum number of list elements defined in the ColumnModel (2): \"[\"1\",\"12345\", \"123\"]\"", exception.getMessage());
+	}
+
+	@Test
+	public void testValidateValue_StringList_EmptyJSONList(){
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+		cm.setMaximumSize(54L);
+		cm.setMaximumListLength(2L);
+
+		//method under test
+		assertNull(TableModelUtils.validateValue("[]", cm));
+	}
+
+	@Test
+	public void testValidateValue_IntList_valueListLengthExceeded(){
+		ColumnModel cm = TableModelTestUtils.createColumn(123L, "myCol", ColumnType.STRING_LIST);
+		cm.setMaximumListLength(2L);
+
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateValue("[1, 12345, 123]", cm);
+		});
+
+		assertEquals("Exceeds the maximum number of list elements defined in the ColumnModel (2): \"[1, 12345, 123]\"", exception.getMessage());
 	}
 
 	@Test
@@ -475,10 +588,12 @@ public class TableModelUtilsTest {
 		assertEquals(expected, ids);
 	}
 	
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testGetIdsNullId() {
 		validModel.get(0).setId(null);
-		TableModelUtils.getIds(validModel);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.getIds(validModel);
+		});
 	}
 	
 	@Test
@@ -486,14 +601,15 @@ public class TableModelUtilsTest {
 		List<String> ids = TableModelUtils.getIds(validModel);
 		String del = TableModelUtils.createDelimitedColumnModelIdString(ids);
 		assertNotNull(del);
-		System.out.println(del);
 		List<String> result = TableModelUtils.readColumnModelIdsFromDelimitedString(del);
 		assertEquals(ids, result);
 	}
 	
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testDistictVersionsNull() {
-		TableModelUtils.getDistictVersions(null);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.getDistictVersions(null);
+		});
 	}
 	
 	@Test
@@ -544,7 +660,7 @@ public class TableModelUtilsTest {
 		assertEquals(expected, TableModelUtils.getDistictValidRowIds(changeSet.rowIterator()));
 	}
 	
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testDuplicateRowIds() {
 		SparseChangeSet changeSet = new SparseChangeSet("syn123", validModel);
 		
@@ -562,93 +678,209 @@ public class TableModelUtilsTest {
 		row.setRowId(100l);
 		row.setVersionNumber(500L);
 		row.setCellValue("1", "false");
-		
-		Map<Long, Long> expected = Maps.newHashMap();
-		expected.put(101l, 501L);
-		expected.put(100l, 500L);
-		assertEquals(expected, TableModelUtils.getDistictValidRowIds(changeSet.rowIterator()));
+
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.getDistictValidRowIds(changeSet.rowIterator());
+		});
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeString() throws UnsupportedEncodingException {
+	public void testCalculateMaxSizeForTypeString(){
 		long maxSize = 444;
 		char[] array = new char[(int) maxSize];
 		Arrays.fill(array, Character.MAX_VALUE);
 		int expected = (int) (maxSize * ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8);
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, maxSize));
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, maxSize, null));
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeLink() throws UnsupportedEncodingException {
+	public void testCalculateMaxSizeForTypeLink(){
 		long maxSize = 444;
 		char[] array = new char[(int) maxSize];
 		Arrays.fill(array, Character.MAX_VALUE);
 		int expected = (int) (maxSize * ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8);
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.LINK, maxSize));
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.LINK, maxSize, null));
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeBoolean() throws UnsupportedEncodingException {
-		int expected = new String("false").getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.BOOLEAN, null));
+	public void testCalculateMaxSizeForTypeBoolean(){
+		int expected = "false".getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.BOOLEAN, null, null));
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeLong() throws UnsupportedEncodingException {
-		int expected = new String(Long.toString(-1111111111111111111l)).getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.INTEGER, null));
+	public void testCalculateMaxSizeForTypeLong(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.INTEGER, null, null));
 	}
 
 	@Test
-	public void testCalculateMaxSizeForTypeDate() throws UnsupportedEncodingException {
-		int expected = new String(Long.toString(-1111111111111111111l)).getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.DATE, null));
+	public void testCalculateMaxSizeForTypeDate(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.DATE, null, null));
 	}
 
 	@Test
-	public void testCalculateMaxSizeForTypeDouble() throws UnsupportedEncodingException {
+	public void testCalculateMaxSizeForTypeDouble(){
 		double big = -1.123456789123456789e123;
-		int expected = Double.toString(big).getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.DOUBLE, null));
+		int expected = Double.toString(big).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.DOUBLE, null, null));
 	}
 
 	@Test
-	public void testCalculateMaxSizeForTypeFileHandle() throws UnsupportedEncodingException {
-		int expected = new String(Long.toString(-1111111111111111111l)).getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.FILEHANDLEID, null));
+	public void testCalculateMaxSizeForTypeFileHandle(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.FILEHANDLEID, null, null));
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeUserID() throws UnsupportedEncodingException {
-		int expected = new String(Long.toString(-1111111111111111111l)).getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.USERID, null));
+	public void testCalculateMaxSizeForTypeUserID(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.USERID, null, null));
+	}
+	
+	@Test
+	public void testCalculateMaxSizeForTypeSubmissionID(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.SUBMISSIONID, null, null));
+	}
+	
+	@Test
+	public void testCalculateMaxSizeForTypeEvaluationID(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.EVALUATIONID, null, null));
 	}
 
 	@Test
-	public void testCalculateMaxSizeForTypeEntityId() throws UnsupportedEncodingException {
-		int expected = new String("syn" + Long.toString(-1111111111111111111l) + "." + Long.toString(-1111111111111111111l))
-				.getBytes("UTF-8").length;
-		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.ENTITYID, null));
+	public void testCalculateMaxSizeForTypeEntityId(){
+		int expected = ("syn" + -1111111111111111111l + "." + -1111111111111111111l)
+				.getBytes(StandardCharsets.UTF_8).length;
+		assertEquals(expected, TableModelUtils.calculateMaxSizeForType(ColumnType.ENTITYID, null, null));
 	}
 	
 	@Test
-	public void testCalculateMaxSizeForTypeLargeText() throws UnsupportedEncodingException {
+	public void testCalculateMaxSizeForTypeLargeText(){
 		assertEquals(ColumnConstants.SIZE_OF_LARGE_TEXT_FOR_COLUMN_SIZE_ESTIMATE_BYTES,
-				TableModelUtils.calculateMaxSizeForType(ColumnType.LARGETEXT, null));
+				TableModelUtils.calculateMaxSizeForType(ColumnType.LARGETEXT, null, null));
 	}
 
 	@Test
-	public void testCalculateMaxSizeForTypeAll() throws UnsupportedEncodingException {
+	public void testCalculateMaxSizeForTypeStringList(){
+		long maxSize = 444;
+		long maxListLength = 52;
+		int expected = (int) (maxSize * ColumnConstants.MAX_BYTES_PER_CHAR_UTF_8) * 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.STRING_LIST, maxSize, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeStringList_nullMaxListLength(){
+		long maxSize = 444;
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.STRING_LIST, maxSize, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeIntegerList(){
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length * 52;
+		long maxListLength = 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.INTEGER_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeIntegerList_nullMaxListLength(){
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.INTEGER_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeDateList(){
+		long maxListLength = 52;
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length * 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.DATE_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeDateList_nullMaxListLength(){
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.DATE_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeUserIdList(){
+		long maxListLength = 52;
+		int expected = Long.toString(-1111111111111111111l).getBytes(StandardCharsets.UTF_8).length * 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.USERID_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeUserIdList_nullMaxListLength(){
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.USERID_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeEntityIdList(){
+		long maxListLength = 52;
+		int expected = ("syn" + -1111111111111111111l + "." + -1111111111111111111l)
+				.getBytes(StandardCharsets.UTF_8).length * 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.ENTITYID_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeEntityIdList_nullMaxListLength(){
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.ENTITYID_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeBooleanList(){
+		long maxListLength = 52;
+
+		int expected = "false".getBytes(StandardCharsets.UTF_8).length * 52;
+		assertEquals(expected,
+				TableModelUtils.calculateMaxSizeForType(ColumnType.BOOLEAN_LIST, null, maxListLength));
+	}
+
+
+	@Test
+	public void testCalculateMaxSizeForTypeBooleanList_nullMaxListLength(){
+		Long maxListLength = null;
+
+		assertThrows(IllegalArgumentException.class, () ->
+				TableModelUtils.calculateMaxSizeForType(ColumnType.BOOLEAN_LIST, null, maxListLength));
+	}
+
+	@Test
+	public void testCalculateMaxSizeForTypeAll(){
 		// The should be a size for each type.
 		for (ColumnType ct : ColumnType.values()) {
 			Long maxSize = null;
-			if (ColumnType.STRING == ct) {
+			Long maxListLength = null;
+			if (ColumnType.STRING == ct || ColumnType.STRING_LIST == ct) {
 				maxSize = 14L;
+			}
+			if(ColumnTypeListMappings.isList(ct)){
+				maxListLength = 52L;
 			}
 			if (ColumnType.LINK == ct) {
 				maxSize = 32L;
 			}
-			TableModelUtils.calculateMaxSizeForType(ct, maxSize);
+			TableModelUtils.calculateMaxSizeForType(ct, maxSize, maxListLength);
 		}
 	}
 	
@@ -669,9 +901,9 @@ public class TableModelUtilsTest {
 		// call under test
 		int maxSize = TableModelUtils.calculateMaxRowSize(select, nameToSchemaMap);
 		// part of the size is from the select that matches the schema
-		int expectedSize = TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, columnOne.getMaximumSize());
+		int expectedSize = TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, columnOne.getMaximumSize(), columnOne.getMaximumListLength());
 		// the other part of the size does not match the schema so the max allowed string size should be used.
-		expectedSize += TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, ColumnConstants.MAX_ALLOWED_STRING_SIZE);
+		expectedSize += TableModelUtils.calculateMaxSizeForType(ColumnType.STRING, ColumnConstants.MAX_ALLOWED_STRING_SIZE, ColumnConstants.MAX_ALLOWED_LIST_LENGTH);
 		assertEquals(expectedSize, maxSize);
 	}
 	
@@ -705,7 +937,7 @@ public class TableModelUtilsTest {
 	public void testCalculateMaxRowSize() {
 		List<ColumnModel> all = TableModelTestUtils.createOneOfEachType();
 		int allBytes = TableModelUtils.calculateMaxRowSize(all);
-		assertEquals(2661, allBytes);
+		assertEquals(16066, allBytes);
 	}
 
 	@Test
@@ -747,7 +979,7 @@ public class TableModelUtilsTest {
 		}
 	}
 	
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void createColumnIdToIndexMapFromNotFirstRow() {
 		List<ColumnModel> all = TableModelTestUtils.createOneOfEachType();
 		List<String> names = new LinkedList<String>();
@@ -755,7 +987,19 @@ public class TableModelUtilsTest {
 			names.add(cm.getName() + "not");
 		}
 		Collections.shuffle(names);
-		TableModelUtils.createColumnIdToColumnIndexMapFromFirstRow(names.toArray(new String[names.size()]), all);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.createColumnIdToColumnIndexMapFromFirstRow(names.toArray(new String[names.size()]), all);
+		});
+	}
+	
+	@Test
+	public void createColumnIdToIndexMapFromNullFirstRow() {
+		List<ColumnModel> all = TableModelTestUtils.createOneOfEachType();
+		String[] names = null;
+		
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.createColumnIdToColumnIndexMapFromFirstRow(names, all);
+		});
 	}
 	
 	@Test
@@ -897,7 +1141,7 @@ public class TableModelUtilsTest {
 		assertEquals(expected, results);
  	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetFileHandleIdsInRowSetNotLongs(){
 		List<SelectColumn> cols = new ArrayList<SelectColumn>();
 		cols.add(TableModelTestUtils.createSelectColumn(2L, "b", ColumnType.FILEHANDLEID));
@@ -911,7 +1155,9 @@ public class TableModelUtilsTest {
 		rowset.setRows(rows);
 		
 		// should fail.
-		TableModelUtils.getFileHandleIdsInRowSet(rowset);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.getFileHandleIdsInRowSet(rowset);
+		});
  	}
 	
 	@Test
@@ -923,54 +1169,66 @@ public class TableModelUtilsTest {
 		TableModelUtils.validateRowVersions(rows, versionNumber);
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionsNoMatch(){
 		Long versionNumber = 99L;
 		List<Row> rows = new ArrayList<Row>();
 		rows.add(TableModelTestUtils.createRow(1L, versionNumber, "1","2","3","4"));
 		rows.add(TableModelTestUtils.createRow(2L, 98L, "5","6","7","8"));
-		TableModelUtils.validateRowVersions(rows, versionNumber);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, versionNumber);
+		});
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionsNull(){
 		Long versionNumber = 99L;
 		List<Row> rows = new ArrayList<Row>();
 		rows.add(TableModelTestUtils.createRow(1L, versionNumber, "1","2","3","4"));
 		rows.add(TableModelTestUtils.createRow(2L, null, "5","6","7","8"));
-		TableModelUtils.validateRowVersions(rows, versionNumber);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, versionNumber);
+		});
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionsEmpty(){
 		Long versionNumber = 99L;
 		List<Row> rows = new ArrayList<Row>();
-		TableModelUtils.validateRowVersions(rows, versionNumber);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, versionNumber);
+		});
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionsListNull(){
 		Long versionNumber = 99L;
 		List<Row> rows = null;
-		TableModelUtils.validateRowVersions(rows, versionNumber);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, versionNumber);
+		});
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionNull(){
 		Long versionNumber = null;
 		List<Row> rows = new ArrayList<Row>();
 		rows.add(TableModelTestUtils.createRow(1L, versionNumber, "1","2","3","4"));
 		rows.add(TableModelTestUtils.createRow(2L, versionNumber, "5","6","7","8"));
-		TableModelUtils.validateRowVersions(rows, versionNumber);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, versionNumber);
+		});
 	}
 	
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testValidateRowVersionPassedNull(){
 		Long versionNumber = 99L;
 		List<Row> rows = new ArrayList<Row>();
 		rows.add(TableModelTestUtils.createRow(1L, versionNumber, "1","2","3","4"));
 		rows.add(TableModelTestUtils.createRow(2L, versionNumber, "5","6","7","8"));
-		TableModelUtils.validateRowVersions(rows, null);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.validateRowVersions(rows, null);
+		});
 	}
 	
 	@Test
@@ -985,7 +1243,7 @@ public class TableModelUtilsTest {
 		ids = Lists.newArrayList("3","2","1");
 		// call under test.
 		md5Hex = TableModelUtils.createSchemaMD5Hex(ids);
-		assertEquals("The MD5 should be the same regardless of order.",expectedMd5Hex, md5Hex);
+		assertEquals(expectedMd5Hex, md5Hex, "The MD5 should be the same regardless of order.");
 	}
 	
 	
@@ -1117,7 +1375,7 @@ public class TableModelUtilsTest {
 		RowSet rowSet = new RowSet();
 		rowSet.setHeaders(headers);
 		rowSet.setEtag("etag");
-		rowSet.setRows(Lists.newArrayList((Row)row1, (Row)row2));
+		rowSet.setRows(Lists.newArrayList(row1, row2));
 		rowSet.setTableId(tableId);
 		
 		// Call under test
@@ -1403,19 +1661,23 @@ public class TableModelUtilsTest {
 		assertEquals(1, result.getChanges().size());
 		assertEquals(toWrap, result.getChanges().get(0));
 	}
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testWrapInTransactionRequestNull(){
 		UploadToTableRequest toWrap =null;
 		//call under test
-		TableModelUtils.wrapInTransactionRequest(toWrap);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.wrapInTransactionRequest(toWrap);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testWrapInTransactionRequestNullEntityId(){
 		UploadToTableRequest toWrap = new UploadToTableRequest();
 		toWrap.setEntityId(null);
 		//call under test
-		TableModelUtils.wrapInTransactionRequest(toWrap);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.wrapInTransactionRequest(toWrap);
+		});
 	}
 	
 	@Test
@@ -1430,7 +1692,7 @@ public class TableModelUtilsTest {
 		assertEquals(body, result);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testExtractResponseFromTransactionTooMany(){
 		TableUpdateTransactionResponse wrapped = new TableUpdateTransactionResponse();
 		UploadToTableResult body = new UploadToTableResult();
@@ -1439,37 +1701,45 @@ public class TableModelUtilsTest {
 		wrapped.getResults().add(body);
 		wrapped.getResults().add(body);
 		// call under test
-		TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		});
 	}
 	
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testExtractResponseFromTransactionNullList(){
 		TableUpdateTransactionResponse wrapped = new TableUpdateTransactionResponse();
 		UploadToTableResult body = new UploadToTableResult();
 		body.setEtag("123");
 		wrapped.setResults(null);
 		// call under test
-		TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testExtractResponseFromTransactionEmptyList(){
 		TableUpdateTransactionResponse wrapped = new TableUpdateTransactionResponse();
 		UploadToTableResult body = new UploadToTableResult();
 		body.setEtag("123");
 		wrapped.setResults(new LinkedList<TableUpdateResponse>());
 		// call under test
-		TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testExtractResponseFromTransactionWrongType(){
 		TableUpdateTransactionResponse wrapped = new TableUpdateTransactionResponse();
 		wrapped.setResults(new LinkedList<TableUpdateResponse>());
 		wrapped.getResults().add(new RowReferenceSetResults());
 		// call under test
-		TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		assertThrows(IllegalArgumentException.class, () -> {
+			TableModelUtils.extractResponseFromTransaction(wrapped, UploadToTableResult.class);
+		});
 	}
 	
 	@Test
@@ -1576,6 +1846,7 @@ public class TableModelUtilsTest {
 		ColumnModel oldModel = null;
 		ColumnModel newModel = null;
 		ColumnChangeDetails changeOne = new ColumnChangeDetails(oldModel, newModel);
+		assertEquals("ColumnChange [oldColumn=null, newColumn=null]", changeOne.toString());
 		List<ColumnModel> results = TableModelUtils.createListOfAllColumnModels(Lists.newArrayList(changeOne));
 		assertNotNull(results);
 		assertTrue(results.isEmpty());
@@ -1586,6 +1857,7 @@ public class TableModelUtilsTest {
 		ColumnModel oldModel = null;
 		ColumnModel newModel = columnOne;
 		ColumnChangeDetails changeOne = new ColumnChangeDetails(oldModel, newModel);
+		assertEquals("ColumnChange [oldColumn=null, newColumn=1]", changeOne.toString());
 		List<ColumnModel> results = TableModelUtils.createListOfAllColumnModels(Lists.newArrayList(changeOne));
 		assertNotNull(results);
 		assertEquals(1, results.size());
@@ -1597,6 +1869,7 @@ public class TableModelUtilsTest {
 		ColumnModel oldModel = columnOne;
 		ColumnModel newModel = null;
 		ColumnChangeDetails changeOne = new ColumnChangeDetails(oldModel, newModel);
+		assertEquals("ColumnChange [oldColumn=1, newColumn=null]", changeOne.toString());
 		List<ColumnModel> results = TableModelUtils.createListOfAllColumnModels(Lists.newArrayList(changeOne));
 		assertNotNull(results);
 		assertEquals(1, results.size());
@@ -1608,6 +1881,7 @@ public class TableModelUtilsTest {
 		ColumnModel oldModel = columnOne;
 		ColumnModel newModel = columnTwo;
 		ColumnChangeDetails changeOne = new ColumnChangeDetails(oldModel, newModel);
+		assertEquals("ColumnChange [oldColumn=1, newColumn=2]", changeOne.toString());
 		List<ColumnModel> results = TableModelUtils.createListOfAllColumnModels(Lists.newArrayList(changeOne));
 		assertNotNull(results);
 		assertEquals(2, results.size());
@@ -1667,5 +1941,20 @@ public class TableModelUtilsTest {
 		ColumnChange removeTwo = changes.get(1);
 		assertEquals(null, removeTwo.getNewColumnId());
 		assertEquals("2", removeTwo.getOldColumnId());
+	}
+
+	@Test
+	public void testCreateSelectColumn_givenColumnModelWithQuotedName(){
+		ColumnModel cm = new ColumnModel();
+		cm.setName("quoted\"Name\"");
+		cm.setColumnType(ColumnType.DOUBLE);
+		cm.setId("123");
+
+		SelectColumn selectColumn = TableModelUtils.createSelectColumn(cm);
+
+		assertNotNull(selectColumn);
+		assertEquals(cm.getName(), selectColumn.getName());
+		assertEquals(cm.getColumnType(), selectColumn.getColumnType());
+		assertEquals(cm.getId(), selectColumn.getId());
 	}
 }

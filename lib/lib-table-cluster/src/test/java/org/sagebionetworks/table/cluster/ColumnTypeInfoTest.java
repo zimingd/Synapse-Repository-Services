@@ -13,6 +13,7 @@ import org.junit.Test;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import com.google.common.collect.Sets;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 
 public class ColumnTypeInfoTest {
 	
@@ -22,7 +23,7 @@ public class ColumnTypeInfoTest {
 	public void before(){
 		useDepricatedUtf8ThreeBytes = false;
 	}
-	
+
 	@Test
 	public void testParseInteger(){
 		Object dbValue = ColumnTypeInfo.INTEGER.parseValueForDatabaseWrite("123");
@@ -164,7 +165,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = null;
 		String sql = ColumnTypeInfo.INTEGER.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT NULL COMMENT 'INTEGER'", sql);
+		assertEquals("BIGINT DEFAULT NULL COMMENT 'INTEGER'", sql);
 	}
 	
 	@Test
@@ -172,7 +173,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = "123";
 		String sql = ColumnTypeInfo.INTEGER.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT 123 COMMENT 'INTEGER'", sql);
+		assertEquals("BIGINT DEFAULT 123 COMMENT 'INTEGER'", sql);
 	}
 	
 	@Test
@@ -180,7 +181,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = null;
 		String sql = ColumnTypeInfo.FILEHANDLEID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT NULL COMMENT 'FILEHANDLEID'", sql);
+		assertEquals("BIGINT DEFAULT NULL COMMENT 'FILEHANDLEID'", sql);
 	}
 	
 	@Test
@@ -188,7 +189,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = "123";
 		String sql = ColumnTypeInfo.FILEHANDLEID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT 123 COMMENT 'FILEHANDLEID'", sql);
+		assertEquals("BIGINT DEFAULT 123 COMMENT 'FILEHANDLEID'", sql);
 	}
 	
 	@Test
@@ -196,7 +197,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = null;
 		String sql = ColumnTypeInfo.USERID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT NULL COMMENT 'USERID'", sql);
+		assertEquals("BIGINT DEFAULT NULL COMMENT 'USERID'", sql);
 	}
 	
 	@Test
@@ -204,7 +205,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = "123";
 		String sql = ColumnTypeInfo.USERID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT 123 COMMENT 'USERID'", sql);
+		assertEquals("BIGINT DEFAULT 123 COMMENT 'USERID'", sql);
 	}
 	
 	@Test
@@ -212,7 +213,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = null;
 		String sql = ColumnTypeInfo.DATE.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT NULL COMMENT 'DATE'", sql);
+		assertEquals("BIGINT DEFAULT NULL COMMENT 'DATE'", sql);
 	}
 	
 	@Test
@@ -220,7 +221,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = "123";
 		String sql = ColumnTypeInfo.DATE.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT 123 COMMENT 'DATE'", sql);
+		assertEquals("BIGINT DEFAULT 123 COMMENT 'DATE'", sql);
 	}
 	
 	@Test
@@ -228,7 +229,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = null;
 		String sql = ColumnTypeInfo.ENTITYID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT NULL COMMENT 'ENTITYID'", sql);
+		assertEquals("BIGINT DEFAULT NULL COMMENT 'ENTITYID'", sql);
 	}
 	
 	@Test
@@ -236,7 +237,7 @@ public class ColumnTypeInfoTest {
 		Long inputSize = null;
 		String defaultValue = "syn123";
 		String sql = ColumnTypeInfo.ENTITYID.toSql(inputSize, defaultValue, useDepricatedUtf8ThreeBytes);
-		assertEquals("BIGINT(20) DEFAULT 123 COMMENT 'ENTITYID'", sql);
+		assertEquals("BIGINT DEFAULT 123 COMMENT 'ENTITYID'", sql);
 	}
 	
 	@Test (expected=IllegalArgumentException.class)
@@ -396,6 +397,42 @@ public class ColumnTypeInfoTest {
 		String defaultValue = "123";
 		ColumnTypeInfo.STRING.appendDefaultValue(builder, defaultValue);
 		assertEquals("DEFAULT '123'", builder.toString());
+	}
+
+	@Test
+	public void testAppendDefault_StringList(){
+		StringBuilder builder = new StringBuilder();
+		String defaultValue = "[\"a\", \"b\", \"c\"]";
+		ColumnTypeInfo.STRING_LIST.appendDefaultValue(builder, defaultValue);
+		assertEquals("DEFAULT ('[\"a\",\"b\",\"c\"]')", builder.toString());
+	}
+
+	/**
+	 * If an empty list is the default value, it should be converted to a null default value
+	 * Newly created column models should already prevent an empty list from being assigned as
+	 * the default value, but there exists legacy column models in the database before this
+	 * was enforced
+	 */
+	@Test
+	public void testAppendDefault_EmptyList(){
+		String defaultValue = "[]";
+		for(ColumnTypeInfo typeInfo : ColumnTypeInfo.values()){
+			if (ColumnTypeListMappings.isList(typeInfo.getType())){
+				StringBuilder builder = new StringBuilder();
+				typeInfo.appendDefaultValue(builder, defaultValue);
+				assertEquals("DEFAULT NULL", builder.toString());
+			}
+		}
+
+	}
+
+
+	@Test
+	public void testAppendDefault_IntegerList(){
+		StringBuilder builder = new StringBuilder();
+		String defaultValue = "[1, 2, 3]";
+		ColumnTypeInfo.INTEGER_LIST.appendDefaultValue(builder, defaultValue);
+		assertEquals("DEFAULT ('[1,2,3]')", builder.toString());
 	}
 	
 	@Test

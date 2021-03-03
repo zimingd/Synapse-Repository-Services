@@ -3,10 +3,13 @@ package org.sagebionetworks.repo.model.jdo;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
 import org.sagebionetworks.repo.model.DatastoreException;
+import org.sagebionetworks.repo.model.NodeConstants;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.util.ValidateArgument;
 
 /**
@@ -20,7 +23,7 @@ import org.sagebionetworks.util.ValidateArgument;
 public class KeyFactory {
 	
 	public static final String IS_NOT_A_VALID_SYNAPSE_ID_SUFFIX = " is not a valid Synapse ID.";
-	public static final Long ROOT_ID = new Long(4489);
+	public static final Long ROOT_ID = NodeConstants.BOOTSTRAP_NODES.ROOT.getId();
 	public static final String SYN_ROOT_ID = KeyFactory.keyToString(ROOT_ID);
 
 	/**
@@ -73,6 +76,16 @@ public class KeyFactory {
 		}
 		return resutls;
 	}
+	
+	/**
+	 * Given a single string return singleton long list.
+	 * @param id
+	 * @return
+	 * @throws DatastoreException
+	 */
+	public static List<Long> stringToKeySingletonList(String id) throws DatastoreException {
+		return Collections.singletonList(stringToKey(id));
+	}
 
 	/**
 	 * Decodes an application/x-www-form-urlencoded string encoded in UTF-8.
@@ -122,5 +135,16 @@ public class KeyFactory {
 			return two == null ? 0 : -1;
 		}
 		return two == null ? 1 : KeyFactory.stringToKey(one).compareTo(KeyFactory.stringToKey(two));
+	}
+
+	/**
+	 * Create an IdAndVersion for the given entity id and optional version.
+	 * @param entityId
+	 * @param versionNumber
+	 * @return
+	 */
+	public static IdAndVersion idAndVersion(String entityId, Long versionNumber) {
+		ValidateArgument.required(entityId, "entityId");
+		return IdAndVersion.newBuilder().setId(stringToKey(entityId)).setVersion(versionNumber).build();
 	}
 }

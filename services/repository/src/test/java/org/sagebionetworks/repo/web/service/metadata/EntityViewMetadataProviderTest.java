@@ -1,47 +1,50 @@
 package org.sagebionetworks.repo.web.service.metadata;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.sagebionetworks.repo.manager.table.TableViewManager;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
+import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.table.EntityView;
+import org.sagebionetworks.repo.model.table.ViewEntityType;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.google.common.collect.Lists;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class EntityViewMetadataProviderTest {
+	
 	@Mock
-	TableViewManager mockFileViewManager;
+	private TableViewManager mockFileViewManager;
 	
-	EntityViewMetadataProvider provider;
+	@InjectMocks
+	private EntityViewMetadataProvider provider;
 	
-	String entityId;
-	EntityView table;
-	List<String> columnIds;
-	List<String> scopeIds;
+	private String entityId;
+	private EntityView table;
+	private List<String> columnIds;
+	private List<String> scopeIds;
 	
-	UserInfo userInfo;
-	ViewType viewType;
-	ViewScope scope;
+	private UserInfo userInfo;
+	private ViewType viewType;
+	private ViewScope scope;
 	
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
-		provider = new EntityViewMetadataProvider();
-		ReflectionTestUtils.setField(provider, "fileViewManager", mockFileViewManager);
-		
 		columnIds = Lists.newArrayList("42");
 		scopeIds = Lists.newArrayList("456");
 		viewType = ViewType.file;
@@ -54,7 +57,7 @@ public class EntityViewMetadataProviderTest {
 		
 		userInfo = new UserInfo(false, 55L);
 		
-		scope = EntityViewMetadataProvider.createViewScope(table);
+		scope = provider.createViewScope(userInfo, table);
 	}
 
 	@Test
@@ -76,19 +79,22 @@ public class EntityViewMetadataProviderTest {
 	public void testAddTypeSpecificMetadata(){
 		EntityView testEntity = new EntityView();
 		testEntity.setId(entityId);
-		when(mockFileViewManager.getTableSchema(entityId)).thenReturn(columnIds);
+		testEntity.setVersionNumber(11L);
+		IdAndVersion idAndVersion = KeyFactory.idAndVersion(testEntity.getId(), testEntity.getVersionNumber());
+		when(mockFileViewManager.getViewSchemaIds(idAndVersion)).thenReturn(columnIds);
 		provider.addTypeSpecificMetadata(testEntity, null, null); //the other parameters are not used at all
-		verify(mockFileViewManager).getTableSchema(entityId);
+		verify(mockFileViewManager).getViewSchemaIds(idAndVersion);
 		assertEquals(columnIds, testEntity.getColumnIds());
 	}
 	
 	@Test
 	public void testCreateViewScopeWithType() {
-		ViewScope scope = EntityViewMetadataProvider.createViewScope(table);
+		ViewScope scope = provider.createViewScope(userInfo, table);
 		assertNotNull(scope);
 		assertEquals(viewType, scope.getViewType());
 		assertEquals(scopeIds, scope.getScope());
 		assertEquals(null, scope.getViewTypeMask());
+		assertEquals(ViewEntityType.entityview, scope.getViewEntityType());
 	}
 	
 	@Test
@@ -96,18 +102,23 @@ public class EntityViewMetadataProviderTest {
 		Long mask = new Long(0x10);
 		table.setViewTypeMask(mask);
 		table.setType(null);
-		ViewScope scope = EntityViewMetadataProvider.createViewScope(table);
+		ViewScope scope = provider.createViewScope(userInfo, table);
 		assertNotNull(scope);
 		assertEquals(null, scope.getViewType());
 		assertEquals(scopeIds, scope.getScope());
 		assertEquals(mask, scope.getViewTypeMask());
+		assertEquals(ViewEntityType.entityview, scope.getViewEntityType());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testUpdateViewWithNewVersion() {
 		boolean wasNewVersionCreated = true;
-		// call under test
-		provider.entityUpdated(userInfo, table, wasNewVersionCreated);
+		IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> {
+			// call under test
+			provider.entityUpdated(userInfo, table, wasNewVersionCreated);
+		});
+		
+		assertEquals("A view version can only be created by creating a view snapshot.", ex.getMessage());
 	}
 
 }

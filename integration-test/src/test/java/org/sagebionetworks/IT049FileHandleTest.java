@@ -1,25 +1,33 @@
 package org.sagebionetworks;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.commons.collections4.IterableUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.sagebionetworks.aws.AwsClientFactory;
+import org.sagebionetworks.aws.SynapseS3Client;
 import org.sagebionetworks.client.SynapseAdminClient;
 import org.sagebionetworks.client.SynapseAdminClientImpl;
 import org.sagebionetworks.client.SynapseClient;
@@ -28,9 +36,12 @@ import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
+import org.sagebionetworks.googlecloud.SynapseGoogleCloudClientFactory;
+import org.sagebionetworks.googlecloud.SynapseGoogleCloudStorageClient;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadRequest;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadResponse;
+import org.sagebionetworks.repo.model.file.CloudProviderFileHandleInterface;
 import org.sagebionetworks.repo.model.file.ExternalFileHandle;
 import org.sagebionetworks.repo.model.file.ExternalObjectStoreFileHandle;
 import org.sagebionetworks.repo.model.file.ExternalObjectStoreUploadDestination;
@@ -40,6 +51,7 @@ import org.sagebionetworks.repo.model.file.FileDownloadSummary;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
+import org.sagebionetworks.repo.model.file.GoogleCloudFileHandle;
 import org.sagebionetworks.repo.model.file.MultipartUploadRequest;
 import org.sagebionetworks.repo.model.file.MultipartUploadStatus;
 import org.sagebionetworks.repo.model.file.ProxyFileHandle;
@@ -48,7 +60,9 @@ import org.sagebionetworks.repo.model.file.S3UploadDestination;
 import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
 import org.sagebionetworks.repo.model.file.UploadType;
+import org.sagebionetworks.repo.model.project.ExternalGoogleCloudStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ExternalObjectStorageLocationSetting;
+import org.sagebionetworks.repo.model.project.ExternalS3StorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ExternalStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ProjectSetting;
 import org.sagebionetworks.repo.model.project.ProjectSettingsType;
@@ -58,8 +72,11 @@ import org.sagebionetworks.repo.model.project.StorageLocationSetting;
 import org.sagebionetworks.repo.model.project.UploadDestinationListSetting;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
+import org.sagebionetworks.util.ContentDispositionUtils;
 import org.sagebionetworks.utils.MD5ChecksumHelper;
 
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.google.cloud.storage.StorageException;
 import com.google.common.collect.Lists;
 
 public class IT049FileHandleTest {
@@ -70,13 +87,24 @@ public class IT049FileHandleTest {
 	
 	private static final long MAX_WAIT_MS = 1000*10; // 10 sec
 	private static final String FILE_NAME = "LittleImage.png";
+	private static final String LARGE_IMAGE_FILE_NAME = "LargeImage.jpg";
 
 	private List<FileHandle> toDelete = null;
 	private File imageFile;
+	private File largeImageFile;
 	private Project project;
 
-	@BeforeClass
+	// Hard-coded dev test bucket
+	private String googleCloudBucket = "dev.test.gcp-storage.sagebase.org";
+
+	private static StackConfiguration config;
+	private static SynapseGoogleCloudStorageClient googleCloudStorageClient;
+
+	private static SynapseS3Client synapseS3Client;
+
+	@BeforeAll
 	public static void beforeClass() throws Exception {
+		config = StackConfigurationSingleton.singleton();
 		// Create a user
 		adminSynapse = new SynapseAdminClientImpl();
 		SynapseClientHelper.setEndpoints(adminSynapse);
@@ -86,31 +114,40 @@ public class IT049FileHandleTest {
 		
 		synapse = new SynapseClientImpl();
 		userToDelete = SynapseClientHelper.createUser(adminSynapse, synapse);
+
+		synapseS3Client = AwsClientFactory.createAmazonS3Client();
+		if (config.getGoogleCloudEnabled()) {
+			googleCloudStorageClient = SynapseGoogleCloudClientFactory.createGoogleCloudStorageClient();
+		}
 	}
 	
-	@Before
+	@BeforeEach
 	public void before() throws SynapseException {
 		adminSynapse.clearAllLocks();
-		toDelete = new ArrayList<FileHandle>();
+		toDelete = new ArrayList<>();
 		// Get the image file from the classpath.
 		URL url = IT049FileHandleTest.class.getClassLoader().getResource("images/"+FILE_NAME);
 		imageFile = new File(url.getFile().replaceAll("%20", " "));
+		URL largeImageUrl = IT049FileHandleTest.class.getClassLoader().getResource("images/"+LARGE_IMAGE_FILE_NAME);
+		largeImageFile = new File(largeImageUrl.getFile().replaceAll("%20", " "));
 		project = new Project();
 		project = synapse.createEntity(project);
 	}
 
-	@After
+	@AfterEach
 	public void after() throws Exception {
 		for (FileHandle handle: toDelete) {
 			try {
 				synapse.deleteFileHandle(handle.getId());
-			} catch (SynapseNotFoundException e) {
-			} catch (SynapseClientException e) { }
+			} catch (SynapseNotFoundException | SynapseClientException e) {
+				// Ignore exceptions
+			}
 		}
+
 		synapse.deleteEntity(project, true);
 	}
 	
-	@AfterClass
+	@AfterAll
 	public static void afterClass() throws Exception {
 		try {
 			adminSynapse.deleteUser(userToDelete);
@@ -123,7 +160,7 @@ public class IT049FileHandleTest {
 		assertTrue(imageFile.exists());
 		String expectedMD5 = MD5ChecksumHelper.getMD5Checksum(imageFile);
 
-		S3FileHandle handle = synapse.multipartUpload(imageFile, null, true, false);
+		CloudProviderFileHandleInterface handle = synapse.multipartUpload(imageFile, null, true, false);
 		toDelete.add(handle);
 		System.out.println(handle);
 		assertEquals("image/png", handle.getContentType());
@@ -136,7 +173,7 @@ public class IT049FileHandleTest {
 		while(handle.getPreviewId() == null){
 			System.out.println("Waiting for a preview to be created...");
 			Thread.sleep(1000);
-			assertTrue("Timed out waiting for a preview image to be created.", (System.currentTimeMillis()-start) < MAX_WAIT_MS);
+			assertTrue((System.currentTimeMillis()-start) < MAX_WAIT_MS, "Timed out waiting for a preview image to be created.");
 			handle = (S3FileHandle) synapse.getRawFileHandle(handle.getId());
 		}
 		// Get the preview file handle.
@@ -151,7 +188,7 @@ public class IT049FileHandleTest {
 		while(handle.getPreviewId() == null){
 			System.out.println("Waiting for a preview to be recreated...");
 			Thread.sleep(1000);
-			assertTrue("Timed out waiting for a preview image to be created.", (System.currentTimeMillis()-start) < MAX_WAIT_MS);
+			assertTrue((System.currentTimeMillis()-start) < MAX_WAIT_MS, "Timed out waiting for a preview image to be created.");
 			handle = (S3FileHandle) synapse.getRawFileHandle(handle.getId());
 		}
 		preview = (S3FileHandle) synapse.getRawFileHandle(handle.getPreviewId());
@@ -268,7 +305,7 @@ public class IT049FileHandleTest {
 		
 		// Create a ProxyFileHandle
 		ProxyFileHandle handle = new ProxyFileHandle();
-		handle.setContentMd5("md5");
+		handle.setContentMd5("0123456789abcdef0123456789abcdef");
 		handle.setContentSize(123L);
 		handle.setContentType("text/plain");
 		handle.setFileName("barFoo.txt");
@@ -295,7 +332,7 @@ public class IT049FileHandleTest {
 		
 		// Create a ProxyFileHandle
 		ProxyFileHandle handle = new ProxyFileHandle();
-		handle.setContentMd5("md5");
+		handle.setContentMd5("0123456789abcdef0123456789abcdef");
 		handle.setContentSize(123L);
 		handle.setContentType("text/plain");
 		handle.setFileName("barFoo.txt");
@@ -346,7 +383,7 @@ public class IT049FileHandleTest {
 		ExternalObjectStoreFileHandle fileHandle = new ExternalObjectStoreFileHandle();
 		fileHandle.setFileKey(uploadDestination.getKeyPrefixUUID() + "/asdf.txt");
 		fileHandle.setStorageLocationId(storageLocationSetting.getStorageLocationId());
-		fileHandle.setContentMd5("md5");
+		fileHandle.setContentMd5("0123456789abcdef0123456789abcdef");
 		fileHandle.setContentSize(1234L);
 		fileHandle.setContentType("text/plain");
 		ExternalObjectStoreFileHandle createdFileHandle = synapse.createExternalObjectStoreFileHandle(fileHandle);
@@ -472,7 +509,7 @@ public class IT049FileHandleTest {
 			} catch (SynapseResultNotReadyException e) {
 				System.out.println("Waiting for job: "+e.getJobStatus());
 			}
-			assertTrue("Timed out waiting for bulk download job.",System.currentTimeMillis() - start < MAX_WAIT_MS);
+			assertTrue(System.currentTimeMillis() - start < MAX_WAIT_MS, "Timed out waiting for bulk download job.");
 			Thread.sleep(2000);
 		}
 	}
@@ -482,11 +519,11 @@ public class IT049FileHandleTest {
 		assertNotNull(imageFile);
 		assertTrue(imageFile.exists());
 		String expectedMD5 = MD5ChecksumHelper.getMD5Checksum(imageFile);
-		// upload the little image using mutli-part upload
+		// upload the little image using multi-part upload
 		Long storageLocationId = null;
 		Boolean generatePreview = false;
 		Boolean forceRestart = null;
-		S3FileHandle result = synapse.multipartUpload(this.imageFile, storageLocationId, generatePreview, forceRestart);
+		CloudProviderFileHandleInterface result = synapse.multipartUpload(this.imageFile, storageLocationId, generatePreview, forceRestart);
 		assertNotNull(result);
 		toDelete.add(result);
 		assertNotNull(result.getFileName());
@@ -523,5 +560,210 @@ public class IT049FileHandleTest {
 		statusAgain = synapse.startMultipartUpload(request, forceRestart);
 		assertNotNull(statusAgain);
 		assertFalse(startStatus.getUploadId().equals(statusAgain.getUploadId()));
+	}
+
+	@Test
+	public void testCreateExternalS3FileHandleFromExistingFile() throws Exception {
+		assertNotNull(imageFile);
+		assertTrue(imageFile.exists());
+		String md5 = MD5ChecksumHelper.getMD5Checksum(imageFile);
+
+		// Upload the owner.txt to S3 so we can create the external storage location
+		String baseKey = "integration-test/IT049FileHandleTest/testCreateExternalS3FileHandleFromExistingFile/" + UUID.randomUUID().toString();
+		uploadOwnerTxtToS3(config.getS3Bucket(), baseKey, synapse.getUserProfile(userToDelete.toString()).getUserName());
+		String key = baseKey + "/" + FILE_NAME;
+
+		// upload the little image to S3, but not through Synapse
+		putToS3WaitForConsistency(config.getS3Bucket(), key, imageFile);
+
+		// Create the storage location setting
+		ExternalS3StorageLocationSetting storageLocationSetting = new ExternalS3StorageLocationSetting();
+		storageLocationSetting.setBucket(config.getS3Bucket());
+		storageLocationSetting.setBaseKey(baseKey);
+		storageLocationSetting.setUploadType(UploadType.S3);
+		storageLocationSetting = synapse.createStorageLocationSetting(storageLocationSetting);
+
+		S3FileHandle fh = new S3FileHandle();
+		fh.setStorageLocationId(storageLocationSetting.getStorageLocationId());
+		fh.setBucketName(config.getS3Bucket());
+		fh.setKey(key);
+		fh.setContentMd5(md5);
+
+		// Method under test
+		S3FileHandle result = synapse.createExternalS3FileHandle(fh);
+		assertNotNull(result);
+		toDelete.add(result);
+		assertNotNull(result.getFileName());
+	}
+
+	// See PLFM-5769
+	@Test
+	public void testMultipartUploadToExternalS3() throws SynapseException, IOException, InterruptedException {
+		assertNotNull(largeImageFile);
+		assertTrue(largeImageFile.exists());
+		String expectedMD5 = MD5ChecksumHelper.getMD5Checksum(largeImageFile);
+
+		// Upload the owner.txt to S3 so we can create the external storage location
+		String baseKey = "integration-test/IT049FileHandleTest/testMultipartUploadToExternalS3/" + UUID.randomUUID().toString();
+
+		uploadOwnerTxtToS3(config.getS3Bucket(), baseKey, synapse.getUserProfile(userToDelete.toString()).getUserName());
+
+		// upload the little image using multi-part upload
+		ExternalS3StorageLocationSetting storageLocationSetting = new ExternalS3StorageLocationSetting();
+		storageLocationSetting.setBucket(config.getS3Bucket());
+		storageLocationSetting.setBaseKey(baseKey);
+		storageLocationSetting.setUploadType(UploadType.S3);
+		storageLocationSetting = synapse.createStorageLocationSetting(storageLocationSetting);
+
+		Boolean generatePreview = false;
+		Boolean forceRestart = null;
+		S3FileHandle result = (S3FileHandle) synapse.multipartUpload(this.largeImageFile, storageLocationSetting.getStorageLocationId(), generatePreview, forceRestart);
+		assertNotNull(result);
+		toDelete.add(result);
+		assertNotNull(result.getFileName());
+		assertEquals(expectedMD5, result.getContentMd5());
+	}
+
+	@Test
+	public void testMultipartUploadV2ToGoogleCloud() throws SynapseException, IOException, InterruptedException {
+		// Only run this test if Google Cloud is enabled.
+		Assumptions.assumeTrue(config.getGoogleCloudEnabled());
+		// We use the large image file to force an upload with more than one part. required to test part deletion
+		assertNotNull(largeImageFile);
+		assertTrue(largeImageFile.exists());
+		String expectedMD5 = MD5ChecksumHelper.getMD5Checksum(largeImageFile);
+
+		// Upload the owner.txt to Google Cloud so we can create the storage location
+		String baseKey = "integration-test/IT049FileHandleTest/testMultipartUploadV2ToGoogleCloud/" + UUID.randomUUID().toString();
+
+		uploadOwnerTxtToGoogleCloud(googleCloudBucket, baseKey, synapse.getUserProfile(userToDelete.toString()).getUserName());
+
+		// upload the little image using multi-part upload
+		ExternalGoogleCloudStorageLocationSetting storageLocationSetting = new ExternalGoogleCloudStorageLocationSetting();
+		storageLocationSetting.setBucket(googleCloudBucket);
+		storageLocationSetting.setBaseKey(baseKey);
+		storageLocationSetting.setUploadType(UploadType.GOOGLECLOUDSTORAGE);
+		storageLocationSetting = synapse.createStorageLocationSetting(storageLocationSetting);
+
+		Boolean generatePreview = false;
+		Boolean forceRestart = null;
+		GoogleCloudFileHandle result = (GoogleCloudFileHandle) synapse.multipartUpload(this.largeImageFile, storageLocationSetting.getStorageLocationId(), generatePreview, forceRestart);
+		assertNotNull(result);
+		toDelete.add(result);
+		assertNotNull(result.getFileName());
+		assertEquals(expectedMD5, result.getContentMd5());
+
+		// Verify that all parts have been deleted
+		assertTrue(IterableUtils.isEmpty(googleCloudStorageClient.getObjects(result.getBucketName(), result.getKey() + "/")));
+	}
+
+	public void testCreateExternalGoogleCloudFileHandleFromExistingFile() throws Exception {
+		// Only run this test if Google Cloud is enabled.
+		Assumptions.assumeTrue(config.getGoogleCloudEnabled());
+
+		assertNotNull(imageFile);
+		assertTrue(imageFile.exists());
+		String md5 = MD5ChecksumHelper.getMD5Checksum(imageFile);
+
+		// Upload the owner.txt to Google Cloud so we can create the external storage location
+		String baseKey = "integration-test/IT049FileHandleTest/testCreateExternalGoogleCloudFileHandleFromExistingFile/" + UUID.randomUUID().toString();
+		uploadOwnerTxtToGoogleCloud(googleCloudBucket, baseKey, synapse.getUserProfile(userToDelete.toString()).getUserName());
+
+		String key = baseKey + "/" + FILE_NAME;
+		// upload the little image to Google Cloud, but not through Synapse
+		putToGoogleCloudWaitForConsistency(googleCloudBucket, key, imageFile);
+
+		// Create the storage location setting
+		ExternalGoogleCloudStorageLocationSetting storageLocationSetting = new ExternalGoogleCloudStorageLocationSetting();
+		storageLocationSetting.setBucket(googleCloudBucket);
+		storageLocationSetting.setBaseKey(baseKey);
+		storageLocationSetting.setUploadType(UploadType.GOOGLECLOUDSTORAGE);
+		storageLocationSetting = synapse.createStorageLocationSetting(storageLocationSetting);
+
+		GoogleCloudFileHandle fh = new GoogleCloudFileHandle();
+		fh.setStorageLocationId(storageLocationSetting.getStorageLocationId());
+		fh.setBucketName(googleCloudBucket);
+		fh.setKey(key);
+		fh.setContentMd5(md5);
+
+		// Method under test
+		GoogleCloudFileHandle result = synapse.createExternalGoogleCloudFileHandle(fh);
+		assertNotNull(result);
+		toDelete.add(result);
+		assertNotNull(result.getFileName());
+	}
+
+	private static void putToS3WaitForConsistency(String bucket, String key, File file) throws InterruptedException {
+		synapseS3Client.putObject(bucket, key, file);
+		long start = System.currentTimeMillis();
+		long waitTimeMillis = 100;
+		while (!synapseS3Client.doesObjectExist(bucket, key) && (System.currentTimeMillis()-start) < MAX_WAIT_MS) {
+			Thread.sleep(waitTimeMillis);
+			waitTimeMillis *= 2;
+		}
+		assertTrue(synapseS3Client.doesObjectExist(bucket, key), "Failed to create " + key + " in bucket " + bucket);
+	}
+
+	private static void putToS3WaitForConsistency(String bucket, String key, InputStream contents, ObjectMetadata metadata) throws InterruptedException {
+		synapseS3Client.putObject(bucket, key, contents, metadata);
+		long start = System.currentTimeMillis();
+		long waitTimeMillis = 100;
+		while (!synapseS3Client.doesObjectExist(bucket, key) && (System.currentTimeMillis()-start) < MAX_WAIT_MS) {
+			Thread.sleep(waitTimeMillis);
+			waitTimeMillis *= 2;
+		}
+		assertTrue(synapseS3Client.doesObjectExist(bucket, key), "Failed to create " + key + " in S3 bucket " + bucket);
+	}
+
+	private static void putToGoogleCloudWaitForConsistency(String bucket, String key, File contents) throws InterruptedException, IOException {
+		googleCloudStorageClient.putObject(bucket, key, contents);
+		long start = System.currentTimeMillis();
+		long waitTimeMillis = 100;
+		boolean objectExists = false;
+		while (!objectExists && (System.currentTimeMillis()-start) < MAX_WAIT_MS) {
+			try {
+				googleCloudStorageClient.getObject(bucket, key);
+				objectExists = true;
+			} catch (StorageException e) {
+				assertEquals(404, e.getCode(), "Unknown Google Cloud Storage error: " + e.getMessage());
+			}
+			Thread.sleep(waitTimeMillis);
+			waitTimeMillis *= 2;
+		}
+		assertTrue(objectExists, "Failed to create " + key + " in Google Cloud bucket " + bucket);
+	}
+
+	private static void putToGoogleCloudWaitForConsistency(String bucket, String key, InputStream contents) throws InterruptedException, IOException {
+		googleCloudStorageClient.putObject(bucket, key, contents);
+		long start = System.currentTimeMillis();
+		long waitTimeMillis = 100;
+		boolean objectExists = false;
+		while (!objectExists && (System.currentTimeMillis()-start) < MAX_WAIT_MS) {
+			try {
+				googleCloudStorageClient.getObject(bucket, key);
+				objectExists = true;
+			} catch (StorageException e) {
+				assertEquals(404, e.getCode(), "Unknown Google Cloud Storage error: " + e.getMessage());
+			}
+			Thread.sleep(waitTimeMillis);
+			waitTimeMillis *= 2;
+		}
+		assertTrue(objectExists, "Failed to create " + key + " in Google Cloud bucket " + bucket);
+	}
+
+	private static void uploadOwnerTxtToS3(String bucket, String baseKey, String username) throws InterruptedException {
+		byte[] bytes = username.getBytes(StandardCharsets.UTF_8);
+
+		ObjectMetadata om = new ObjectMetadata();
+		om.setContentType("text/plain");
+		om.setContentEncoding("UTF-8");
+		om.setContentDisposition(ContentDispositionUtils.getContentDispositionValue(baseKey));
+		om.setContentLength(bytes.length);
+		putToS3WaitForConsistency(bucket, baseKey + "/owner.txt", new ByteArrayInputStream(bytes), om);
+	}
+
+	private static void uploadOwnerTxtToGoogleCloud(String bucket, String baseKey, String username) throws InterruptedException, IOException {
+		// The Google Cloud service account must have write access to the bucket for this call to succeed
+		putToGoogleCloudWaitForConsistency(bucket, baseKey + "/owner.txt", new ByteArrayInputStream(username.getBytes(StandardCharsets.UTF_8)));
 	}
 }

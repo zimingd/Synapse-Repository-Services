@@ -9,10 +9,8 @@
 		<artifactId>lib</artifactId>
 		<version>develop-SNAPSHOT</version>
 	</parent>
-
-	<groupId>org.sagebionetworks</groupId>
+	
 	<artifactId>lib-models</artifactId>
-	<version>develop-SNAPSHOT</version>
 	<packaging>jar</packaging>
 	<name>Platform Repository Model Objects</name>
 
@@ -25,6 +23,11 @@
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
 		</dependency>
 
 		<dependency>
@@ -47,7 +50,7 @@
 			<artifactId>schema-to-pojo-core</artifactId>
 		</dependency>
 		
-
+		
 		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-core</artifactId>
@@ -83,6 +86,11 @@
 			<artifactId>junit-vintage-engine</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>nl.jqno.equalsverifier</groupId>
+			<artifactId>equalsverifier</artifactId>
+			<scope>test</scope>
+		</dependency>
 		
 		<!-- Spring test -->
 		<dependency>
@@ -95,6 +103,12 @@
 			<artifactId>spring-aop</artifactId>
 			<scope>test</scope>
 		</dependency>
+		
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt</artifactId>
+		</dependency>
+		
 	</dependencies>
 
 	<build>
@@ -102,4 +116,8 @@
 		</plugins>
 	</build>
 
+	<properties>
+		<jacoco.branch.minumum>0.10</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.20</jacoco.line.minumum>
+	</properties>
 </project>

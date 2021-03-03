@@ -5,13 +5,15 @@ package org.sagebionetworks.table.cluster;
  *
  */
 public enum MySqlColumnType {
-	BIGINT(true),
+	BIGINT(false),
 	VARCHAR(true),
 	DOUBLE(false),
 	BOOLEAN(false),
 	MEDIUMTEXT(false),
-	TINYINT(true),
-	ENUM(false);
+	TINYINT(false),
+	ENUM(false),
+	JSON(false);
+
 	
 	boolean hasSize;
 	
@@ -37,7 +39,8 @@ public enum MySqlColumnType {
 		String[] split = typeString.split("\\(");
 		return valueOf(split[0].toUpperCase());
 	}
-	
+
+
 	/**
 	 * Parse the size from the given type string.
 	 * 

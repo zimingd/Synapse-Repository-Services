@@ -1,13 +1,12 @@
 package org.sagebionetworks.repo.web.controller;
 
-import static org.sagebionetworks.repo.web.UrlHelpers.ID_PATH_VARIABLE;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
 
 import java.io.IOException;
 
 import javax.servlet.http.HttpServletRequest;
 
-import org.sagebionetworks.evaluation.model.SubmissionContributor;
-import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.AsynchJobFailedException;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
@@ -16,21 +15,21 @@ import org.sagebionetworks.repo.model.EntityId;
 import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.NotReadyException;
 import org.sagebionetworks.repo.model.ObjectType;
-import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.asynch.AsynchronousJobStatus;
 import org.sagebionetworks.repo.model.auth.NewIntegrationTestUser;
+import org.sagebionetworks.repo.model.feature.Feature;
+import org.sagebionetworks.repo.model.feature.FeatureStatus;
 import org.sagebionetworks.repo.model.message.ChangeMessages;
 import org.sagebionetworks.repo.model.message.FireMessagesResult;
 import org.sagebionetworks.repo.model.message.PublishResults;
 import org.sagebionetworks.repo.model.migration.AsyncMigrationRequest;
 import org.sagebionetworks.repo.model.migration.IdGeneratorExport;
-import org.sagebionetworks.repo.model.quiz.PassingRecord;
-import org.sagebionetworks.repo.model.quiz.QuizResponse;
+import org.sagebionetworks.repo.model.oauth.OAuthClient;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
-import org.sagebionetworks.repo.web.service.EntityServiceImpl;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -59,6 +58,7 @@ public class AdministrationController {
 	/**
 	 * @return the current status of the stack
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = {
 			UrlHelpers.ADMIN_STACK_STATUS,
@@ -83,6 +83,7 @@ public class AdministrationController {
 	 * @throws IOException
 	 * @throws ConflictingUpdateException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { 
 			UrlHelpers.ADMIN_STACK_STATUS
@@ -96,6 +97,7 @@ public class AdministrationController {
 		return serviceProvider.getAdministrationService().updateStatusStackStatus(userId, header, request);
 	}
 	
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.CHANGE_MESSAGES }, method = RequestMethod.GET)
 	public @ResponseBody
@@ -113,6 +115,7 @@ public class AdministrationController {
 		return serviceProvider.getAdministrationService().listChangeMessages(userId, startChangeNumber, typeEnum, limit);
 	}
 	
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.REBROADCAST_MESSAGES }, method = RequestMethod.POST)
 	public @ResponseBody
@@ -134,6 +137,7 @@ public class AdministrationController {
 	/**
 	 * Refires all the change messages
 	 **/
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.REFIRE_MESSAGES }, method = RequestMethod.GET)
 	public @ResponseBody
@@ -149,6 +153,7 @@ public class AdministrationController {
 	/**
 	 * Get current change message number
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.CURRENT_NUMBER }, method = RequestMethod.GET)
 	public @ResponseBody
@@ -165,6 +170,7 @@ public class AdministrationController {
 	 * @throws NotFoundException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.CREATE_OR_UPDATE }, method = RequestMethod.POST)
 	public @ResponseBody
@@ -177,6 +183,7 @@ public class AdministrationController {
 	/**
 	 * Clears the Synapse DOI table.
 	 */
+	@RequiredScope({modify})
 	@RequestMapping(value = {UrlHelpers.ADMIN_DOI_CLEAR}, method = RequestMethod.DELETE)
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void
@@ -189,6 +196,7 @@ public class AdministrationController {
 	 * Creates a user with specific state to be used for integration testing.
 	 * If the user already exists, just returns the existing one.
 	 */
+	@RequiredScope({view,modify})
 	@RequestMapping(value = {UrlHelpers.ADMIN_USER}, method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.OK)
 	public @ResponseBody EntityId createOrGetIntegrationTestUser(
@@ -201,6 +209,7 @@ public class AdministrationController {
 	/**
 	 * Deletes a user.  All FKs must be deleted before this will succeed
 	 */
+	@RequiredScope({modify})
 	@RequestMapping(value = {UrlHelpers.ADMIN_USER_ID}, method = RequestMethod.DELETE)
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteUser(
@@ -210,6 +219,7 @@ public class AdministrationController {
 		serviceProvider.getAdministrationService().deleteUser(userId, id);
 	}
 	
+	@RequiredScope({modify})
 	@RequestMapping(value = { UrlHelpers.ADMIN_TABLE_REBUILD }, method = RequestMethod.GET)
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void rebuildTable(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
@@ -217,6 +227,7 @@ public class AdministrationController {
 		serviceProvider.getAdministrationService().rebuildTable(userId, tableId);
 	}
 
+	@RequiredScope({modify})
 	@RequestMapping(value = {UrlHelpers.ADMIN_CLEAR_LOCKS}, method = RequestMethod.DELETE)
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void clearLocks(
@@ -233,6 +244,7 @@ public class AdministrationController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ADMIN_ASYNCHRONOUS_JOB, method = RequestMethod.POST)
 	public @ResponseBody
@@ -251,6 +263,7 @@ public class AdministrationController {
 	 * @throws AsynchJobFailedException
 	 * @throws NotReadyException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ADMIN_ASYNCHRONOUS_JOB_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -269,6 +282,7 @@ public class AdministrationController {
 	 * @throws AsynchJobFailedException
 	 * @throws NotReadyException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ADMIN_ID_GEN_EXPORT, method = RequestMethod.GET)
 	public @ResponseBody
@@ -276,4 +290,75 @@ public class AdministrationController {
 			throws NotFoundException, AsynchJobFailedException, NotReadyException {
 		return serviceProvider.getAdministrationService().createIdGeneratorExport(userId);
 	}
+	
+	/**
+	 * Changes the verified status of the OAuth client with the provided id. Only an administrator or a member of the ACT team can perform this operation.
+	 * 
+	 * @param userId
+	 * @param clientId The id of the client to verify
+	 * @param etag The etag of the client, this must match the current etag of the client
+	 * @param status The verified status to change to, default true
+	 * @return
+	 * @throws NotFoundException
+	 * @throws UnauthorizedException
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ADMIN_OAUTH_CLIENT_VERIFICATION, method = RequestMethod.PUT)
+	public @ResponseBody OAuthClient updateOAuthClientVerifiedStatus(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable String clientId,
+			@RequestParam(defaultValue = "true") Boolean status,
+			@RequestParam(required = true) String etag)
+			throws NotFoundException, UnauthorizedException {
+		return serviceProvider.getOpenIDConnectService().updateOpenIDConnectClientVerifiedStatus(userId, clientId, etag, status);
+	}
+
+	/**
+	 * Redacts all information about a user to comply with data removal requests.
+	 * @param userId Principal ID of the caller. Must be an administrator
+	 * @param principalId The principal ID of the user whose information should be cleared
+	 */
+	@RequiredScope({modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ADMIN_REDACT_USER, method = RequestMethod.POST)
+	public @ResponseBody void clearUserProfile(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+																	 @PathVariable Long principalId)
+			throws NotFoundException, UnauthorizedException {
+		serviceProvider.getPrincipalService().redactPrincipalInformation(userId, principalId);
+	}
+	
+	/**
+	 * Fetches the status of the given feature
+	 * 
+	 * @param userId
+	 * @param feature
+	 * @return
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ADMIN_FEATURE_STATUS, method = RequestMethod.GET)
+	public @ResponseBody FeatureStatus getFeatureStatus(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, 
+			@PathVariable("feature") Feature feature) {
+		return serviceProvider.getAdministrationService().getFeatureStatus(userId, feature);
+	}
+	
+	/**
+	 * Sets the status for the given feature
+	 * 
+	 * @param userId
+	 * @param feature
+	 * @param status
+	 * @return
+	 */
+	@RequiredScope({view, modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ADMIN_FEATURE_STATUS, method = RequestMethod.POST)
+	public @ResponseBody FeatureStatus setFeatureStatus(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, 
+			@PathVariable("feature") Feature feature,
+			@RequestBody FeatureStatus status) {
+		return serviceProvider.getAdministrationService().setFeatureStatus(userId, feature, status);
+	}
+
 }

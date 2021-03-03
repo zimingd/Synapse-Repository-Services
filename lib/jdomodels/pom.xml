@@ -110,6 +110,11 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
+			<groupId>org.sagebionetworks</groupId>
+			<artifactId>lib-schema-id</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>org.mockito</groupId>
 			<artifactId>mockito-core</artifactId>
 			<scope>test</scope>
@@ -188,12 +193,6 @@
 	<build>
 		<plugins>
 			<plugin>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<argLine>-Xmx512m -Xms128m</argLine>
-				</configuration>
-			</plugin>
-			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>exec-maven-plugin</artifactId>
 				<version>1.2.1</version>
@@ -216,6 +215,8 @@
 	</build>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<jacoco.branch.minumum>0.40</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.70</jacoco.line.minumum>
 	</properties>
 
 </project>

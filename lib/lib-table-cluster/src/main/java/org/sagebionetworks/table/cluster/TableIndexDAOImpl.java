@@ -1,75 +1,98 @@
 package org.sagebionetworks.table.cluster;
 
-import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_ENTITY_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_KEYS_PARAM_NAME;
 import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_KEY;
-import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_STRING_VALUE;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_OBJECT_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_STRING_LIST_VALUE;
 import static org.sagebionetworks.repo.model.table.TableConstants.ANNOTATION_REPLICATION_COL_TYPE;
 import static org.sagebionetworks.repo.model.table.TableConstants.BATCH_INSERT_REPLICATION_SYNC_EXP;
 import static org.sagebionetworks.repo.model.table.TableConstants.CRC_ALIAS;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_BENEFACTOR_ID;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_CRATED_BY;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_CRATED_ON;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_ETAG;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_FILE_ID;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_FILE_SIZE_BYTES;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_ID;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_IN_SYNAPSE_STORAGE;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_MODIFIED_BY;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_MODIFIED_ON;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_NAME;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_PARENT_ID;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_PROJECT_ID;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_TYPE;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_COL_VERSION;
-import static org.sagebionetworks.repo.model.table.TableConstants.ENTITY_REPLICATION_TABLE;
-import static org.sagebionetworks.repo.model.table.TableConstants.EXPIRES_PARAM;
-import static org.sagebionetworks.repo.model.table.TableConstants.ID_PARAMETER_NAME;
-import static org.sagebionetworks.repo.model.table.TableConstants.PARENT_ID_PARAMETER_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.EXCLUSION_LIST_PARAM_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.EXPIRES_PARAM_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.ID_PARAM_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBEJCT_REPLICATION_COL_ETAG;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_BENEFACTOR_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_CREATED_BY;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_CREATED_ON;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_FILE_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_FILE_MD5;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_FILE_SIZE_BYTES;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_IN_SYNAPSE_STORAGE;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_MODIFIED_BY;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_MODIFIED_ON;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_OBJECT_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_OBJECT_TYPE;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_PARENT_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_PROJECT_ID;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_SUBTYPE;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_COL_VERSION;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_REPLICATION_TABLE;
+import static org.sagebionetworks.repo.model.table.TableConstants.OBJECT_TYPE_PARAM_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.PARENT_ID_PARAM_NAME;
 import static org.sagebionetworks.repo.model.table.TableConstants.P_LIMIT;
 import static org.sagebionetworks.repo.model.table.TableConstants.P_OFFSET;
-import static org.sagebionetworks.repo.model.table.TableConstants.SELECT_ENTITY_CHILD_CRC;
-import static org.sagebionetworks.repo.model.table.TableConstants.SELECT_ENTITY_CHILD_ID_ETAG;
 import static org.sagebionetworks.repo.model.table.TableConstants.SELECT_NON_EXPIRED_IDS;
+import static org.sagebionetworks.repo.model.table.TableConstants.SELECT_OBJECT_CHILD_CRC;
+import static org.sagebionetworks.repo.model.table.TableConstants.SELECT_OBJECT_CHILD_ID_ETAG;
+import static org.sagebionetworks.repo.model.table.TableConstants.SUBTYPE_PARAM_NAME;
+import static org.sagebionetworks.repo.model.table.TableConstants.TRUNCATE_ANNOTATION_REPLICATION_TABLE;
+import static org.sagebionetworks.repo.model.table.TableConstants.TRUNCATE_OBJECT_REPLICATION_TABLE;
 import static org.sagebionetworks.repo.model.table.TableConstants.TRUNCATE_REPLICATION_SYNC_EXPIRATION_TABLE;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
+import org.json.JSONArray;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
-import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.IdAndEtag;
 import org.sagebionetworks.repo.model.dao.table.RowHandler;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.report.SynapseStorageProjectStats;
-import org.sagebionetworks.repo.model.table.AnnotationDTO;
 import org.sagebionetworks.repo.model.table.AnnotationType;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.model.table.ObjectAnnotationDTO;
+import org.sagebionetworks.repo.model.table.ObjectDataDTO;
+import org.sagebionetworks.repo.model.table.ObjectField;
 import org.sagebionetworks.repo.model.table.Row;
 import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.TableConstants;
+import org.sagebionetworks.repo.model.table.ViewObjectType;
+import org.sagebionetworks.repo.model.table.ViewScopeFilter;
+import org.sagebionetworks.repo.model.table.ViewScopeType;
 import org.sagebionetworks.table.cluster.SQLUtils.TableType;
+import org.sagebionetworks.table.cluster.metadata.ObjectFieldModelResolver;
+import org.sagebionetworks.table.cluster.metadata.ObjectFieldModelResolverFactory;
+import org.sagebionetworks.table.cluster.metadata.ObjectFieldTypeMapper;
 import org.sagebionetworks.table.cluster.utils.TableModelUtils;
 import org.sagebionetworks.table.model.Grouping;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 import org.sagebionetworks.util.Callback;
 import org.sagebionetworks.util.ValidateArgument;
+import org.sagebionetworks.util.csv.CSVWriterStream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -91,17 +114,23 @@ import com.google.common.collect.Sets;
 
 public class TableIndexDAOImpl implements TableIndexDAO {
 
-
-	private static final String SQL_SUM_FILE_SIZES = "SELECT SUM(" + ENTITY_REPLICATION_COL_FILE_SIZE_BYTES + ") FROM "
-			+ ENTITY_REPLICATION_TABLE + " WHERE " + ENTITY_REPLICATION_COL_ID + " IN (:rowIds)";
+	private static final String SQL_SUM_FILE_SIZES = "SELECT SUM(" + OBJECT_REPLICATION_COL_FILE_SIZE_BYTES + ")"
+			+ " FROM " + OBJECT_REPLICATION_TABLE 
+			+ " WHERE " + OBJECT_REPLICATION_COL_OBJECT_TYPE + " =:" + OBJECT_TYPE_PARAM_NAME 
+			+ " AND " + OBJECT_REPLICATION_COL_OBJECT_ID + " IN (:" +ID_PARAM_NAME+ ")";
 
 	public static final String SQL_SELECT_PROJECTS_BY_SIZE =
-			"SELECT t1."+ENTITY_REPLICATION_COL_PROJECT_ID + ", t2." + ENTITY_REPLICATION_COL_NAME + ", t1.PROJECT_SIZE_BYTES "
-		+ " FROM (SELECT " + ENTITY_REPLICATION_COL_PROJECT_ID + ", "
-					+ " SUM(" + ENTITY_REPLICATION_COL_FILE_SIZE_BYTES + ") AS PROJECT_SIZE_BYTES"
-					+ " FROM " + ENTITY_REPLICATION_TABLE + " WHERE " + ENTITY_REPLICATION_COL_IN_SYNAPSE_STORAGE+" = 1"
-					+ " GROUP BY " + ENTITY_REPLICATION_COL_PROJECT_ID + ") t1," + ENTITY_REPLICATION_TABLE + " t2"
-					+ " WHERE t1." + ENTITY_REPLICATION_COL_PROJECT_ID + " = t2." + ENTITY_REPLICATION_COL_ID
+			"SELECT t1."+OBJECT_REPLICATION_COL_PROJECT_ID + ", t2." + OBJECT_REPLICATION_COL_NAME + ", t1.PROJECT_SIZE_BYTES "
+			+ " FROM (SELECT " + OBJECT_REPLICATION_COL_PROJECT_ID + ", "
+					+ " SUM(" + OBJECT_REPLICATION_COL_FILE_SIZE_BYTES + ") AS PROJECT_SIZE_BYTES"
+					+ " FROM " + OBJECT_REPLICATION_TABLE 
+					+ " WHERE " 
+					+ OBJECT_REPLICATION_COL_OBJECT_TYPE + " = :" + OBJECT_TYPE_PARAM_NAME
+					+ " AND " + OBJECT_REPLICATION_COL_IN_SYNAPSE_STORAGE+" = 1"
+					+ " GROUP BY " + OBJECT_REPLICATION_COL_PROJECT_ID + ") t1," + OBJECT_REPLICATION_TABLE + " t2"
+					+ " WHERE"
+					+ " t2." + OBJECT_REPLICATION_COL_OBJECT_TYPE + " = :" + OBJECT_TYPE_PARAM_NAME
+					+ " AND t1." + OBJECT_REPLICATION_COL_PROJECT_ID + " = t2." + OBJECT_REPLICATION_COL_OBJECT_ID
 					+ " ORDER BY t1.PROJECT_SIZE_BYTES DESC";
 
 	/**
@@ -116,19 +145,24 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	private static final String SQL_SHOW_COLUMNS = "SHOW FULL COLUMNS FROM ";
 	private static final String FIELD = "Field";
 
-	private final DataSourceTransactionManager transactionManager;
-	private final TransactionTemplate writeTransactionTemplate;
-	private final TransactionTemplate readTransactionTemplate;
-	private final JdbcTemplate template;
+	private DataSourceTransactionManager transactionManager;
+	private TransactionTemplate writeTransactionTemplate;
+	private TransactionTemplate readTransactionTemplate;
+	private JdbcTemplate template;
+	private NamedParameterJdbcTemplate namedTemplate;
+	private ObjectFieldModelResolverFactory objectFieldModelResolverFactory;
+	
+	
+	@Autowired
+	public TableIndexDAOImpl(ObjectFieldModelResolverFactory objectFieldModelResolverFactory) {
+		this.objectFieldModelResolverFactory = objectFieldModelResolverFactory;
+	}
 
-	/**
-	 * The IoC constructor.
-	 * 
-	 * @param template
-	 * @param transactionManager
-	 */
-	public TableIndexDAOImpl(DataSource dataSource) {
-		super();
+	@Override
+	public void setDataSource(DataSource dataSource) {
+		if(template != null) {
+			throw new IllegalStateException("DataSource can only be set once");
+		}
 		this.transactionManager = new DataSourceTransactionManager(dataSource);
 		// This will manage transactions for calls that need it.
 		this.writeTransactionTemplate = createTransactionTemplate(this.transactionManager, false);
@@ -146,6 +180,7 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		this.template = new JdbcTemplate(dataSource);
 		// See comments above.
 		this.template.setFetchSize(Integer.MIN_VALUE);
+		this.namedTemplate = new NamedParameterJdbcTemplate(this.template);
 	}
 
 	private static TransactionTemplate createTransactionTemplate(DataSourceTransactionManager transactionManager, boolean readOnly) {
@@ -160,14 +195,33 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 
 	@Override
-	public boolean deleteTable(IdAndVersion tableId) {
-		String dropTableDML = SQLUtils.dropTableSQL(tableId, SQLUtils.TableType.INDEX);
-		try {
-			template.update(dropTableDML);
-			return true;
-		} catch (BadSqlGrammarException e) {
-			// This is thrown when the table does not exist
-			return false;
+	public void deleteTable(IdAndVersion tableId) {
+		boolean alterTemp = false;
+		deleteMultiValueTablesForTable(tableId, alterTemp);
+		template.update(SQLUtils.dropTableSQL(tableId, SQLUtils.TableType.INDEX));
+		deleteSecondaryTables(tableId);
+	}
+	
+	/**
+	 * Delete secondary table associated with the given tableId.
+	 * @param tableId
+	 */
+	void deleteSecondaryTables(IdAndVersion tableId) {
+		for(TableType type: SQLUtils.SECONDARY_TYPES){
+			String dropStatusTableDML = SQLUtils.dropTableSQL(tableId, type);
+			template.update(dropStatusTableDML);
+		}	
+	}
+	
+	/**
+	 * Delete all multi-value tables associated with the given tableId.
+	 * @param tableId
+	 * @param alterTemp
+	 */
+	void deleteMultiValueTablesForTable(IdAndVersion tableId, boolean alterTemp) {
+		List<String> tablesToDelete = getMultivalueColumnIndexTableNames(tableId, alterTemp);
+		for(String tableNames: tablesToDelete) {
+			template.update("DROP TABLE IF EXISTS "+tableNames);
 		}
 	}
 
@@ -251,18 +305,6 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 			return EMPTY_SCHEMA_MD5;
 		}
 	}
-
-	@Override
-	public void deleteSecondaryTables(IdAndVersion tableId) {
-		for(TableType type: SQLUtils.SECONDARY_TYPES){
-			String dropStatusTableDML = SQLUtils.dropTableSQL(tableId, type);
-			try {
-				template.update(dropStatusTableDML);
-			} catch (BadSqlGrammarException e) {
-				// This is thrown when the table does not exist
-			}
-		}	
-	}
 	
 	@Override
 	public void createSecondaryTables(IdAndVersion tableId) {
@@ -301,7 +343,6 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		ValidateArgument.required(sql, "sql");
 		ValidateArgument.required(parameters, "parameters");
 		// We use spring to create create the prepared statement
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
 		return namedTemplate.queryForObject(sql, new MapSqlParameterSource(parameters), Long.class);
 	}
 	
@@ -310,7 +351,6 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		ValidateArgument.required(query, "Query");
 		final ColumnTypeInfo[] infoArray = SQLTranslatorUtils.getColumnTypeInfoArray(query.getSelectColumns());
 		// We use spring to create create the prepared statement
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
 		namedTemplate.query(query.getOutputSQL(), new MapSqlParameterSource(query.getParameters()), new RowCallbackHandler() {
 			@Override
 			public void processRow(ResultSet rs) throws SQLException {
@@ -433,8 +473,42 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		}
 		// apply the update
 		template.update(sql);
+
 		return true;
 	}
+
+	@Override
+	public Set<Long> getMultivalueColumnIndexTableColumnIds(IdAndVersion tableId){
+		boolean alterTemp = false;
+		return getMultivalueColumnIndexTableNames(tableId, alterTemp)
+				.stream()
+				.map((String indexTableName) -> SQLUtils.getColumnIdFromMultivalueColumnIndexTableName(tableId, indexTableName))
+				.collect(Collectors.toSet());
+	}
+
+	private List<String> getMultivalueColumnIndexTableNames(IdAndVersion tableId, boolean alterTemp){
+		String multiValueTableNamePrefix = SQLUtils.getTableNamePrefixForMultiValueColumns(tableId, alterTemp);
+		return template.queryForList("SHOW TABLES LIKE '"+multiValueTableNamePrefix+"%'", String.class);
+	}
+
+	@Override
+	public void createMultivalueColumnIndexTable(IdAndVersion tableId, ColumnModel columnModel, boolean alterTemp){
+		template.update(SQLUtils.createListColumnIndexTable(tableId, columnModel, alterTemp));
+	}
+
+	@Override
+	public void deleteMultivalueColumnIndexTable(IdAndVersion tableId, Long columnId, boolean alterTemp){
+		String tableName = SQLUtils.getTableNameForMultiValueColumnIndex(tableId, columnId.toString(), alterTemp);
+		template.update("DROP TABLE IF EXISTS " + tableName);
+	}
+
+
+	@Override
+	public void updateMultivalueColumnIndexTable(IdAndVersion tableId, Long oldColumnId, ColumnModel newColumn, boolean alterTemp){
+		String sql = SQLUtils.createAlterListColumnIndexTable(tableId, oldColumnId, newColumn, alterTemp);
+		template.update(sql);
+	}
+
 
 	@Override
 	public void truncateTable(IdAndVersion tableId) {
@@ -456,7 +530,9 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 					info.setHasIndex(!"".equals(key));
 					String typeString = rs.getString("Type");
 					info.setType(MySqlColumnType.parserType(typeString));
-					info.setMaxSize(MySqlColumnType.parseSize(typeString));
+					if(info.getType() != null && info.getType().hasSize()){
+						info.setMaxSize(MySqlColumnType.parseSize(typeString));
+					}
 					String comment = rs.getString("Comment");
 					if(comment != null && !"".equals(comment)){
 						info.setColumnType(ColumnType.valueOf(comment));
@@ -526,6 +602,48 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		}
 		template.update(alterSql);
 	}
+	
+
+	@Override
+	public void populateListColumnIndexTable(IdAndVersion tableId, ColumnModel listColumn, Set<Long> rowIds, boolean alterTemp){
+		ValidateArgument.required(tableId, "tableId");
+		ValidateArgument.required(listColumn, "listColumn");
+		//only operate on list column types
+		if (!ColumnTypeListMappings.isList(listColumn.getColumnType())) {
+			throw new IllegalArgumentException("Only valid for List type columns");
+		}
+		if(rowIds != null && rowIds.isEmpty()) {
+			throw new IllegalArgumentException("When rowIds is provided (not null) it cannot be empty");
+		}
+		boolean filterRows = rowIds != null;
+		String insertIntoSql = SQLUtils.insertIntoListColumnIndexTable(tableId, listColumn, filterRows, alterTemp);
+		MapSqlParameterSource param = new MapSqlParameterSource();
+		if(filterRows) {
+			param.addValue(ID_PARAM_NAME, rowIds);
+		}
+		try {
+			namedTemplate.update(insertIntoSql, param);
+		} catch (DataIntegrityViolationException e){
+			throw new IllegalArgumentException("The size of the column '"+ listColumn.getName()+ "' is too small." +
+					" Unable to automatically determine the necessary size to fit all values in a STRING_LIST column", e);
+		}
+	}
+
+	@Override
+	public void deleteFromListColumnIndexTable(IdAndVersion tableId, ColumnModel listColumn, Set<Long> rowIds){
+		ValidateArgument.required(tableId, "tableId");
+		ValidateArgument.required(listColumn, "listColumn");
+		ValidateArgument.required(listColumn.getId(), "listColumn.id");
+		ValidateArgument.requiredNotEmpty(rowIds, "rowIds");
+		ValidateArgument.requirement(ColumnTypeListMappings.isList(listColumn.getColumnType()), "Only valid for List type columns");
+
+		String rowIdsParameter = "rowIds";
+
+		namedTemplate.update("DELETE FROM " + SQLUtils.getTableNameForMultiValueColumnIndex(tableId, listColumn.getId()) +
+				" WHERE " + SQLUtils.getRowIdRefColumnNameForId(listColumn.getId()) + " IN (:"+rowIdsParameter+")" ,
+				Collections.singletonMap(rowIdsParameter, rowIds));
+	}
+
 
 	@Override
 	public void createTemporaryTable(IdAndVersion tableId) {
@@ -551,29 +669,60 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		try {
 			return template.queryForObject(sql, Long.class);
 		} catch (DataAccessException e) {
-			return 0l;
+			return 0L;
 		}
 	}
-	
+
 	@Override
-	public void createEntityReplicationTablesIfDoesNotExist(){
-		template.update(TableConstants.ENTITY_REPLICATION_TABLE_CREATE);
+	public long getTempTableMultiValueColumnIndexCount(IdAndVersion tableId, String columnName) {
+		boolean alterTemp = true;
+		String sql = "SELECT COUNT(*) FROM " + SQLUtils.getTableNameForMultiValueColumnIndex(tableId, columnName, alterTemp);
+		try {
+			return template.queryForObject(sql, Long.class);
+		} catch (DataAccessException e) {
+			return 0L;
+		}
+	}
+
+	@Override
+	public void createTemporaryMultiValueColumnIndexTable(IdAndVersion tableId, String columnId){
+		String[] sqlBatch = SQLUtils.createTempMultiValueColumnIndexTableSql(tableId, columnId);
+		template.batchUpdate(sqlBatch);
+	}
+
+	@Override
+	public void copyAllDataToTemporaryMultiValueColumnIndexTable(IdAndVersion tableId, String columnId) {
+		String sql = SQLUtils.copyMultiValueColumnIndexTableToTempSql(tableId, columnId);
+		template.update(sql);
+	}
+
+	@Override
+	public void deleteAllTemporaryMultiValueColumnIndexTable(IdAndVersion tableId) {
+		boolean alterTemp = true;
+		deleteMultiValueTablesForTable(tableId, alterTemp);
+	}
+
+	@Override
+	public void createObjectReplicationTablesIfDoesNotExist(){
+		template.update(TableConstants.OBJECT_REPLICATION_TABLE_CREATE);
 		template.update(TableConstants.ANNOTATION_REPLICATION_TABLE_CREATE);
 		template.update(TableConstants.REPLICATION_SYNCH_EXPIRATION_TABLE_CREATE);
 	}
 
 	@Override
-	public void deleteEntityData(final ProgressCallback progressCallback, List<Long> entityIds) {
-		final List<Long> sorted = new ArrayList<Long>(entityIds);
+	public void deleteObjectData(ViewObjectType objectsType, List<Long> objectIds) {
+		final List<Long> sorted = new ArrayList<Long>(objectIds);
 		// sort to prevent deadlock.
 		Collections.sort(sorted);
 		// Batch delete.
-		template.batchUpdate(TableConstants.ENTITY_REPLICATION_DELETE_ALL, new BatchPreparedStatementSetter(){
+		template.batchUpdate(TableConstants.OBJECT_REPLICATION_DELETE_ALL, new BatchPreparedStatementSetter(){
 
 			@Override
 			public void setValues(PreparedStatement ps, int i)
 					throws SQLException {
-				ps.setLong(1, sorted.get(i));
+				int parameterIndex = 1;
+				ps.setString(parameterIndex++, objectsType.name());
+				ps.setLong(parameterIndex++, sorted.get(i));
 			}
 
 			@Override
@@ -584,55 +733,102 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 
 	@Override
-	public void addEntityData(final ProgressCallback progressCallback, List<EntityDTO> entityDTOs) {
-		final List<EntityDTO> sorted = new ArrayList<EntityDTO>(entityDTOs);
+	public void addObjectData(ViewObjectType objectType, List<ObjectDataDTO> objectDtos) {
+		
+		Map<Long, ObjectDataDTO> deduplicated = objectDtos.stream().collect(
+				Collectors.toMap(ObjectDataDTO::getId, Function.identity(), (a, b) -> b)
+		);
+		
+		final List<ObjectDataDTO> sorted = new ArrayList<ObjectDataDTO>(deduplicated.values());
+		
 		Collections.sort(sorted);
-		// batch update the entity table
-		template.batchUpdate(TableConstants.ENTITY_REPLICATION_INSERT, new BatchPreparedStatementSetter(){
+		
+		// batch update the object replication table
+		template.batchUpdate(TableConstants.OBJECT_REPLICATION_INSERT_OR_UPDATE, new BatchPreparedStatementSetter(){
 
 			@Override
 			public void setValues(PreparedStatement ps, int i)
 					throws SQLException {
-				EntityDTO dto = sorted.get(i);
+				ObjectDataDTO dto = sorted.get(i);
 				int parameterIndex = 1;
+				int updateOffset = 14;
+				
+				ps.setString(parameterIndex++, objectType.name());
 				ps.setLong(parameterIndex++, dto.getId());
+				
 				ps.setLong(parameterIndex++, dto.getCurrentVersion());
+				ps.setLong(parameterIndex + updateOffset, dto.getCurrentVersion());
+				
 				ps.setLong(parameterIndex++, dto.getCreatedBy());
+				ps.setLong(parameterIndex + updateOffset, dto.getCreatedBy());
+				
 				ps.setLong(parameterIndex++, dto.getCreatedOn().getTime());
+				ps.setLong(parameterIndex + updateOffset, dto.getCreatedOn().getTime());
+				
 				ps.setString(parameterIndex++, dto.getEtag());
+				ps.setString(parameterIndex + updateOffset, dto.getEtag());
+				
 				ps.setString(parameterIndex++, dto.getName());
-				ps.setString(parameterIndex++, dto.getType().name());
+				ps.setString(parameterIndex + updateOffset, dto.getName());
+				
+				ps.setString(parameterIndex++, dto.getSubType());
+				ps.setString(parameterIndex + updateOffset, dto.getSubType());
+				
 				if(dto.getParentId() != null){
 					ps.setLong(parameterIndex++, dto.getParentId());
+					ps.setLong(parameterIndex + updateOffset, dto.getParentId());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BIGINT);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BIGINT);
 				}
 				if(dto.getBenefactorId() != null){
 					ps.setLong(parameterIndex++, dto.getBenefactorId());
+					ps.setLong(parameterIndex + updateOffset, dto.getBenefactorId());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BIGINT);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BIGINT);
 				}
 				if(dto.getProjectId() != null){
 					ps.setLong(parameterIndex++, dto.getProjectId());
+					ps.setLong(parameterIndex + updateOffset, dto.getProjectId());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BIGINT);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BIGINT);
 				}
+				
 				ps.setLong(parameterIndex++, dto.getModifiedBy());
+				ps.setLong(parameterIndex + updateOffset, dto.getModifiedBy());
+				
 				ps.setLong(parameterIndex++, dto.getModifiedOn().getTime());
+				ps.setLong(parameterIndex + updateOffset, dto.getModifiedOn().getTime());
+				
 				if(dto.getFileHandleId() != null){
 					ps.setLong(parameterIndex++, dto.getFileHandleId());
+					ps.setLong(parameterIndex + updateOffset, dto.getFileHandleId());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BIGINT);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BIGINT);
 				}
 				if(dto.getFileSizeBytes() != null) {
 					ps.setLong(parameterIndex++, dto.getFileSizeBytes());
+					ps.setLong(parameterIndex + updateOffset, dto.getFileSizeBytes());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BIGINT);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BIGINT);
 				}
 				if(dto.getIsInSynapseStorage() != null) {
 					ps.setBoolean(parameterIndex++, dto.getIsInSynapseStorage());
+					ps.setBoolean(parameterIndex + updateOffset, dto.getIsInSynapseStorage());
 				}else{
 					ps.setNull(parameterIndex++, java.sql.Types.BOOLEAN);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.BOOLEAN);
+				}
+				if(dto.getFileMD5() != null) {
+					ps.setString(parameterIndex++, dto.getFileMD5());
+					ps.setString(parameterIndex + updateOffset, dto.getFileMD5());
+				}else {
+					ps.setNull(parameterIndex++, java.sql.Types.VARCHAR);
+					ps.setNull(parameterIndex + updateOffset, java.sql.Types.VARCHAR);
 				}
 			}
 
@@ -641,22 +837,22 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 				return sorted.size();
 			}});
 		// map the entities with annotations
-		final List<AnnotationDTO> annotations = new ArrayList<AnnotationDTO>();
+		final List<ObjectAnnotationDTO> annotations = new ArrayList<ObjectAnnotationDTO>();
 		for(int i=0; i<sorted.size(); i++){
-			EntityDTO dto = sorted.get(i);
+			ObjectDataDTO dto = sorted.get(i);
 			if(dto.getAnnotations() != null && !dto.getAnnotations().isEmpty()){
 				// this index has annotations.
 				annotations.addAll(dto.getAnnotations());
 			}
 		}
 		// update the annotations
-		template.batchUpdate(TableConstants.ANNOTATION_REPLICATION_INSERT, new BatchPreparedStatementSetter(){
+		template.batchUpdate(TableConstants.ANNOTATION_REPLICATION_INSERT_OR_UPDATE, new BatchPreparedStatementSetter(){
 
 			@Override
 			public void setValues(PreparedStatement ps, int i)
 					throws SQLException {
-				AnnotationDTO dto = annotations.get(i);
-				SQLUtils.writeAnnotationDtoToPreparedStatement(ps, dto);
+				ObjectAnnotationDTO dto = annotations.get(i);
+				SQLUtils.writeAnnotationDtoToPreparedStatement(objectType, ps, dto);
 			}
 
 			@Override
@@ -667,91 +863,69 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 
 	@Override
-	public EntityDTO getEntityData(Long entityId) {
+	public ObjectDataDTO getObjectData(ViewObjectType objectType, Long objectId) {
 		// query for the template.
-		EntityDTO dto;
+		ObjectDataDTO dto;
 		try {
-			dto = template.queryForObject(TableConstants.ENTITY_REPLICATION_GET, new RowMapper<EntityDTO>(){
+			dto = template.queryForObject(TableConstants.OBJECT_REPLICATION_GET, (ResultSet rs, int rowNum) -> {
+				ObjectDataDTO dto1 = new ObjectDataDTO();
+				dto1.setId(rs.getLong(OBJECT_REPLICATION_COL_OBJECT_ID));
+				dto1.setCurrentVersion(rs.getLong(OBJECT_REPLICATION_COL_VERSION));
+				dto1.setCreatedBy(rs.getLong(OBJECT_REPLICATION_COL_CREATED_BY));
+				dto1.setCreatedOn(new Date(rs.getLong(OBJECT_REPLICATION_COL_CREATED_ON)));
+				dto1.setEtag(rs.getString(OBEJCT_REPLICATION_COL_ETAG));
+				dto1.setName(rs.getString(OBJECT_REPLICATION_COL_NAME));
+				dto1.setSubType(rs.getString(OBJECT_REPLICATION_COL_SUBTYPE));
+				dto1.setParentId(rs.getLong(OBJECT_REPLICATION_COL_PARENT_ID));
+				if (rs.wasNull()) {
+					dto1.setParentId(null);
+				}
+				dto1.setBenefactorId(rs.getLong(OBJECT_REPLICATION_COL_BENEFACTOR_ID));
+				if (rs.wasNull()) {
+					dto1.setBenefactorId(null);
+				}
+				dto1.setProjectId(rs.getLong(OBJECT_REPLICATION_COL_PROJECT_ID));
+				if (rs.wasNull()) {
+					dto1.setProjectId(null);
+				}
+				dto1.setModifiedBy(rs.getLong(OBJECT_REPLICATION_COL_MODIFIED_BY));
+				dto1.setModifiedOn(new Date(rs.getLong(OBJECT_REPLICATION_COL_MODIFIED_ON)));
+				dto1.setFileHandleId(rs.getLong(OBJECT_REPLICATION_COL_FILE_ID));
+				if (rs.wasNull()) {
+					dto1.setFileHandleId(null);
+				}
+				dto1.setFileSizeBytes(rs.getLong(OBJECT_REPLICATION_COL_FILE_SIZE_BYTES));
+				if (rs.wasNull()) {
+					dto1.setFileSizeBytes(null);
+				}
+				dto1.setIsInSynapseStorage(rs.getBoolean(OBJECT_REPLICATION_COL_IN_SYNAPSE_STORAGE));
+				if (rs.wasNull()) {
+					dto1.setIsInSynapseStorage(null);
+				}
+				dto1.setFileMD5(rs.getString(OBJECT_REPLICATION_COL_FILE_MD5));
 
-				@Override
-				public EntityDTO mapRow(ResultSet rs, int rowNum)
-						throws SQLException {
-					EntityDTO dto = new EntityDTO();
-					dto.setId(rs.getLong(ENTITY_REPLICATION_COL_ID));
-					dto.setCurrentVersion(rs.getLong(ENTITY_REPLICATION_COL_VERSION));
-					dto.setCreatedBy(rs.getLong(ENTITY_REPLICATION_COL_CRATED_BY));
-					dto.setCreatedOn(new Date(rs.getLong(ENTITY_REPLICATION_COL_CRATED_ON)));
-					dto.setEtag(rs.getString(ENTITY_REPLICATION_COL_ETAG));
-					dto.setName(rs.getString(ENTITY_REPLICATION_COL_NAME));
-					dto.setType(EntityType.valueOf(rs.getString(ENTITY_REPLICATION_COL_TYPE)));
-					dto.setParentId(rs.getLong(ENTITY_REPLICATION_COL_PARENT_ID));
-					if(rs.wasNull()){
-						dto.setParentId(null);
-					}
-					dto.setBenefactorId(rs.getLong(ENTITY_REPLICATION_COL_BENEFACTOR_ID));
-					if(rs.wasNull()){
-						dto.setBenefactorId(null);
-					}
-					dto.setProjectId(rs.getLong(ENTITY_REPLICATION_COL_PROJECT_ID));
-					if(rs.wasNull()){
-						dto.setProjectId(null);
-					}
-					dto.setModifiedBy(rs.getLong(ENTITY_REPLICATION_COL_MODIFIED_BY));
-					dto.setModifiedOn(new Date(rs.getLong(ENTITY_REPLICATION_COL_MODIFIED_ON)));
-					dto.setFileHandleId(rs.getLong(ENTITY_REPLICATION_COL_FILE_ID));
-					if(rs.wasNull()){
-						dto.setFileHandleId(null);
-					}
-					dto.setFileSizeBytes(rs.getLong(ENTITY_REPLICATION_COL_FILE_SIZE_BYTES));
-					if(rs.wasNull()){
-						dto.setFileSizeBytes(null);
-					}
-					dto.setIsInSynapseStorage(rs.getBoolean(ENTITY_REPLICATION_COL_IN_SYNAPSE_STORAGE));
-					if(rs.wasNull()) {
-						dto.setIsInSynapseStorage(null);
-					}
-
-					return dto;
-				}}, entityId);
+				return dto1;
+			}, objectType.name(), objectId);
 		} catch (DataAccessException e) {
 			return null;
 		}
 		// get the annotations.
-		List<AnnotationDTO> annotations = template.query(TableConstants.ANNOTATION_REPLICATION_GET, new RowMapper<AnnotationDTO>(){
-
-			@Override
-			public AnnotationDTO mapRow(ResultSet rs, int rowNum)
-					throws SQLException {
-				AnnotationDTO dto = new AnnotationDTO();
-				dto.setEntityId(rs.getLong(ANNOTATION_REPLICATION_COL_ENTITY_ID));
-				dto.setKey(rs.getString(ANNOTATION_REPLICATION_COL_KEY));
-				dto.setType(AnnotationType.valueOf(rs.getString(ANNOTATION_REPLICATION_COL_TYPE)));
-				dto.setValue(rs.getString(ANNOTATION_REPLICATION_COL_STRING_VALUE));
-				return dto;
-			}}, entityId);
-		if(!annotations.isEmpty()){
+		@SuppressWarnings("unchecked")
+		List<ObjectAnnotationDTO> annotations = template.query(TableConstants.ANNOTATION_REPLICATION_GET, (ResultSet rs, int rowNum) -> {
+			ObjectAnnotationDTO dto1 = new ObjectAnnotationDTO();
+			dto1.setObjectId(rs.getLong(ANNOTATION_REPLICATION_COL_OBJECT_ID));
+			dto1.setKey(rs.getString(ANNOTATION_REPLICATION_COL_KEY));
+			dto1.setType(AnnotationType.valueOf(rs.getString(ANNOTATION_REPLICATION_COL_TYPE)));
+			dto1.setValue((List<String>) (List<?>) new JSONArray(rs.getString(ANNOTATION_REPLICATION_COL_STRING_LIST_VALUE))
+							.toList());
+			return dto1;
+		}, objectType.name(), objectId);
+		
+		if (!annotations.isEmpty()) {
 			dto.setAnnotations(annotations);
 		}
+		
 		return dto;
-	}
-
-	@Override
-	public long calculateCRC32ofEntityReplicationScope(Long viewTypeMask,
-			Set<Long> allContainersInScope) {
-		ValidateArgument.required(viewTypeMask, "viewTypeMask");
-		ValidateArgument.required(allContainersInScope, "allContainersInScope");
-		if(allContainersInScope.isEmpty()){
-			return -1L;
-		}
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		MapSqlParameterSource param = new MapSqlParameterSource();
-		param.addValue(PARENT_ID_PARAMETER_NAME, allContainersInScope);
-		String sql = SQLUtils.getCalculateCRC32Sql(viewTypeMask);
-		Long crc32 = namedTemplate.queryForObject(sql, param, Long.class);
-		if(crc32 == null){
-			return -1L;
-		}
-		return crc32;
 	}
 	
 	@Override
@@ -764,48 +938,219 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		return result;
 	}
 
+	/***
+	 * Get the maximum number of elements in a list for each annotation column
+	 * @param objectType
+	 * @param viewId
+	 * @param viewTypeMask
+	 * @param allContainersInScope
+	 * @param objectIdFilter
+	 * @return Map where the key is the columnId found in curentSchema,
+	 * and value is the maximum number of list elements for that annotation
+	 */
+	Map<String, Long> getMaxListSizeForAnnotations(ViewScopeFilter scopeFilter, Set<String> annotationNames, Set<Long> objectIdFilter){
+		ValidateArgument.required(scopeFilter, "scopeFilter");
+		ValidateArgument.required(scopeFilter.getContainerIds(), "scopeFilter.containerIds");
+		ValidateArgument.required(annotationNames, "annotationNames");
+		
+		Set<Long> allContainersInScope = scopeFilter.getContainerIds();
+		
+		if(allContainersInScope.isEmpty() || annotationNames.isEmpty()){
+			// nothing to do if the scope or annotation names are empty.
+			return Collections.emptyMap();
+		}
+		if(objectIdFilter != null && objectIdFilter.isEmpty()) {
+			throw new IllegalArgumentException("When objectIdFilter is provided (not null) it cannot be empty");
+		}
+
+		boolean filterByRows = objectIdFilter != null;
+		
+		MapSqlParameterSource param = getMapSqlParameterSourceForScopeFilter(scopeFilter, true, objectIdFilter);
+
+		//additional param
+		param.addValue(ANNOTATION_KEYS_PARAM_NAME, annotationNames);
+		String sql = SQLUtils.createAnnotationMaxListLengthSQL(scopeFilter, annotationNames, filterByRows);
+		return namedTemplate.query(sql,param, resultSet -> {
+			Map<String, Long> result = new HashMap<>();
+			while(resultSet.next()){
+				result.put(resultSet.getString(1),resultSet.getLong(2));
+			}
+			return result;
+		});
+	}
+
+	void validateMaxListLengthInAnnotationReplication(ViewScopeFilter scopeFilter, List<ColumnModel> currentSchema, Set<Long> objectIdFilter){
+		Map<String,Long> listAnnotationListLengthMaximum = currentSchema.stream()
+				.filter(cm -> ColumnTypeListMappings.isList(cm.getColumnType()))
+				.collect(Collectors.toMap(
+						ColumnModel::getName,
+						ColumnModel::getMaximumListLength
+				));
+		if(listAnnotationListLengthMaximum.isEmpty()){
+			//nothing to validate
+			return;
+		}
+
+		Map<String,Long> maxLengthsInReplication = this.getMaxListSizeForAnnotations(scopeFilter, listAnnotationListLengthMaximum.keySet(), objectIdFilter);
+
+		for(Entry<String,Long> entry : listAnnotationListLengthMaximum.entrySet()){
+			String annotationName = entry.getKey();
+			long maxListLength = entry.getValue();
+			long maxLengthInReplication = maxLengthsInReplication.getOrDefault(annotationName,0L);
+			if(maxLengthInReplication > maxListLength){
+				throw new IllegalArgumentException("maximumListLength for ColumnModel \""
+						+ annotationName + "\" must be at least: " + maxLengthInReplication);
+			}
+		}
+	}
 	@Override
-	public void copyEntityReplicationToTable(Long viewId, Long viewTypeMask,
-			Set<Long> allContainersInScope, List<ColumnModel> currentSchema) {
-		ValidateArgument.required(viewTypeMask, "viewTypeMask");
-		ValidateArgument.required(allContainersInScope, "allContainersInScope");
-		if(allContainersInScope.isEmpty()){
+	public long tempTableListColumnMaxLength(IdAndVersion tableId, String columnId){
+		String sql = "SELECT IFNULL(MAX(JSON_LENGTH(" + SQLUtils.getColumnNameForId(columnId) + ")),0) " +
+				"FROM " + SQLUtils.getTemporaryTableName(tableId);
+		return template.queryForObject(sql, Long.class);
+	}
+
+	@Override
+	public void copyObjectReplicationToView(Long viewId, ViewScopeFilter scopeFilter, List<ColumnModel> currentSchema, ObjectFieldTypeMapper fieldTypeMapper) {
+		Set<Long> rowIdsToCopy = null;
+		copyObjectReplicationToView(viewId, scopeFilter, currentSchema, fieldTypeMapper, rowIdsToCopy);
+	}
+	
+	@Override
+	public void copyObjectReplicationToView(Long viewId, ViewScopeFilter scopeFilter, List<ColumnModel> currentSchema, ObjectFieldTypeMapper fieldTypeMapper, Set<Long> rowIdsToCopy) {
+		ValidateArgument.required(scopeFilter, "scopeFilter");
+		ValidateArgument.required(scopeFilter.getContainerIds(), "scopeFilter.containerIds");
+		
+		Set<Long> allContainersInScope = scopeFilter.getContainerIds();
+		
+		if (allContainersInScope.isEmpty()){
 			// nothing to do if the scope is empty.
 			return;
 		}
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		MapSqlParameterSource param = new MapSqlParameterSource();
-		param.addValue(PARENT_ID_PARAMETER_NAME, allContainersInScope);
-		String sql = SQLUtils.createSelectInsertFromEntityReplication(viewId, viewTypeMask, currentSchema);
+		
+		if(rowIdsToCopy != null && rowIdsToCopy.isEmpty()) {
+			throw new IllegalArgumentException("When objectIdFilter is provided (not null) it cannot be empty");
+		}
+		
+		// before updating. verify that all rows that would be changed won't exceed the user-specified maxListLength,
+		// which is used for query row size estimation
+		validateMaxListLengthInAnnotationReplication(scopeFilter, currentSchema, rowIdsToCopy);
+		
+		// Filter by rows only if provided.
+		boolean filterByRows = rowIdsToCopy != null;
+		
+		MapSqlParameterSource param = getMapSqlParameterSourceForScopeFilter(scopeFilter, true, rowIdsToCopy);
+		
+		List<ColumnMetadata> metadata = translateSchema(currentSchema, fieldTypeMapper);
+		
+		String sql = SQLUtils.createSelectInsertFromObjectReplication(viewId, metadata, scopeFilter, filterByRows);
+		
 		namedTemplate.update(sql, param);
 	}
 
 	@Override
-	public List<ColumnModel> getPossibleColumnModelsForContainers(
-			Set<Long> containerIds, Long viewTypeMask, Long limit, Long offset) {
-		ValidateArgument.required(containerIds, "containerIds");
+	public void createViewSnapshotFromObjectReplication(Long viewId, ViewScopeFilter scopeFilter, List<ColumnModel> currentSchema,
+			ObjectFieldTypeMapper fieldTypeMapper, CSVWriterStream outputStream) {
+		ValidateArgument.required(scopeFilter, "scopeFilter");
+		ValidateArgument.required(scopeFilter.getContainerIds(), "scopeFilter.containerIds");
+		
+		Set<Long> allContainersInScope = scopeFilter.getContainerIds();
+		
+		if (allContainersInScope.isEmpty()) {
+			// nothing to do if the scope is empty.
+			throw new IllegalArgumentException("Scope has not been defined for this view.");
+		}
+		
+		MapSqlParameterSource param = getMapSqlParameterSourceForScopeFilter(scopeFilter, true, null);
+		
+		StringBuilder builder = new StringBuilder();
+		boolean filterByRows = false;
+		
+		List<ColumnMetadata> metadata = translateSchema(currentSchema, fieldTypeMapper);
+		
+		List<String> headers = SQLUtils.createSelectFromObjectReplication(builder, metadata, scopeFilter, filterByRows);
+		
+		// push the headers to the stream
+		outputStream.writeNext(headers.toArray(new String[headers.size()]));
+		
+		namedTemplate.query(builder.toString(), param, (ResultSet rs) -> {
+			// Push each row to the callback
+			String[] row = new String[headers.size()];
+			for (int i = 0; i < headers.size(); i++) {
+				row[i] = rs.getString(i + 1);
+			}
+			outputStream.writeNext(row);
+		});
+	}
+	
+	// Translates the Column Model schema into a column metadata schema, that maps to the object/annotation replication index
+	List<ColumnMetadata> translateSchema(List<ColumnModel> schema, ObjectFieldTypeMapper fieldTypeMapper) {
+		ValidateArgument.required(schema, "schema");
+		ValidateArgument.required(fieldTypeMapper, "fieldTypeMapper");
+		
+		if (schema.isEmpty()) {
+			return Collections.emptyList();
+		}
+		
+		ObjectFieldModelResolver fieldModelResolver = objectFieldModelResolverFactory.getObjectFieldModelResolver(fieldTypeMapper);
+		
+		return schema.stream()
+			.map((ColumnModel columnModel) -> translateColumnModel(columnModel, fieldModelResolver))
+			.collect(Collectors.toList());
+	}
+	
+	ColumnMetadata translateColumnModel(ColumnModel model, ObjectFieldModelResolver objectFieldModelResolver) {
+		// First determine if this an object column or an annotation
+		Optional<ObjectField> objectField = objectFieldModelResolver.findMatch(model);
+		
+		String selectColumnForId = SQLUtils.getColumnNameForId(model.getId());
+		boolean isObjectReplicationField;
+		String selectColumnName;
+		
+		if (objectField.isPresent()) {
+			isObjectReplicationField = true;
+			selectColumnName = objectField.get().getDatabaseColumnName();
+		} else {
+			isObjectReplicationField = false;
+			selectColumnName = SQLUtils.translateColumnTypeToAnnotationValueName(model.getColumnType());
+		}
+		
+		return new ColumnMetadata(model, selectColumnName, selectColumnForId, isObjectReplicationField);
+	}
+
+	@Override
+	public List<ColumnModel> getPossibleColumnModelsForContainers(ViewScopeFilter scopeFilter, List<String> excludeKeys, Long limit, Long offset) {
+		ValidateArgument.required(scopeFilter, "scopeFilter");
 		ValidateArgument.required(limit, "limit");
 		ValidateArgument.required(offset, "offset");
+		
+		Set<Long> containerIds = scopeFilter.getContainerIds();
+		
 		if(containerIds.isEmpty()){
-			return new LinkedList<>();
+			return Collections.emptyList();
 		}
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		MapSqlParameterSource param = new MapSqlParameterSource();
-		param.addValue(PARENT_ID_PARAMETER_NAME, containerIds);
+		
+		MapSqlParameterSource param = getMapSqlParameterSourceForScopeFilter(scopeFilter, true, null);
+		
 		param.addValue(P_LIMIT, limit);
 		param.addValue(P_OFFSET, offset);
-		String sql = SQLUtils.getDistinctAnnotationColumnsSql(viewTypeMask);
-		List<ColumnAggregation> results = namedTemplate.query(sql, param, new RowMapper<ColumnAggregation>() {
-
-			@Override
-			public ColumnAggregation mapRow(ResultSet rs, int rowNum)
-					throws SQLException {
-				ColumnAggregation aggregation = new ColumnAggregation();
-				aggregation.setColumnName(rs.getString(ANNOTATION_REPLICATION_COL_KEY));
-				aggregation.setColumnTypeConcat(rs.getString(2));
-				aggregation.setMaxSize(rs.getLong(3));
-				return aggregation;
-			}
+		
+		boolean withExclusionList = false;
+		
+		if (excludeKeys != null && !excludeKeys.isEmpty()) {
+			withExclusionList = true;
+			param.addValue(EXCLUSION_LIST_PARAM_NAME, excludeKeys);
+		}
+		
+		String sql = SQLUtils.getDistinctAnnotationColumnsSql(scopeFilter, withExclusionList);
+		
+		List<ColumnAggregation> results = namedTemplate.query(sql, param, (ResultSet rs, int rowNum) -> {
+			ColumnAggregation aggregation = new ColumnAggregation();
+			aggregation.setColumnName(rs.getString(ANNOTATION_REPLICATION_COL_KEY));
+			aggregation.setColumnTypeConcat(rs.getString(2));
+			aggregation.setMaxStringElementSize(rs.getLong(3));
+			aggregation.setMaxListSize(rs.getLong(4));
+			return aggregation;
 		});
 		// convert from the aggregation to column models.
 		return expandFromAggregation(results);
@@ -826,9 +1171,20 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 				ColumnModel model = new ColumnModel();
 				model.setName(aggregation.getColumnName());
 				ColumnType type = AnnotationType.valueOf(typeString).getColumnType();
+
+				//check if a LIST columnType needs to be used
+				if(aggregation.getMaxListSize() > 1){
+					try {
+						type = ColumnTypeListMappings.listType(type);
+						model.setMaximumListLength(aggregation.getMaxListSize());
+					} catch (IllegalArgumentException e){
+						//do nothing because a list type mapping does not exist
+					}
+				}
+
 				model.setColumnType(type);
-				if(ColumnType.STRING == type) {
-					model.setMaximumSize(aggregation.getMaxSize());
+				if(ColumnType.STRING == type || ColumnType.STRING_LIST==type) {
+					model.setMaximumSize(aggregation.getMaxStringElementSize());
 				}
 				results.add(model);
 			}
@@ -837,49 +1193,43 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 	
 	@Override
-	public Map<Long, Long> getSumOfChildCRCsForEachParent(List<Long> parentIds) {
+	public Map<Long, Long> getSumOfChildCRCsForEachParent(ViewObjectType objectType, List<Long> parentIds) {
+		ValidateArgument.required(objectType, "objectType");
 		ValidateArgument.required(parentIds, "parentIds");
 		final Map<Long, Long> results = new HashMap<>();
 		if(parentIds.isEmpty()){
 			return results;
 		}
 		MapSqlParameterSource param = new MapSqlParameterSource();
-		param.addValue(PARENT_ID_PARAMETER_NAME, parentIds);
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		namedTemplate.query(SELECT_ENTITY_CHILD_CRC, param, new RowCallbackHandler() {
-			
-			@Override
-			public void processRow(ResultSet rs) throws SQLException {
-				Long parentId = rs.getLong(ENTITY_REPLICATION_COL_PARENT_ID);
-				Long crc = rs.getLong(CRC_ALIAS);
-				results.put(parentId, crc);
-			}
+		param.addValue(OBJECT_TYPE_PARAM_NAME, objectType.name());
+		param.addValue(PARENT_ID_PARAM_NAME, parentIds);
+		namedTemplate.query(SELECT_OBJECT_CHILD_CRC, param, (ResultSet rs) -> {
+			Long parentId = rs.getLong(OBJECT_REPLICATION_COL_PARENT_ID);
+			Long crc = rs.getLong(CRC_ALIAS);
+			results.put(parentId, crc);
 		});
 		return results;
 	}
 
 	@Override
-	public List<IdAndEtag> getEntityChildren(Long parentId) {
+	public List<IdAndEtag> getObjectChildren(ViewObjectType objectType, Long parentId) {
+		ValidateArgument.required(objectType, "objectType");
 		ValidateArgument.required(parentId, "parentId");
-		return this.template.query(SELECT_ENTITY_CHILD_ID_ETAG, new RowMapper<IdAndEtag>(){
-
-			@Override
-			public IdAndEtag mapRow(ResultSet rs, int rowNum)
-					throws SQLException {
-				Long id = rs.getLong(TableConstants.ENTITY_REPLICATION_COL_ID);
-				String etag = rs.getString(ENTITY_REPLICATION_COL_ETAG);
-				Long benefactorId = rs.getLong(ENTITY_REPLICATION_COL_BENEFACTOR_ID);
-				if(rs.wasNull()) {
-					benefactorId = null;
-				}
-				return new IdAndEtag(id, etag, benefactorId);
-			}}, parentId);
+		return this.template.query(SELECT_OBJECT_CHILD_ID_ETAG, (ResultSet rs, int rowNum) -> {
+			Long id = rs.getLong(TableConstants.OBJECT_REPLICATION_COL_OBJECT_ID);
+			String etag = rs.getString(OBEJCT_REPLICATION_COL_ETAG);
+			Long benefactorId = rs.getLong(OBJECT_REPLICATION_COL_BENEFACTOR_ID);
+			if (rs.wasNull()) {
+				benefactorId = null;
+			}
+			return new IdAndEtag(id, etag, benefactorId);
+		}, objectType.name(), parentId);
 	}
 
 	@Override
-	public List<Long> getExpiredContainerIds(List<Long> entityContainerIds) {
-		ValidateArgument.required(entityContainerIds, "entityContainerIds");
-		if(entityContainerIds.isEmpty()){
+	public List<Long> getExpiredContainerIds(ViewObjectType objectType, List<Long> containerIds) {
+		ValidateArgument.required(containerIds, "entityContainerIds");
+		if(containerIds.isEmpty()){
 			return new LinkedList<Long>();
 		}
 		/*
@@ -887,12 +1237,12 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 		 * ID. Therefore, start off with all of the IDs expired, so the
 		 * non-expired IDs can be removed.
 		 */
-		LinkedHashSet<Long> expiredId = new LinkedHashSet<Long>(entityContainerIds);
+		LinkedHashSet<Long> expiredId = new LinkedHashSet<Long>(containerIds);
 		// Query for those that are not expired.
 		MapSqlParameterSource param = new MapSqlParameterSource();
-		param.addValue(ID_PARAMETER_NAME, entityContainerIds);
-		param.addValue(EXPIRES_PARAM, System.currentTimeMillis());
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
+		param.addValue(OBJECT_TYPE_PARAM_NAME, objectType.name());
+		param.addValue(ID_PARAM_NAME, containerIds);
+		param.addValue(EXPIRES_PARAM_NAME, System.currentTimeMillis());
 		List<Long> nonExpiredIds =  namedTemplate.queryForList(SELECT_NON_EXPIRED_IDS, param, Long.class);
 		// remove all that are not expired.
 		expiredId.removeAll(nonExpiredIds);
@@ -901,8 +1251,9 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 
 	@Override
-	public void setContainerSynchronizationExpiration(final List<Long> toSet,
+	public void setContainerSynchronizationExpiration(ViewObjectType objectType, final List<Long> toSet,
 			final long newExpirationDateMS) {
+		ValidateArgument.required(objectType, "objectType");
 		ValidateArgument.required(toSet, "toSet");
 		if(toSet.isEmpty()){
 			return;
@@ -913,6 +1264,7 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 			public void setValues(PreparedStatement ps, int i) throws SQLException {
 				Long idToSet = toSet.get(i);
 				int index = 1;
+				ps.setString(index++, objectType.name());
 				ps.setLong(index++, idToSet);
 				ps.setLong(index++, newExpirationDateMS);
 				ps.setLong(index++, newExpirationDateMS);
@@ -927,38 +1279,38 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 	}
 
 	@Override
-	public void truncateReplicationSyncExpiration() {
-		template.update(TRUNCATE_REPLICATION_SYNC_EXPIRATION_TABLE);
-	}
-
-	@Override
 	public List<Long> getRowIds(String sql, Map<String, Object> parameters) {
 		ValidateArgument.required(sql, "sql");
 		ValidateArgument.required(parameters, "parameters");
 		// We use spring to create create the prepared statement
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
 		return namedTemplate.queryForList(sql, new MapSqlParameterSource(parameters), Long.class);
 	}
 
 	@Override
-	public long getSumOfFileSizes(List<Long> rowIds) {
+	public long getSumOfFileSizes(ViewObjectType objectType, List<Long> rowIds) {
 		ValidateArgument.required(rowIds, "rowIds");
 		if(rowIds.isEmpty()) {
 			return 0L;
 		}
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		Long sum = namedTemplate.queryForObject(SQL_SUM_FILE_SIZES, new MapSqlParameterSource("rowIds", rowIds), Long.class);
+		MapSqlParameterSource params = new MapSqlParameterSource();
+		params.addValue(OBJECT_TYPE_PARAM_NAME, objectType.name());
+		params.addValue(ID_PARAM_NAME, rowIds);
+
+		Long sum = namedTemplate.queryForObject(SQL_SUM_FILE_SIZES, params, Long.class);
+		
 		if(sum == null) {
 			sum =  0L;
 		}
+		
 		return sum;
 	}
 
 	@Override
-	public void streamSynapseStorageStats(Callback<SynapseStorageProjectStats> callback) {
+	public void streamSynapseStorageStats(ViewObjectType objectType, Callback<SynapseStorageProjectStats> callback) {
+		MapSqlParameterSource params = new MapSqlParameterSource(OBJECT_TYPE_PARAM_NAME, objectType.name());
+		
 		// We use spring to create create the prepared statement
-		NamedParameterJdbcTemplate namedTemplate = new NamedParameterJdbcTemplate(this.template);
-		namedTemplate.query(SQL_SELECT_PROJECTS_BY_SIZE, rs -> {
+		namedTemplate.query(SQL_SELECT_PROJECTS_BY_SIZE, params, (ResultSet rs) -> {
 			SynapseStorageProjectStats stats = new SynapseStorageProjectStats();
 			stats.setId(rs.getString(1));
 			stats.setProjectName(rs.getString(2));
@@ -966,4 +1318,112 @@ public class TableIndexDAOImpl implements TableIndexDAO {
 			callback.invoke(stats);
 		});
 	}
+
+	@Override
+	public void populateViewFromSnapshot(IdAndVersion idAndVersion, Iterator<String[]> input, long maxBytesPerBatch) {
+		ValidateArgument.required(idAndVersion, "idAndVersion");
+		ValidateArgument.required(idAndVersion.getVersion().isPresent(), "idAndVersion.version");
+		ValidateArgument.required(input, "input");
+		ValidateArgument.required(input.hasNext(), "input is empty");
+		// The first row is the header
+		String[] headers = input.next();
+		String sql = SQLUtils.createInsertViewFromSnapshot(idAndVersion, headers);
+
+		// push the data in batches
+		List<Object[]> batch = new LinkedList<>();
+		int batchSize = 0;
+		while (input.hasNext()) {
+			String[] row = input.next();
+			long rowSize = SQLUtils.calculateBytes(row);
+			if (batchSize + rowSize > maxBytesPerBatch) {
+				template.batchUpdate(sql, batch);
+				batch.clear();
+			}
+			batch.add(row);
+			batchSize += rowSize;
+		}
+
+		if (!batch.isEmpty()) {
+			template.batchUpdate(sql, batch);
+		}
+	}
+	
+	@Override
+	public Set<Long> getOutOfDateRowsForView(IdAndVersion viewId, ViewScopeFilter scopeFilter, long limit) {
+		ValidateArgument.required(viewId, "viewId");
+		ValidateArgument.required(scopeFilter, "scopeFilter");
+		ValidateArgument.required(scopeFilter.getContainerIds(), "scopeFilter.containerIds");
+		
+		Set<Long> allContainersInScope = scopeFilter.getContainerIds();
+		
+		if(allContainersInScope.isEmpty()) {
+			return Collections.emptySet();
+		}
+		
+		String sql = SQLUtils.getOutOfDateRowsForViewSql(viewId, scopeFilter);
+		
+		MapSqlParameterSource param = getMapSqlParameterSourceForScopeFilter(scopeFilter, true, null);
+		
+		param.addValue(P_LIMIT, limit);
+		
+		List<Long> deltas = namedTemplate.queryForList(sql, param, Long.class);
+		return new LinkedHashSet<Long>(deltas);
+	}
+
+	@Override
+	public void deleteRowsFromViewBatch(IdAndVersion viewId, Long...idsToDelete) {
+		ValidateArgument.required(viewId, "viewId");
+		ValidateArgument.required(idsToDelete, "batch");
+		String sql = SQLUtils.getDeleteRowsFromViewSql(viewId);
+		this.template.batchUpdate(sql, new BatchPreparedStatementSetter() {
+			
+			@Override
+			public void setValues(PreparedStatement ps, int i) throws SQLException {
+				ps.setLong(1, idsToDelete[i]);
+			}
+			
+			@Override
+			public int getBatchSize() {
+				return idsToDelete.length;
+			}
+		});
+	}
+	
+	@Override
+	public void truncateReplicationSyncExpiration() {
+		template.update(TRUNCATE_REPLICATION_SYNC_EXPIRATION_TABLE);
+	}
+	
+	@Override
+	public void truncateIndex() {
+		truncateReplicationSyncExpiration();
+		template.update(TRUNCATE_ANNOTATION_REPLICATION_TABLE);
+		template.update(TRUNCATE_OBJECT_REPLICATION_TABLE);
+	}
+	
+	private MapSqlParameterSource getMapSqlParameterSourceForScopeFilter(ViewScopeFilter scopeFilter, boolean filterBySubTypes, Set<Long> rowIdsToCopy) {
+		MapSqlParameterSource param = new MapSqlParameterSource();
+		
+		param.addValue(OBJECT_TYPE_PARAM_NAME, scopeFilter.getObjectType().name());
+		param.addValue(PARENT_ID_PARAM_NAME, scopeFilter.getContainerIds());
+		
+		if (rowIdsToCopy != null) {
+			param.addValue(ID_PARAM_NAME, rowIdsToCopy);
+		}
+		
+		if (filterBySubTypes) {
+			param.addValue(SUBTYPE_PARAM_NAME, scopeFilter.getSubTypes());
+		}
+		
+		return param;
+	}
+
+	@Override
+	public void refreshViewBenefactors(IdAndVersion viewId, ViewObjectType objectType) {
+		ValidateArgument.required(viewId, "viewId");
+		ValidateArgument.required(objectType, "objectType");
+		String sql = SQLUtils.generateSqlToRefreshViewBenefactors(viewId);
+		template.update(sql, objectType.name());
+	}
+	
 }

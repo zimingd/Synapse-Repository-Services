@@ -63,29 +63,40 @@ public class ServletTestHelperUtils {
 	 *            Optional, object to serialize into the body of the request
 	 */
 	public static MockHttpServletRequest initRequest(HTTPMODE mode, String path,
-			String requestURI, Long userId, JSONEntity entity)
+			String requestURI, Long userId, String accessToken, JSONEntity entity)
 			throws Exception {
+		MockHttpServletRequest request = initRequestUnauthenticated(mode, path, requestURI, entity);
+		if (userId != null) {
+			request.setParameter(AuthorizationConstants.USER_ID_PARAM, userId.toString());
+		}
+		if (accessToken != null) {
+			request.addHeader(AuthorizationConstants.SYNAPSE_AUTHORIZATION_HEADER_NAME, "Bearer "+accessToken);
+		}
+		return request;
+	}
+		
+	private static MockHttpServletRequest initRequestUnauthenticated(HTTPMODE mode, String path,
+				String requestURI, JSONEntity entity)
+				throws Exception {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		request.setMethod(mode.name());
 		request.addHeader("Accept", "application/json; charset="+RESPONSE_ENCODING_CHARSET);
 		request.addHeader("Accept-Encoding", RESPONSE_ENCODING_CHARSET);
 		request.addHeader("Content-Type", "application/json; charset="+REQUEST_ENCODING_CHARSET);
 		request.setRequestURI(path+requestURI);
-		if (userId != null) {
-			request.setParameter(AuthorizationConstants.USER_ID_PARAM, userId.toString());
-		}
 		if (entity != null) {
 			String body = EntityFactory.createJSONStringForEntity(entity);
 			request.setContent(body.getBytes(REQUEST_ENCODING_CHARSET));
 			log.debug("Request content: " + body);
 		}
 		return request;
+
 	}
 	
 	public static MockHttpServletRequest initRequest(HTTPMODE mode,
-			String requestURI, Long userId, JSONEntity entity)
+			String requestURI, Long userId, String accessToken, JSONEntity entity)
 			throws Exception {
-		return initRequest(mode, "/repo/v1", requestURI, userId, entity);
+		return initRequest(mode, "/repo/v1", requestURI, userId, accessToken, entity);
 	}
 
 	/**

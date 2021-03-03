@@ -32,13 +32,6 @@
 			<groupId>org.sagebionetworks</groupId>
 			<artifactId>schema-to-pojo-org-json</artifactId>
 		</dependency>
-
-		<!-- All of the AWS clients -->
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk</artifactId>
-		</dependency>
-
 		<dependency>
 			<groupId>org.sagebionetworks</groupId>
 			<artifactId>simple-http-client</artifactId>
@@ -116,4 +109,9 @@
 
 
 	</dependencies>
+
+	<properties>
+		<jacoco.branch.minumum>0.50</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.70</jacoco.line.minumum>
+	</properties>
 </project>

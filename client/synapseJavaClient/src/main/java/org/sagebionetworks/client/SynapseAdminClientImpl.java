@@ -10,9 +10,10 @@ import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.EntityId;
 import org.sagebionetworks.repo.model.IdList;
 import org.sagebionetworks.repo.model.ObjectType;
-import org.sagebionetworks.repo.model.TrashedEntity;
 import org.sagebionetworks.repo.model.asynch.AsynchronousJobStatus;
 import org.sagebionetworks.repo.model.auth.NewIntegrationTestUser;
+import org.sagebionetworks.repo.model.feature.Feature;
+import org.sagebionetworks.repo.model.feature.FeatureStatus;
 import org.sagebionetworks.repo.model.message.ChangeMessages;
 import org.sagebionetworks.repo.model.message.FireMessagesResult;
 import org.sagebionetworks.repo.model.message.PublishResults;
@@ -25,6 +26,7 @@ import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCounts;
 import org.sagebionetworks.repo.model.migration.MigrationTypeList;
 import org.sagebionetworks.repo.model.migration.MigrationTypeNames;
+import org.sagebionetworks.repo.model.oauth.OAuthClient;
 import org.sagebionetworks.repo.model.quiz.PassingRecord;
 import org.sagebionetworks.repo.model.quiz.QuizResponse;
 import org.sagebionetworks.repo.model.status.StackStatus;
@@ -38,9 +40,6 @@ public class SynapseAdminClientImpl extends SynapseClientImpl implements Synapse
 
 	protected static final String ADMIN = "/admin";
 	protected static final String ADMIN_STACK_STATUS = ADMIN + "/synapse/status";
-	private static final String ADMIN_TRASHCAN_VIEW = ADMIN + "/trashcan/view";
-	private static final String ADMIN_TRASHCAN_PURGE = ADMIN + "/trashcan/purge";
-	private static final String ADMIN_TRASHCAN_PURGE_LEAVES = ADMIN + "/trashcan/purgeleaves";
 	private static final String ADMIN_CHANGE_MESSAGES = ADMIN + "/messages";
 	private static final String ADMIN_FIRE_MESSAGES = ADMIN + "/messages/refire";
 	private static final String ADMIN_GET_CURRENT_CHANGE_NUM = ADMIN + "/messages/currentnumber";
@@ -77,8 +76,12 @@ public class SynapseAdminClientImpl extends SynapseClientImpl implements Synapse
 	private static final String PRINCIPAL_ID_REQUEST_PARAM = "principalId";
 	private static final String CERTIFIED_USER_STATUS = "/certificationStatus";
 	private static final String CERTIFIED_USER_PASSING_RECORDS = "/certifiedUserPassingRecords";
+	private static final String OAUTH_CLIENT = "/oauth2/client";
 
+	private static final String VERIFIED = "/verified";
 	private static final String MESSAGE = "/message";
+
+	private static final String REDACT_USER = "/redact/user";
 
 	public SynapseAdminClientImpl() {
 		super();
@@ -95,23 +98,6 @@ public class SynapseAdminClientImpl extends SynapseClientImpl implements Synapse
 	 */
 	public StackStatus updateCurrentStackStatus(StackStatus updated) throws SynapseException {
 		return putJSONEntity(getRepoEndpoint(), ADMIN_STACK_STATUS, updated, StackStatus.class);
-	}
-
-	@Override
-	public PaginatedResults<TrashedEntity> viewTrash(long offset, long limit) throws SynapseException {
-		String url = ADMIN_TRASHCAN_VIEW + "?" + OFFSET + "=" + offset + "&" + LIMIT + "=" + limit;
-		return getPaginatedResults(getRepoEndpoint(), url, TrashedEntity.class);
-	}
-
-	@Override
-	public void purgeTrash() throws SynapseException {
-		putUri(getRepoEndpoint(), ADMIN_TRASHCAN_PURGE);
-	}
-	
-	@Override
-	public void purgeTrashLeaves(long numDaysInTrash, long limit) throws SynapseException {
-		String uri = ADMIN_TRASHCAN_PURGE_LEAVES + "?" + DAYS_IN_TRASH_PARAM + "=" + numDaysInTrash + "&" + LIMIT + "=" + limit;
-		putUri(getRepoEndpoint(), uri);
 	}
 	
 	@Override
@@ -392,5 +378,37 @@ public class SynapseAdminClientImpl extends SynapseClientImpl implements Synapse
 		String uri = ADMIN + USER + "/" + principalId + CERTIFIED_USER_PASSING_RECORDS
 				+ "?" + OFFSET + "=" + offset + "&" + LIMIT + "=" + limit;
 		return getPaginatedResults(getRepoEndpoint(), uri, PassingRecord.class);
+	}
+	
+	@Override
+	public void deleteCertifiedUserTestResponse(String id)
+			throws SynapseException {
+		deleteUri(getRepoEndpoint(), ADMIN + CERTIFIED_USER_TEST_RESPONSE + "/" + id);
+	}
+	
+	@Override
+	public OAuthClient updateOAuthClientVerifiedStatus(String clientId, String etag, boolean status) throws SynapseException {
+		validateStringAsLong(clientId);
+		String uri = ADMIN + OAUTH_CLIENT + "/" + clientId + VERIFIED + "?status=" + status + "&etag=" + etag;
+		return putJSONEntity(getRepoEndpoint(), uri, null, OAuthClient.class);
+	}
+
+	@Override
+	public void redactUserInformation(String principalId) throws SynapseException {
+		validateStringAsLong(principalId);
+		String uri = ADMIN + REDACT_USER + "/" + principalId;
+		voidPost(getRepoEndpoint(), uri, null, null);
+	}
+	
+	@Override
+	public FeatureStatus getFeatureStatus(Feature feature) throws SynapseException {
+		String uri = ADMIN + "/feature/" + feature.name() + "/status";
+		return getJSONEntity(getRepoEndpoint(), uri, FeatureStatus.class);
+	}
+	
+	@Override
+	public FeatureStatus setFeatureStatus(Feature feature, FeatureStatus status) throws SynapseException {
+		String uri = ADMIN + "/feature/" + feature.name() + "/status";
+		return postJSONEntity(getRepoEndpoint(), uri, status, FeatureStatus.class);
 	}
 }

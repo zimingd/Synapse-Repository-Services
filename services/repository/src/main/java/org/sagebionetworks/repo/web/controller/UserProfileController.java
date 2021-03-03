@@ -1,5 +1,9 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,9 +21,12 @@ import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.IdList;
 import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.ListWrapper;
+import org.sagebionetworks.repo.model.NextPageToken;
 import org.sagebionetworks.repo.model.ProjectHeader;
+import org.sagebionetworks.repo.model.ProjectHeaderList;
 import org.sagebionetworks.repo.model.ProjectListSortColumn;
 import org.sagebionetworks.repo.model.ProjectListType;
+import org.sagebionetworks.repo.model.ProjectListTypeDeprecated;
 import org.sagebionetworks.repo.model.ResponseMessage;
 import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
@@ -32,6 +39,7 @@ import org.sagebionetworks.repo.model.principal.AliasList;
 import org.sagebionetworks.repo.model.principal.TypeFilter;
 import org.sagebionetworks.repo.model.principal.UserGroupHeaderResponse;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -66,6 +74,7 @@ public class UserProfileController {
 	 * @param userId
 	 *             The user who is making the request.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_PROFILE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -94,6 +103,7 @@ public class UserProfileController {
 	 * </p>
 	 *
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_BUNDLE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -110,6 +120,7 @@ public class UserProfileController {
 	 * @param userId The user who is making the request.
 	 * @param profileId The target profile owner ID (the "id" field returned in the "/user" request).
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_PROFILE_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -139,6 +150,7 @@ public class UserProfileController {
 	 * </p>
 	 *
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_BUNDLE_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -162,6 +174,7 @@ public class UserProfileController {
 	 * @param ascending
 	 *        Used to indicate whether the sort direction is ascending or not.  <p><i>Default is true</i></p>
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER, method = RequestMethod.GET)
 	public @ResponseBody
@@ -183,6 +196,7 @@ public class UserProfileController {
 	 * 		The user that is making the request.
 	 * @return The updated <a href="${org.sagebionetworks.repo.model.UserProfile}">UserProfile</a>
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_PROFILE, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -204,6 +218,7 @@ public class UserProfileController {
 	 * 	
 	 * @return A success message, if successful.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.NOTIFICATION_SETTINGS, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -220,6 +235,7 @@ public class UserProfileController {
 	 * 
 	 * @param ids IDs are specified as request parameters at the end of the URL, separated by commas.  <p>For example: <pre class="prettyprint">ids=1001,819</pre></p>
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_GROUP_HEADERS_BATCH, method = RequestMethod.GET)
 	public @ResponseBody
@@ -245,6 +261,7 @@ public class UserProfileController {
 	 *
 	 * @param ids IDs are specified as request parameters at the end of the URL, separated by commas. <p>For example: <pre class="prettyprint">ids=1001,819</pre></p>
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_PROFILE, method = RequestMethod.POST)
 	public @ResponseBody
@@ -274,6 +291,7 @@ public class UserProfileController {
 	 *            <i>Default is 10</i>
 	 *            </p>
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_GROUP_HEADERS, method = RequestMethod.GET)
 	public @ResponseBody
@@ -296,6 +314,7 @@ public class UserProfileController {
 	 *         does not match an existing user name or team name then no header
 	 *         will be returned.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_GROUP_HEADERS_BY_ALIASES, method = RequestMethod.POST)
 	public @ResponseBody
@@ -323,6 +342,7 @@ public class UserProfileController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.USER_PROFILE_IMAGE, method = RequestMethod.GET)
 	public @ResponseBody
 	void imageRedirectURLForUser(
@@ -354,6 +374,7 @@ public class UserProfileController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.USER_PROFILE_IMAGE_PREVIEW, method = RequestMethod.GET)
 	public @ResponseBody
 	void imagePreviewRedirectURLForUser(
@@ -372,6 +393,7 @@ public class UserProfileController {
 	 * @param id
 	 *        Entity ID of the favorite <a href="${org.sagebionetworks.repo.model.Entity}">Entity</a>
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = { 
 			UrlHelpers.FAVORITE_ID
@@ -391,12 +413,12 @@ public class UserProfileController {
 	 * @param id
 	 *       Entity ID of the <a href="${org.sagebionetworks.repo.model.Entity}">Entity</a> that should be removed as a favorite
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = { 
 			UrlHelpers.FAVORITE_ID
 			}, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void removeFavorite(
+	public void removeFavorite(
 			@PathVariable String id,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			HttpServletRequest request)
@@ -413,6 +435,7 @@ public class UserProfileController {
 	 * @param limit
 	 *          Limits the number of items that will be fetched for this page. <p><i>Default is 10</i></p>
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = {
 			UrlHelpers.FAVORITE
@@ -426,41 +449,58 @@ public class UserProfileController {
 		return serviceProvider.getUserProfileService().getFavorites(userId, limit, offset);
 	}
 
-	/**
-	 * Get a paginated result that contains the <a href="${org.sagebionetworks.repo.model.ProjectHeader}">project
-	 * headers</a> from a user. The list is ordered by most recent interacted with project first
-	 * 
-	 * @param type The type of project list
-	 * @param sortColumn The optional column to sort on. <i>Default sort by last activity</i>
-	 * @param sortDirection The optional sort direction. <i>Default sort descending</i>
-	 * @param offset The offset index determines where this page will start from. An index of 0 is the first item.
-	 *        <i>Default is 0</i>
-	 * @param limit Limits the number of items that will be fetched for this page. <i>Default is 10</i>
-	 */
+	public static ProjectListType getProjectListTypeForProjectListType(ProjectListTypeDeprecated deprecatedType) {
+		ProjectListType projectListFilter = null;
+		switch (deprecatedType) {
+		case MY_PROJECTS:
+		case OTHER_USER_PROJECTS:
+			projectListFilter=ProjectListType.ALL;
+			break;
+		case MY_CREATED_PROJECTS:
+			projectListFilter=ProjectListType.CREATED;
+			break;
+		case MY_PARTICIPATED_PROJECTS:
+			projectListFilter=ProjectListType.PARTICIPATED;
+			break;
+		case MY_TEAM_PROJECTS:
+		case TEAM_PROJECTS:
+			projectListFilter=ProjectListType.TEAM;
+			break;
+		default:
+			throw new IllegalArgumentException("Unrecognized "+deprecatedType);
+		}
+		return projectListFilter;
+	}
+
+	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = { UrlHelpers.PROJECTS }, method = RequestMethod.GET)
+	@RequestMapping(value = { UrlHelpers.PROJECTS_DEPRECATED }, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<ProjectHeader> getProjects(
-			@PathVariable ProjectListType type,
+	PaginatedResults<ProjectHeader> getOwnProjectsDeprecated(
+			@PathVariable ProjectListTypeDeprecated deprecatedType,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestParam(value = UrlHelpers.PROJECTS_SORT_PARAM, required = false) ProjectListSortColumn sortColumn,
 			@RequestParam(value = UrlHelpers.PROJECTS_SORT_DIRECTION_PARAM, required = false) SortDirection sortDirection,
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) Long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) Long limit)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
-		return serviceProvider.getUserProfileService().getProjects(userId, null, null, type, sortColumn, sortDirection, limit, offset);
+		
+		ProjectListType projectListFilter = getProjectListTypeForProjectListType(deprecatedType);		
+		String nextPageToken = (new NextPageToken(limit, offset)).toToken();
+		ProjectHeaderList list = serviceProvider.getUserProfileService().getProjects(userId, userId, null, projectListFilter, sortColumn, sortDirection, nextPageToken);
+		PaginatedResults<ProjectHeader> result = new PaginatedResults<ProjectHeader>();
+		result.setResults(list.getResults());
+		result.setTotalNumberOfResults(result.calculateTotalWithLimitAndOffset(list.getResults().size(), limit, offset));
+		return result;
 	}
-
-	/**
-	 * Same as getProjects, but has team parameter
-	 * 
-	 * @param teamId The team ID to list projects for, when showing ProjectListType.TEAM_PROJECTS
-	 */
+	
+	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = { UrlHelpers.PROJECTS_TEAM }, method = RequestMethod.GET)
+	@RequestMapping(value = { UrlHelpers.PROJECTS_TEAM_DEPRECATED }, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<ProjectHeader> getProjectsTeam(
-			@PathVariable ProjectListType type,
+	PaginatedResults<ProjectHeader> getProjectsTeamDeprecated(
 			@PathVariable Long teamId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestParam(value = UrlHelpers.PROJECTS_SORT_PARAM, required = false) ProjectListSortColumn sortColumn,
@@ -468,19 +508,22 @@ public class UserProfileController {
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) Long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) Long limit)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
-		return serviceProvider.getUserProfileService().getProjects(userId, null, teamId, type, sortColumn, sortDirection, limit, offset);
+		ProjectListType projectListFilter = ProjectListType.TEAM;	
+		String nextPageToken = (new NextPageToken(limit, offset)).toToken();
+		ProjectHeaderList list = serviceProvider.getUserProfileService().getProjects(userId, userId, teamId, projectListFilter, sortColumn, sortDirection, nextPageToken);
+		PaginatedResults<ProjectHeader> result = new PaginatedResults<ProjectHeader>();
+		result.setResults(list.getResults());
+		result.setTotalNumberOfResults(result.calculateTotalWithLimitAndOffset(list.getResults().size(), limit, offset));
+		return result;
 	}
 
-	/**
-	 * Same as getProjects, but has other user id parameter
-	 * 
-	 * @param principalId The user ID to list projects for, when showing ProjectListType.OTHER_USER_PROJECTS
-	 */
+	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = { UrlHelpers.PROJECTS_USER }, method = RequestMethod.GET)
+	@RequestMapping(value = { UrlHelpers.PROJECTS_USER_DEPRECATED }, method = RequestMethod.GET)
 	public @ResponseBody
-	PaginatedResults<ProjectHeader> getProjectsUser(
-			@PathVariable ProjectListType type,
+	PaginatedResults<ProjectHeader> getProjectsUserDeprecated(
+			@PathVariable ProjectListTypeDeprecated deprecatedType,
 			@PathVariable Long principalId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestParam(value = UrlHelpers.PROJECTS_SORT_PARAM, required = false) ProjectListSortColumn sortColumn,
@@ -488,6 +531,113 @@ public class UserProfileController {
 			@RequestParam(value = ServiceConstants.PAGINATION_OFFSET_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_OFFSET_PARAM) Long offset,
 			@RequestParam(value = ServiceConstants.PAGINATION_LIMIT_PARAM, required = false, defaultValue = ServiceConstants.DEFAULT_PAGINATION_LIMIT_PARAM) Long limit)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
-		return serviceProvider.getUserProfileService().getProjects(userId, principalId, null, type, sortColumn, sortDirection, limit, offset);
+
+		ProjectListType projectListFilter = getProjectListTypeForProjectListType(deprecatedType);		
+		String nextPageToken = (new NextPageToken(limit, offset)).toToken();
+		ProjectHeaderList list = serviceProvider.getUserProfileService().getProjects(userId, principalId, null, projectListFilter, sortColumn, sortDirection, nextPageToken);
+		PaginatedResults<ProjectHeader> result = new PaginatedResults<ProjectHeader>();
+		result.setResults(list.getResults());
+		result.setTotalNumberOfResults(result.calculateTotalWithLimitAndOffset(list.getResults().size(), limit, offset));
+		return result;
 	}
+	
+	
+	/**
+	 * Get a paginated result that contains <a href="${org.sagebionetworks.repo.model.ProjectHeader}">project
+	 * headers</a> and user activity (last access date) of the caller. The project list includes only
+	 * those for which the user or a team they are on is explicitly granted access in the project's share
+	 * settings.  Other projects, including those visible by virtue of being Public, are not included.  
+	 * The list of projects is further filtered as follows:
+	 * <br/>
+	 * If <i>filter</i> is ALL (the default): the projects that the caller has READ access to by virtue of being 
+	 * included in the project's share settings personally or via a team in which they are a member, as described above.
+	 * <br/>
+	 * If <i>filter</i> is CREATED: only projects that the caller has created.
+	 * <br/>
+	 * If <i>filter</i> is PARTICIPATED: only projects that the caller has <em>not</em> created.
+	 * <br/>
+	 * If <i>filter</i> is TEAM: the projects that the caller has READ access by virtue of being included in
+	 * the project's share settings via the team given by 'teamId' or, if no team ID is specified, then by any team 
+	 * which they are a member of.
+	 * <br/>
+	 * 
+	 * @param userId The ID of the user making the request
+	 * @param projectFilter The <a href="${org.sagebionetworks.repo.model.ProjectListType}">criterion</a> for including a project in the list (see above).
+	 * @param teamId If the projectFilter is 'TEAM' then this is the ID of the team through which the returned projects are shared with the user.
+	 * @param filter see above
+	 * @param sortColumn The optional <a href="${org.sagebionetworks.repo.model.ProjectListSortColumn}">column</a> to sort on. 
+	 * 			<i>Default sort by last activity</i>
+	 * @param sortDirection The optional <a href="${org.sagebionetworks.repo.model.entity.query.SortDirection}">sort direction</a>. 
+	 * 			<i>Default sort descending</i>
+	 * @param nextPageToken a token returned with the previous page of results
+	 * @return
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws UnauthorizedException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = { UrlHelpers.PROJECTS }, method = RequestMethod.GET)
+	public @ResponseBody
+	ProjectHeaderList getProjects(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@RequestParam(value = AuthorizationConstants.TEAM_ID_PARAM, required = false) Long teamId,
+			@RequestParam(value = AuthorizationConstants.PROJECT_FILTER_PARAM, required = false) ProjectListType filter,
+			@RequestParam(value = UrlHelpers.PROJECTS_SORT_PARAM, required = false) ProjectListSortColumn sortColumn,
+			@RequestParam(value = UrlHelpers.PROJECTS_SORT_DIRECTION_PARAM, required = false) SortDirection sortDirection,
+			@RequestParam(value = UrlHelpers.NEXT_PAGE_TOKEN_PARAM, required=false) String nextPageToken)
+			throws NotFoundException, DatastoreException, UnauthorizedException {
+		return serviceProvider.getUserProfileService().getProjects(userId, userId, teamId, filter, sortColumn, sortDirection, nextPageToken);
+	}
+
+	/**
+	 * Get a paginated result that contains <a href="${org.sagebionetworks.repo.model.ProjectHeader}">project
+	 * headers</a> and user activity (last access date) of the user specified by 'principalId'. The project list includes only
+	 * those for which the user or a team they are on is explicitly granted access in the project's share
+	 * settings.  Other projects, including those visible by virtue of being Public, are not included.  
+	 * The list of projects is further filtered as follows:
+	 * <br/>
+	 * If <i>filter</i> is ALL (the default): the projects that the user has READ access to by virtue of being 
+	 * included in the project's share settings personally or via a team in which they are a member, as described above.
+	 * <br/>
+	 * If <i>filter</i> is CREATED: only projects that the user has created.
+	 * <br/>
+	 * If <i>filter</i> is PARTICIPATED: only projects that the user has <em>not</em> created.
+	 * <br/>
+	 * If <i>filter</i> is TEAM: the projects that the user has READ access by virtue of being included in
+	 * the project's share settings via the team given by 'teamId' or, if no team ID is specified, then by any team 
+	 * which they are a member of.
+	 * <br/>
+	 * 
+	 * @param userId The ID of the user making the request
+	 * @param principalId The ID of the user to list projects for
+	 * @param projectFilter The <a href="${org.sagebionetworks.repo.model.ProjectListType}">criterion</a> for including a project in the list (see above).
+	 * @param teamId If the projectFilter is 'TEAM' then this is the ID of the team through which the returned projects are shared with 'principalId'.
+	 * @param filter see above
+	 * @param sortColumn The optional <a href="${org.sagebionetworks.repo.model.ProjectListSortColumn}">column</a> to sort on. 
+	 * 			<i>Default sort by last activity</i>
+	 * @param sortDirection The optional <a href="${org.sagebionetworks.repo.model.entity.query.SortDirection}">sort direction</a>. 
+	 * 			<i>Default sort descending</i>
+	 * @param nextPageToken a token returned with the previous page of results
+	 * @return
+	 * @throws NotFoundException
+	 * @throws DatastoreException
+	 * @throws UnauthorizedException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = { UrlHelpers.PROJECTS_USER }, method = RequestMethod.GET)
+	public @ResponseBody
+	ProjectHeaderList getOtherUsersProjects(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@PathVariable Long principalId,
+			@RequestParam(value = AuthorizationConstants.TEAM_ID_PARAM, required = false) Long teamId,
+			@RequestParam(value = AuthorizationConstants.PROJECT_FILTER_PARAM, required = false) ProjectListType filter,
+			@RequestParam(value = UrlHelpers.PROJECTS_SORT_PARAM, required = false) ProjectListSortColumn sortColumn,
+			@RequestParam(value = UrlHelpers.PROJECTS_SORT_DIRECTION_PARAM, required = false) SortDirection sortDirection,
+			@RequestParam(value = UrlHelpers.NEXT_PAGE_TOKEN_PARAM, required=false) String nextPageToken)
+			throws NotFoundException, DatastoreException, UnauthorizedException {
+		return serviceProvider.getUserProfileService().getProjects(userId, principalId, teamId, filter, sortColumn, sortDirection, nextPageToken);
+	}
+
 }

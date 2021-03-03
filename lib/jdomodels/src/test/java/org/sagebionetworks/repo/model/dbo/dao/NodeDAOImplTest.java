@@ -1,37 +1,13 @@
 package org.sagebionetworks.repo.model.dbo.dao;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.sagebionetworks.repo.model.dbo.dao.NodeDAOImpl.TRASH_FOLDER_ID;
-import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_NODE_ID;
-import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_NODE_PARENT_ID;
-import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_NODE;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
@@ -39,13 +15,13 @@ import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AccessControlListDAO;
 import org.sagebionetworks.repo.model.ActivityDAO;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.EntityTypeUtils;
 import org.sagebionetworks.repo.model.GroupMembersDAO;
+import org.sagebionetworks.repo.model.IdAndAlias;
 import org.sagebionetworks.repo.model.IdAndEtag;
 import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.LimitExceededException;
@@ -65,11 +41,18 @@ import org.sagebionetworks.repo.model.UserGroup;
 import org.sagebionetworks.repo.model.UserGroupDAO;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.VersionInfo;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2TestUtils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Utils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValueType;
 import org.sagebionetworks.repo.model.dao.FileHandleDao;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.migration.MigratableTableDAO;
+import org.sagebionetworks.repo.model.dbo.persistence.DBONode;
 import org.sagebionetworks.repo.model.dbo.persistence.DBORevision;
+import org.sagebionetworks.repo.model.dbo.schema.JsonSchemaTestHelper;
 import org.sagebionetworks.repo.model.entity.Direction;
+import org.sagebionetworks.repo.model.entity.NameIdType;
 import org.sagebionetworks.repo.model.entity.SortBy;
 import org.sagebionetworks.repo.model.entity.query.SortDirection;
 import org.sagebionetworks.repo.model.file.ChildStatsRequest;
@@ -77,26 +60,64 @@ import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.helper.DoaObjectHelper;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.jdo.NodeTestUtils;
 import org.sagebionetworks.repo.model.provenance.Activity;
-import org.sagebionetworks.repo.model.table.AnnotationDTO;
+import org.sagebionetworks.repo.model.schema.BoundObjectType;
+import org.sagebionetworks.repo.model.schema.JsonSchemaObjectBinding;
+import org.sagebionetworks.repo.model.schema.JsonSchemaVersionInfo;
 import org.sagebionetworks.repo.model.table.AnnotationType;
-import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.model.table.ObjectAnnotationDTO;
+import org.sagebionetworks.repo.model.table.ObjectDataDTO;
 import org.sagebionetworks.repo.model.table.SnapshotRequest;
 import org.sagebionetworks.repo.model.util.AccessControlListUtil;
+import org.sagebionetworks.repo.web.FileHandleLinkedException;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.UnexpectedRollbackException;
-import org.springframework.transaction.support.TransactionTemplate;
 
-@RunWith(SpringJUnit4ClassRunner.class)
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.sagebionetworks.repo.model.dbo.dao.NodeDAOImpl.TRASH_FOLDER_ID;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_NODE_ID;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.COL_NODE_PARENT_ID;
+import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_NODE;
+
+@ExtendWith(SpringExtension.class)
 @ContextConfiguration(locations = { "classpath:jdomodels-test-context.xml" })
 public class NodeDAOImplTest {
 
@@ -127,17 +148,18 @@ public class NodeDAOImplTest {
 	private TeamDAO teamDAO;
 	
 	@Autowired
-	private PlatformTransactionManager txManager;
-	
-	@Autowired
 	private MigratableTableDAO migratableTableDao;;
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
 	@Autowired
-	DBOBasicDao basicDao;
-
-	private TransactionTemplate transactionTemplate;
+	private DBOBasicDao basicDao;
+	
+	@Autowired
+	private JsonSchemaTestHelper jsonSchemaTestHelper;
+	
+	@Autowired
+	private DoaObjectHelper<Node> nodeDaoHelper;
 
 	// the datasets that must be deleted at the end of each test.
 	List<String> toDelete = new ArrayList<String>();
@@ -152,6 +174,7 @@ public class NodeDAOImplTest {
 	
 	private S3FileHandle fileHandle = null;
 	private S3FileHandle fileHandle2 = null;
+	private S3FileHandle fileHandle3 = null;
 
 	private String user1;
 	private String user2;
@@ -162,7 +185,7 @@ public class NodeDAOImplTest {
 	
 	UserInfo adminUser;
 
-	@Before
+	@BeforeEach
 	public void before() throws Exception {
 		creatorUserGroupId = BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId();
 		altUserGroupId = BOOTSTRAP_PRINCIPAL.AUTHENTICATED_USERS_GROUP.getPrincipalId();
@@ -177,6 +200,7 @@ public class NodeDAOImplTest {
 		// Create file handles that can be used in tests
 		fileHandle = createTestFileHandle("One", creatorUserGroupId.toString());
 		fileHandle2 = createTestFileHandle("Two", creatorUserGroupId.toString());
+		fileHandle3 = createTestFileHandle("Three", creatorUserGroupId.toString());
 
 		UserGroup user = new UserGroup();
 		user.setIsIndividual(true);
@@ -199,11 +223,9 @@ public class NodeDAOImplTest {
 
 		groupMembersDAO.addMembers(group, Lists.newArrayList(user1));
 		groupMembersDAO.addMembers(group, Lists.newArrayList(user3));
-		
-		transactionTemplate = new TransactionTemplate(txManager);
 	}
 	
-	@After
+	@AfterEach
 	public void after() throws Exception {
 		if (group != null) {
 			teamDAO.delete(group);
@@ -212,7 +234,7 @@ public class NodeDAOImplTest {
 			for(String id:  toDelete){
 				// Delete each
 				try{
-					nodeDao.delete(id);
+					nodeDao.deleteTree(id, 100);
 				}catch (NotFoundException e) {
 					// happens if the object no longer exists.
 				}
@@ -381,14 +403,16 @@ public class NodeDAOImplTest {
 		assertEquals(NodeConstants.DEFAULT_VERSION_NUMBER, afterCreate.getVersionNumber());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNull() {
 		Node node = null;
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNullCreatedBy() {
 		Node node = new Node();
 		node.setName("name");
@@ -397,11 +421,13 @@ public class NodeDAOImplTest {
 		node.setCreatedOn(new Date(System.currentTimeMillis()));
 		node.setModifiedOn(node.getCreatedOn());
 		node.setNodeType(EntityType.folder);
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNullCreatedOn() {
 		Node node = new Node();
 		node.setName("name");
@@ -410,11 +436,13 @@ public class NodeDAOImplTest {
 		node.setCreatedOn(new Date(System.currentTimeMillis()));
 		node.setModifiedOn(node.getCreatedOn());
 		node.setNodeType(EntityType.folder);
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNullModifiedBy() {
 		Node node = new Node();
 		node.setName("name");
@@ -423,11 +451,13 @@ public class NodeDAOImplTest {
 		node.setCreatedOn(null);
 		node.setModifiedOn(new Date(System.currentTimeMillis()));
 		node.setNodeType(EntityType.folder);
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNullModifiedOn() {
 		Node node = new Node();
 		node.setName("name");
@@ -436,11 +466,13 @@ public class NodeDAOImplTest {
 		node.setCreatedOn(new Date(System.currentTimeMillis()));
 		node.setModifiedOn(null);
 		node.setNodeType(EntityType.folder);
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeNullType() {
 		Node node = new Node();
 		node.setName("name");
@@ -449,8 +481,10 @@ public class NodeDAOImplTest {
 		node.setCreatedOn(new Date(System.currentTimeMillis()));
 		node.setModifiedOn(node.getCreatedOn());
 		node.setNodeType(null);
-		// call under test
-		nodeDao.createNewNode(node);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.createNewNode(node);
+		});
 	}
 	
 	@Test
@@ -469,14 +503,20 @@ public class NodeDAOImplTest {
 		assertEquals(new Long(boostrapId+1), nextId);
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetNodeNotFound(){
-		nodeDao.getNode("syn123");
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getNode("syn123");
+		});
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetNodeVersionNotFound(){
-		nodeDao.getNodeForVersion("syn123", 1L);
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getNodeForVersion("syn123", 1L);
+		});
 	}
 	
 	@Test
@@ -646,22 +686,16 @@ public class NodeDAOImplTest {
 		// Now delete the parent and confirm the child,grandkid are gone too
 		nodeDao.delete(parentId);
 		// the child should no longer exist
-		try{
-			childLoaded = nodeDao.getNode(childId);
-			fail("The child should not exist after the parent was deleted");
-		}catch (NotFoundException e){
-			// expected.
-		}
-		try{
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.getNode(childId);
+		});
+		assertThrows(NotFoundException.class, ()->{
 			nodeDao.getNode(grandkidId);
-			fail("The grandchild should not exist after the grandparent was deleted");
-		}catch (NotFoundException e){
-			// expected.
-		}
+		});
 	}
 
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateUniqueChildNames() throws Exception {
 		Node parent = privateCreateNew("parent");
 		String parentId = nodeDao.createNew(parent);
@@ -676,40 +710,11 @@ public class NodeDAOImplTest {
 		toDelete.add(childId);
 		
 		// We should not be able to create a child with the same name
-		child = privateCreateNew("child");
-		child.setParentId(parentId);
-		String child2Id = nodeDao.createNew(child);
-		assertNotNull(child2Id);
-		toDelete.add(child2Id);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.createNew(child);
+		});
 	}
 
-	@Ignore  // This is not working because the exception is thrown when the transaction is committed, not when we change it.
-	@Test (expected=IllegalArgumentException.class)
-	public void testUpdateUniqueChildNames() throws Exception {
-		Node parent = privateCreateNew("parent");
-		String parentId = nodeDao.createNew(parent);
-		assertNotNull(parentId);
-		toDelete.add(parentId);
-		
-		//Now add an child
-		Node child = privateCreateNew("child");
-		child.setParentId(parentId);
-		String childId = nodeDao.createNew(child);
-		assertNotNull(childId);
-		toDelete.add(childId);
-		
-		// We should not be able to create a child with the same name
-		child = privateCreateNew("child2");
-		child.setParentId(parentId);
-		String child2Id = nodeDao.createNew(child);
-		assertNotNull(child2Id);
-		toDelete.add(child2Id);
-		
-		// Now try to change child2's name to 'child' which should fail
-		child = nodeDao.getNode(child2Id);
-		child.setName("child");
-		nodeDao.updateNode(child);
-	}
 	
 	@Test
 	public void testGetPath() throws Exception {
@@ -899,37 +904,26 @@ public class NodeDAOImplTest {
 		toDelete.add(id);
 		assertNotNull(id);
 		// Now get the annotations for this node.
-		Annotations annos = nodeDao.getUserAnnotationsV1(id);
+		Annotations annos = nodeDao.getUserAnnotations(id);
 		assertNotNull(annos);
 		assertNotNull(annos.getEtag());
 		assertEquals(id, annos.getId());
 		// Now add some annotations to this node.
-		annos.addAnnotation("stringOne", "one");
-		annos.addAnnotation("doubleKey", new Double(23.5));
-		annos.addAnnotation("longKey", new Long(1234));
-		annos.addAnnotation("blobKey", "StringToBlob".getBytes("UTF-8"));
-		byte[] bigBlob = new byte[6000];
-		Arrays.fill(bigBlob, (byte)0xa3);
-		annos.addAnnotation("bigBlob", bigBlob);
-		annos.addAnnotation("dateKey", new Date(System.currentTimeMillis()));
+		AnnotationsV2TestUtils.putAnnotations(annos,"stringOne", "one", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(annos,"doubleKey", "23.5", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annos,"longKey", "1234", AnnotationsValueType.LONG);
+		AnnotationsV2TestUtils.putAnnotations(annos,"dateKey", Long.toString(System.currentTimeMillis()), AnnotationsValueType.TIMESTAMP_MS);
 		// update the eTag
 		String newETagString = UUID.randomUUID().toString();
 		annos.setEtag(newETagString);
 		// Update them
-		nodeDao.updateUserAnnotationsV1(id, annos);
+		nodeDao.updateUserAnnotations(id, annos);
 		// Now get a copy and ensure it equals what we sent
-		Annotations copy = nodeDao.getUserAnnotationsV1(id);
+		Annotations copy = nodeDao.getUserAnnotations(id);
 		assertNotNull(copy);
-		assertEquals("one", copy.getSingleValue("stringOne"));
-		assertEquals(new Double(23.5), copy.getSingleValue("doubleKey"));
-		assertEquals(new Long(1234), copy.getSingleValue("longKey"));
-		byte[] blob = (byte[]) copy.getSingleValue("blobKey");
-		assertNotNull(blob);
-		String blobString = new String(blob, "UTF-8");
-		assertEquals("StringToBlob", blobString);
-		byte[] bigCopy = (byte[]) copy.getSingleValue("bigBlob");
-		assertNotNull(bigCopy);
-		assertTrue(Arrays.equals(bigBlob, bigCopy));
+		assertEquals("one", AnnotationsV2Utils.getSingleValue(copy, "stringOne"));
+		assertEquals("23.5", AnnotationsV2Utils.getSingleValue(copy, "doubleKey"));
+		assertEquals("1234",AnnotationsV2Utils.getSingleValue(copy, "longKey"));
 	}
 	
 	@Test
@@ -939,28 +933,25 @@ public class NodeDAOImplTest {
 		toDelete.add(id);
 		assertNotNull(id);
 		// Now get the annotations for this node.
-		Annotations annos= nodeDao.getUserAnnotationsV1(id);
+		Annotations annos= nodeDao.getUserAnnotations(id);
 		assertNotNull(annos);
 		assertNotNull(annos.getEtag());
-		assertNotNull(annos.getBlobAnnotations());
-		assertNotNull(annos.getStringAnnotations());
-		assertNotNull(annos.getDoubleAnnotations());
-		assertNotNull(annos.getLongAnnotations());
-		assertNotNull(annos.getDateAnnotations());
+		assertNotNull(annos.getAnnotations());
+		assertTrue(annos.getAnnotations().isEmpty());
 		// Now add some annotations to this node.
-		annos.addAnnotation("stringOne", "one");
-		annos.addAnnotation("doubleKey", new Double(23.5));
-		annos.addAnnotation("longKey", new Long(1234));
+		AnnotationsV2TestUtils.putAnnotations(annos, "stringOne", "one", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(annos, "doubleKey", "23.5", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annos, "longKey", "1234", AnnotationsValueType.LONG);
 		// Update them
-		nodeDao.updateUserAnnotationsV1(id, annos);
+		nodeDao.updateUserAnnotations(id, annos);
 		// Now get a copy and ensure it equals what we sent
-		Annotations copy = nodeDao.getUserAnnotationsV1(id);
+		Annotations copy = nodeDao.getUserAnnotations(id);
 		assertNotNull(copy);
 		assertEquals(annos, copy);
 		// clear an and update
-		assertNotNull(copy.getStringAnnotations().remove("stringOne"));
-		nodeDao.updateUserAnnotationsV1(id, copy);
-		Annotations copy2 = nodeDao.getUserAnnotationsV1(id);
+		assertNotNull(copy.getAnnotations().remove("stringOne"));
+		nodeDao.updateUserAnnotations(id, copy);
+		Annotations copy2 = nodeDao.getUserAnnotations(id);
 		assertNotNull(copy2);
 		assertEquals(copy, copy2);
 		// Make sure the node has a new eTag
@@ -1036,11 +1027,12 @@ public class NodeDAOImplTest {
 		// Now try to create a new version with a null label
 		loaded.setVersionLabel(null);
 		Long newNumber = nodeDao.createNewVersion(loaded);
-		// Since creation of a new version failed we should be back to one version
+		// With a null label the version label should be assigned as the new version number
 		loaded = nodeDao.getNode(id);
 		assertNotNull(loaded);
 		assertEquals(node.getVersionComment(), loaded.getVersionComment());
 		assertEquals(newNumber.toString(), loaded.getVersionLabel());
+		assertEquals(NodeConstants.DEFAULT_VERSION_NUMBER + 1, loaded.getVersionNumber());
 	}
 	
 	@Test
@@ -1065,15 +1057,14 @@ public class NodeDAOImplTest {
 		String id = nodeDao.createNew(node);
 		toDelete.add(id);
 		assertNotNull(id);
-		Annotations annos = nodeDao.getUserAnnotationsV1(id);
+		Annotations annos = nodeDao.getUserAnnotations(id);
 		assertNotNull(annos);
-		annos.addAnnotation("string", "value");
-		annos.addAnnotation("date", new Date(1));
-		annos.addAnnotation("double", 2.3);
-		annos.addAnnotation("long", 56l);
-		annos.addAnnotation("blob", "Some blob value".getBytes("UTF-8"));
+		AnnotationsV2TestUtils.putAnnotations(annos, "string", "value", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(annos, "date", "1", AnnotationsValueType.TIMESTAMP_MS);
+		AnnotationsV2TestUtils.putAnnotations(annos, "double", "2.3", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annos, "long", "56l", AnnotationsValueType.LONG);
 		// Update the annotations
-		nodeDao.updateUserAnnotationsV1(id, annos);
+		nodeDao.updateUserAnnotations(id, annos);
 		// Now create a new version
 		Node copy = nodeDao.getNode(id);
 		copy.setVersionComment(null);
@@ -1082,14 +1073,14 @@ public class NodeDAOImplTest {
 		assertEquals(new Long(2), revNumber);
 		// At this point the new and old version should have the
 		// same annotations.
-		Annotations v1Annos = nodeDao.getUserAnnotationsV1ForVersion(id, 1L);
+		Annotations v1Annos = nodeDao.getUserAnnotationsForVersion(id, 1L);
 		assertNotNull(v1Annos);
 		assertEquals(NodeConstants.ZERO_E_TAG, v1Annos.getEtag());
-		Annotations v2Annos = nodeDao.getUserAnnotationsV1ForVersion(id, 2L);
+		Annotations v2Annos = nodeDao.getUserAnnotationsForVersion(id, 2L);
 		assertNotNull(v2Annos);
 		assertEquals(NodeConstants.ZERO_E_TAG, v2Annos.getEtag());
 		assertEquals(v1Annos, v2Annos);
-		Annotations currentAnnos = nodeDao.getUserAnnotationsV1(id);
+		Annotations currentAnnos = nodeDao.getUserAnnotations(id);
 		assertNotNull(currentAnnos);
 		assertNotNull(currentAnnos.getEtag());
 		// They should be equal except for the e-tag
@@ -1098,37 +1089,36 @@ public class NodeDAOImplTest {
 		assertEquals(currentAnnos, v2Annos);
 		
 		// Now update the current annotations
-		currentAnnos.getDoubleAnnotations().clear();
-		currentAnnos.addAnnotation("double", 8989898.2);
-		nodeDao.updateUserAnnotationsV1(id, currentAnnos);
+		AnnotationsV2TestUtils.putAnnotations(currentAnnos, "double", "8989898.2", AnnotationsValueType.DOUBLE);
+		nodeDao.updateUserAnnotations(id, currentAnnos);
 		
 		// Now the old and new should no longer match.
-		v1Annos = nodeDao.getUserAnnotationsV1ForVersion(id, 1L);
+		v1Annos = nodeDao.getUserAnnotationsForVersion(id, 1L);
 		assertNotNull(v1Annos);
-		assertEquals(2.3, v1Annos.getSingleValue("double"));
+		assertEquals("2.3", AnnotationsV2Utils.getSingleValue(v1Annos, "double"));
 		assertEquals(NodeConstants.ZERO_E_TAG, v1Annos.getEtag());
 
-		v2Annos = nodeDao.getUserAnnotationsV1ForVersion(id, 2L);
+		v2Annos = nodeDao.getUserAnnotationsForVersion(id, 2L);
 		assertNotNull(v2Annos);
 		assertEquals(NodeConstants.ZERO_E_TAG, v2Annos.getEtag());
-		assertEquals(8989898.2, v2Annos.getSingleValue("double"));
+		assertEquals("8989898.2", AnnotationsV2Utils.getSingleValue(v2Annos, "double"));
 		// The two version should now be out of synch with each other.
 		assertFalse(v1Annos.equals(v2Annos));
 		// The current annos should still match the v2
-		currentAnnos = nodeDao.getUserAnnotationsV1(id);
+		currentAnnos = nodeDao.getUserAnnotations(id);
 		assertNotNull(currentAnnos);
 		assertNotNull(currentAnnos.getEtag());
 		// They should be equal except for the e-tag
 		assertFalse(currentAnnos.getEtag().equals(v2Annos.getEtag()));
 		v2Annos.setEtag(currentAnnos.getEtag());
 		assertEquals(currentAnnos, v2Annos);
-		assertEquals(8989898.2, currentAnnos.getSingleValue("double"));
+		assertEquals("8989898.2", AnnotationsV2Utils.getSingleValue(currentAnnos, "double"));
 		
 		// Node delete the current revision and confirm that the annotations are rolled back
 		node = nodeDao.getNode(id);
 		nodeDao.deleteVersion(id, node.getVersionNumber());
-		Annotations rolledBackAnnos = nodeDao.getUserAnnotationsV1(id);
-		assertEquals(2.3, rolledBackAnnos.getSingleValue("double"));
+		Annotations rolledBackAnnos = nodeDao.getUserAnnotations(id);
+		assertEquals("2.3", AnnotationsV2Utils.getSingleValue(rolledBackAnnos, "double"));
 	}
 	
 	@Test
@@ -1160,6 +1150,21 @@ public class NodeDAOImplTest {
 			}
 			assertEquals(versionNumber, nodeVersion.getVersionNumber());
 		}
+	}
+	
+	@Test
+	public void testGetLatestVersionNumber() throws Exception {
+		// Create a number of versions
+		int numberVersions = 5;
+		String id = createNodeWithMultipleVersions(numberVersions);
+		
+		Node currentNode = nodeDao.getNode(id);
+		
+		// Call under test
+		Optional<Long> result = nodeDao.getLatestVersionNumber(id);
+		
+		assertTrue(result.isPresent());
+		assertEquals(currentNode.getVersionNumber(), result.get());
 	}
 	
 	@Test
@@ -1214,7 +1219,8 @@ public class NodeDAOImplTest {
 		// Now make sure the current version of the node still exists
 		node = nodeDao.getNode(id);
 		assertNotNull(node);
-		assertEquals("Deleting the current version of a node failed to change the current version to be current - 1",new Long(currentVersion-1), node.getVersionNumber());
+		assertEquals(new Long(currentVersion-1), node.getVersionNumber()
+				,"Deleting the current version of a node failed to change the current version to be current - 1");
 	}
 	
 	@Test
@@ -1236,7 +1242,8 @@ public class NodeDAOImplTest {
 		// The current version should not have changed.
 		node = nodeDao.getNode(id);
 		assertNotNull(node);
-		assertEquals("Deleting the first version should not have changed the current version of the node",new Long(currentVersion), node.getVersionNumber());
+		assertEquals(new Long(currentVersion), node.getVersionNumber(),
+				"Deleting the first version should not have changed the current version of the node");
 	}
 	
 	@Test 
@@ -1248,19 +1255,52 @@ public class NodeDAOImplTest {
 		List<Long> startingVersions = nodeDao.getVersionNumbers(id);
 		assertNotNull(startingVersions);
 		assertEquals(numberVersions, startingVersions.size());
-		// Now delete all versions. This should fail.
-		try{
-			for(Long versionNumber: startingVersions){
-				nodeDao.deleteVersion(id, versionNumber);
-			}
-			fail("Should not have been able to delte all versions of a node");
-		}catch(IllegalArgumentException e){
-			// expected.
+		
+		// Now delete all versions but the last one.
+		for (Long versionNumber : startingVersions.subList(0, startingVersions.size() - 1)) {	
+			nodeDao.deleteVersion(id, versionNumber);
 		}
+		
+		// The following fails as it is the latest version
+		Assertions.assertThrows(IllegalArgumentException.class, ()-> {
+			nodeDao.deleteVersion(id, startingVersions.get(startingVersions.size() - 1));
+		});
+		
 		// There should be one version left and it should be the first version.
 		node = nodeDao.getNode(id);
 		assertNotNull(node);
-		assertEquals("Deleting all versions except the first should have left the node in place with a current version of 1.",new Long(1), node.getVersionNumber());
+		assertEquals(new Long(1), node.getVersionNumber(),
+				"Deleting all versions except the first should have left the node in place with a current version of 1.");
+	}
+	
+	// Test for PLFM-3781: Older revisions should not be recycled
+	@Test
+	public void testCreateNewVersionAfterVersionDeletion() throws Exception {
+		int numberVersions = 2;
+		
+		// Creates a node with 2 versions
+		String id = createNodeWithMultipleVersions(numberVersions);
+		
+		// Now deletes the latest version
+		Long latestVersion = nodeDao.getLatestVersionNumber(id).get();
+		
+		nodeDao.deleteVersion(id, latestVersion);
+		
+		// Creates a new version
+		Node node = nodeDao.getNode(id);
+		Node newVersion = node;
+		
+		// Reset the label to avoid duplicates
+		newVersion.setVersionLabel(null);
+		
+		Long newVersionNumber = nodeDao.createNewVersion(newVersion);
+		
+		node = nodeDao.getNode(id);
+		
+		// The new version assigned to the node should not reuse old version numbers
+		assertEquals(newVersionNumber, node.getVersionNumber());
+		assertEquals(NodeConstants.DEFAULT_VERSION_NUMBER + numberVersions, newVersionNumber);
+		
 	}
 	
 	//anything less than 15 works
@@ -1274,6 +1314,112 @@ public class NodeDAOImplTest {
 			assertFalse(nodeDao.doesNodeExist(KeyFactory.stringToKey(nodeID)));
 		}
 	}
+	
+	@Test
+	public void testDeleteCascadeGreaterThanMax(){
+		List<String> nodeIds = createNestedNodes(20);
+		
+		UncategorizedSQLException ex = Assertions.assertThrows(UncategorizedSQLException.class, () -> {
+			//delete the parent node 
+			nodeDao.delete(nodeIds.get(0));
+		});
+		
+		assertTrue(ex.getMessage().contains("Foreign key cascade delete/update exceeds max depth of 15."));
+	}
+	
+	@Test
+	public void testDeleteTreeWithSubtreeSizeLessThanLimit() {
+		int depth = 20;
+		
+		List<String> nodeIds = createNestedNodes(depth);
+		
+		// Call under test
+		boolean deleted = nodeDao.deleteTree(nodeIds.get(0), depth);
+	
+		assertTrue(deleted);
+		
+		//check that all added nodes were deleted 
+		for(String nodeID : nodeIds) {
+			assertFalse(nodeDao.doesNodeExist(KeyFactory.stringToKey(nodeID)));
+		}
+	}
+	
+	@Test
+	public void testDeleteTreeWithSubtreeSizeGreaterThanLimit() {
+		int depth = 20;
+		
+		List<String> nodeIds = createNestedNodes(depth);
+		
+		int limit = depth / 2;
+		
+		// Call under test
+		boolean deleted = nodeDao.deleteTree(nodeIds.get(0), limit);
+	
+		assertFalse(deleted);
+		
+		// Calling it again should finalize the deletion
+		deleted = nodeDao.deleteTree(nodeIds.get(0), limit);
+		
+		assertTrue(deleted);
+		
+		//check that all added nodes were deleted 
+		for(String nodeID : nodeIds){
+			assertFalse(nodeDao.doesNodeExist(KeyFactory.stringToKey(nodeID)));
+		}
+	}
+	
+	@Test
+	public void testDeleteTreeNoContainer() {
+		Node node = NodeTestUtils.createNew("parent", creatorUserGroupId);
+		node.setNodeType(EntityType.file);
+		node = nodeDao.createNewNode(node);
+		toDelete.add(node.getId());
+		
+		boolean deleted = nodeDao.deleteTree(node.getId(), 1);
+	
+		assertTrue(deleted);
+	}
+	
+	@Test
+	public void testDeleteTreeWithLeaves() {
+		int depth = 20;
+		
+		List<String> nodeIds = createNestedNodes(depth);
+		List<String> fileIds = new ArrayList<>();
+		
+		// Add a couple of files in the last node
+		fileIds.add(addFile(nodeIds.get(nodeIds.size() - 1)));
+		fileIds.add(addFile(nodeIds.get(nodeIds.size() - 1)));
+		
+		// Add some in the middle
+		fileIds.add(addFile(nodeIds.get(nodeIds.size() / 2)));
+		
+		int limit = depth + fileIds.size();
+		
+		// Call under test
+		boolean deleted = nodeDao.deleteTree(nodeIds.get(0), limit);
+		
+		assertTrue(deleted);
+		
+		for (String fileId : fileIds) {
+			assertFalse(nodeDao.doesNodeExist(KeyFactory.stringToKey(fileId)));
+		}
+		
+	}
+	
+	private String addFile(String parentId) {
+		Node file = NodeTestUtils.createNew("file_" + UUID.randomUUID().toString(), creatorUserGroupId);
+		
+		file.setNodeType(EntityType.file);
+		file.setParentId(parentId);
+		file.setFileHandleId(fileHandle.getId());
+		file = nodeDao.createNewNode(file);
+		
+		toDelete.add(file.getId());
+		
+		return file.getId();
+	}
+	
 	
 	/**
 	 * <pre>
@@ -1304,7 +1450,7 @@ public class NodeDAOImplTest {
 		List<String> nodeIDs = new ArrayList<String>();
 		
 		for(int i = 0; i < numLevels; i++){
-			String nodeName = "NodeDAOImplTest.createNestedNodes() Node:" + i;
+			String nodeName = "NodeDAOImplTest.createNestedNodes() Node:" + i + " " + UUID.randomUUID().toString();
 			Node node = new Node();
 			
 			//set fields for the new node
@@ -1328,72 +1474,7 @@ public class NodeDAOImplTest {
 		
 		return nodeIDs;
 	}
-	
-	@Test (expected = IllegalArgumentException.class)
-	public void testDeleteListNullList(){
-		nodeDao.delete((List<Long>) null);
-	}
-	
-	@Test
-	public void testDeleteListEmptyList(){
-		assertEquals(0, nodeDao.delete(new ArrayList<Long>()));
-	}
-	
-	
-	@Test
-	public void testDeleteListLeavesOnly(){
-		List<Long> nodeIDs = new ArrayList<Long>();
-		int numNodes = 2; 
-		
-		//create numNodes amount of Nodes. all children of the root
-		for(int i = 0; i < numNodes; i++){
-			String nodeName = "NodeDAOImplTest.testDeleteList() Node:" + i;
-			Node node = new Node();
-			
-			//set fields for the new node
-			Date now = new Date();
-			node.setName(nodeName);
-			node.setParentId( rootID );//previous added node is the parent
-			node.setNodeType(EntityType.project);
-			node.setModifiedByPrincipalId(creatorUserGroupId);
-			node.setModifiedOn(now);
-			node.setCreatedOn(now);
-			node.setCreatedByPrincipalId(creatorUserGroupId);
-			
-			//create the node in the database and update the parentid to that of the new node
-			String nodeID = nodeDao.createNew(node);
-			assertNotNull(nodeID);
-			
-			nodeIDs.add(KeyFactory.stringToKey(nodeID));
-			toDelete.add(nodeID);//add to cleanup list in case test fails
-		}
-		assertEquals(numNodes, nodeIDs.size());
-		
-		//check that the nodes were added
-		for(Long nodeID : nodeIDs){
-			assertTrue(nodeDao.doesNodeExist(nodeID));
-		}
-		
-		//delete the nodes
-		nodeDao.delete(nodeIDs);
-		
-		//check that the nodes no longer exist
-		for(Long nodeID : nodeIDs){
-			assertFalse(nodeDao.doesNodeExist(nodeID));
-		}
-	}
-	@Test
-	public void testDeleteListOfNodeWithChildren(){
-		List<String> stringTypeNodeIds = createNestedNodes(2);//1 child
-		List<Long> listParentOnly = new ArrayList<Long>();
-		
-		//only add the root parent
-		listParentOnly.add(KeyFactory.stringToKey(stringTypeNodeIds.get(0)));
-		
-		nodeDao.delete(listParentOnly);
-	}
-	
-	
+
 	@Test
 	public void testPeekCurrentEtag() throws  Exception {
 		Node node = privateCreateNew("testPeekCurrentEtag");
@@ -1418,7 +1499,7 @@ public class NodeDAOImplTest {
 		toDelete.add(parentId);
 		assertNotNull(parentId);
 		// Get the header of this node
-		EntityHeader parentHeader = nodeDao.getEntityHeader(parentId, null);
+		EntityHeader parentHeader = nodeDao.getEntityHeader(parentId);
 		assertNotNull(parentHeader);
 		assertEquals(EntityTypeUtils.getEntityTypeClassName(EntityType.project), parentHeader.getType());
 		assertEquals("parent", parentHeader.getName());
@@ -1431,14 +1512,14 @@ public class NodeDAOImplTest {
 		toDelete.add(childId);
 		assertNotNull(childId);
 		// Get the header of this node
-		EntityHeader childHeader = nodeDao.getEntityHeader(childId, 1L);
+		EntityHeader childHeader = nodeDao.getEntityHeader(childId);
 		assertNotNull(childHeader);
 		assertEquals(EntityTypeUtils.getEntityTypeClassName(EntityType.folder), childHeader.getType());
 		assertEquals("child", childHeader.getName());
 		assertEquals(childId, childHeader.getId());
 
 		// Get the header of this node non versioned
-		childHeader = nodeDao.getEntityHeader(childId, null);
+		childHeader = nodeDao.getEntityHeader(childId);
 		assertNotNull(childHeader);		
 		assertEquals(childId, childHeader.getId());
 		assertEquals(new Long(1), childHeader.getVersionNumber());
@@ -1489,7 +1570,8 @@ public class NodeDAOImplTest {
 		r.setTargetId(child.getId());
 		r.setTargetVersionNumber(1L);
 		request.add(r);
-		
+
+		// Call under test
 		List<EntityHeader> results = nodeDao.getEntityHeader(request);
 		assertNotNull(results);
 		assertEquals(4, results.size());
@@ -1503,18 +1585,21 @@ public class NodeDAOImplTest {
 		assertEquals(parent.getCreatedOn(), header.getCreatedOn());
 		assertEquals(parent.getModifiedByPrincipalId().toString(), header.getModifiedBy());
 		assertEquals(parent.getModifiedOn(), header.getModifiedOn());
+		assertTrue(header.getIsLatestVersion());
 		
 		header = results.get(2);
 		assertEquals(childId, header.getId());
 		assertEquals("2", header.getVersionLabel());
 		assertEquals(new Long(2), header.getVersionNumber());
 		assertEquals(parentBenefactor, header.getBenefactorId());
-		
+		assertTrue(header.getIsLatestVersion());
+
 		header = results.get(3);
 		assertEquals(childId, header.getId());
 		assertEquals("1", header.getVersionLabel());
 		assertEquals(new Long(1), header.getVersionNumber());
 		assertEquals(parentBenefactor, header.getBenefactorId());
+		assertFalse(header.getIsLatestVersion());
 	}
 	
 	/*
@@ -1530,18 +1615,144 @@ public class NodeDAOImplTest {
 		assertTrue(results.isEmpty());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetEntityHeaderByReferenceNull() throws Exception {
 		List<Reference> request = null;
-		// call under test.
-		nodeDao.getEntityHeader(request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test.
+			nodeDao.getEntityHeader(request);
+		});
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetEntityHeaderDoesNotExist() throws NotFoundException, DatastoreException{
 		// There should be no node with this id.
 		long id = idGenerator.generateNewId(IdType.ENTITY_ID);
-		nodeDao.getEntityHeader(KeyFactory.keyToString(id), null);
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.getEntityHeader(KeyFactory.keyToString(id));
+		});
+	}
+	
+	@Test
+	public void testGetEntityPathId() throws Exception {
+		Node node = privateCreateNew("parent");
+		node.setNodeType(EntityType.project);
+		String parentId = nodeDao.createNew(node);
+		toDelete.add(parentId);
+		assertNotNull(parentId);
+		// Add a child		
+		node = privateCreateNew("child");
+		node.setNodeType(EntityType.folder);
+		node.setParentId(parentId);
+		String childId = nodeDao.createNew(node);
+		toDelete.add(childId);
+		assertNotNull(childId);
+		// Add a GrandChild		
+		node = privateCreateNew("grandChild");
+		node.setNodeType(EntityType.folder);
+		node.setParentId(childId);
+		String grandId = nodeDao.createNew(node);
+		toDelete.add(grandId);
+		assertNotNull(grandId);
+		
+		// call under test
+		List<Long> path = nodeDao.getEntityPathIds(grandId);
+		assertNotNull(path);
+		assertEquals(3, path.size());
+		assertEquals(KeyFactory.stringToKey(parentId), path.get(0));
+		assertEquals(KeyFactory.stringToKey(childId), path.get(1));
+		assertEquals(KeyFactory.stringToKey(grandId), path.get(2));
+	}
+	
+	@Test
+	public void testGetEntityPathIdNotFound() throws Exception {
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getEntityPathIds("syn99999999");
+		});
+	}
+	
+	/**
+	 * Maybe we should prevent users from creating such a loop.
+	 * 
+	 * @throws Exception
+	 */
+	@Test
+	public void testGetEntityPathIdsInfiniteLoop() throws Exception {
+		Node parent = privateCreateNew("parent");
+		String parentId = nodeDao.createNew(parent);
+		assertNotNull(parentId);
+		toDelete.add(parentId);
+		
+		//Now add an child
+		Node child = privateCreateNew("child");
+		child.setParentId(parentId);
+		String childId = nodeDao.createNew(child);
+		assertNotNull(childId);
+		toDelete.add(parentId);
+		
+		//Now add an child
+		Node grandChild = privateCreateNew("grandChild");
+		grandChild.setParentId(childId);
+		String grandChildId = nodeDao.createNew(grandChild);
+		assertNotNull(grandChildId);
+		toDelete.add(grandChildId);
+		// setup an infinite loop
+		parent.setParentId(grandChildId);
+		nodeDao.updateNode(parent);
+		
+		String message = assertThrows(IllegalStateException.class, ()->{
+			// call under test
+			nodeDao.getEntityPathIds(grandChildId);
+		}).getMessage();
+		assertEquals("Path depth limit of: "+NodeConstants.MAX_PATH_DEPTH+" exceeded for: "+grandChildId, message);
+	}
+	
+	@Test
+	public void testGetEntityPathIdIncludeSelfTrue() throws Exception {
+		Node node = privateCreateNew("parent");
+		node.setNodeType(EntityType.project);
+		String parentId = nodeDao.createNew(node);
+		toDelete.add(parentId);
+		assertNotNull(parentId);
+		// Add a child		
+		node = privateCreateNew("child");
+		node.setNodeType(EntityType.folder);
+		node.setParentId(parentId);
+		String childId = nodeDao.createNew(node);
+		toDelete.add(childId);
+		assertNotNull(childId);
+		
+		// call under test
+		boolean includeSelf = true;
+		List<Long> path = nodeDao.getEntityPathIds(childId, includeSelf);
+		assertNotNull(path);
+		assertEquals(2, path.size());
+		assertEquals(KeyFactory.stringToKey(parentId), path.get(0));
+		assertEquals(KeyFactory.stringToKey(childId), path.get(1));
+	}
+	
+	@Test
+	public void testGetEntityPathIdIncludeSelfFalse() throws Exception {
+		Node node = privateCreateNew("parent");
+		node.setNodeType(EntityType.project);
+		String parentId = nodeDao.createNew(node);
+		toDelete.add(parentId);
+		assertNotNull(parentId);
+		// Add a child		
+		node = privateCreateNew("child");
+		node.setNodeType(EntityType.folder);
+		node.setParentId(parentId);
+		String childId = nodeDao.createNew(node);
+		toDelete.add(childId);
+		assertNotNull(childId);
+		
+		// call under test
+		boolean includeSelf = false;
+		List<Long> path = nodeDao.getEntityPathIds(childId, includeSelf);
+		assertNotNull(path);
+		assertEquals(1, path.size());
+		assertEquals(KeyFactory.stringToKey(parentId), path.get(0));
 	}
 	
 	@Test
@@ -1568,12 +1779,12 @@ public class NodeDAOImplTest {
 		
 		// Get the individual headers
 		EntityHeader[] array = new EntityHeader[3];
-		array[0] = nodeDao.getEntityHeader(parentId, null);
-		array[1] = nodeDao.getEntityHeader(childId, null);
-		array[2] = nodeDao.getEntityHeader(grandId, null);
+		array[0] = nodeDao.getEntityHeader(parentId);
+		array[1] = nodeDao.getEntityHeader(childId);
+		array[2] = nodeDao.getEntityHeader(grandId);
 		
 		// Now get the path for each node
-		List<EntityHeader> path = nodeDao.getEntityPath(grandId);
+		List<NameIdType> path = nodeDao.getEntityPath(grandId);
 		assertNotNull(path);
 		assertEquals(3, path.size());
 		assertEquals(array[0].getId(), path.get(0).getId());
@@ -1595,22 +1806,44 @@ public class NodeDAOImplTest {
 		assertEquals(array[0].getId(), path.get(0).getId());
 	}
 	
-	@Test(expected=NotFoundException.class)
+	@Test
 	public void testGetEntityPathInvalidNode() throws Exception {
-		nodeDao.getEntityPath("syn9999999");
-	}
-	
-	// we introduced batch entity path search so we test the case that 
-	// the path is bigger than one batch
-	@Test
-	public void testGetDeepEntityPath() throws Exception {
-		testGetEntityPath(NodeDAOImpl.BATCH_PATH_DEPTH+3);
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.getEntityPath("syn9999999");
+		});
 	}
 	
 	@Test
-	public void testGetDeepEntityPathEdgeCase() throws Exception {
-		testGetEntityPath(NodeDAOImpl.BATCH_PATH_DEPTH*2);
+	public void testGetEntityPathInfiniteLoop() throws Exception {
+		Node parent = privateCreateNew("parent");
+		String parentId = nodeDao.createNew(parent);
+		assertNotNull(parentId);
+		toDelete.add(parentId);
+		
+		//Now add an child
+		Node child = privateCreateNew("child");
+		child.setParentId(parentId);
+		String childId = nodeDao.createNew(child);
+		assertNotNull(childId);
+		toDelete.add(parentId);
+		
+		//Now add an child
+		Node grandChild = privateCreateNew("grandChild");
+		grandChild.setParentId(childId);
+		String grandChildId = nodeDao.createNew(grandChild);
+		assertNotNull(grandChildId);
+		toDelete.add(grandChildId);
+		// setup an infinite loop
+		parent.setParentId(grandChildId);
+		nodeDao.updateNode(parent);
+		
+		String message = assertThrows(IllegalStateException.class, ()->{
+			// call under test
+			nodeDao.getEntityPath(grandChildId);
+		}).getMessage();
+		assertEquals("Path depth limit of: "+NodeConstants.MAX_PATH_DEPTH+" exceeded for: "+grandChildId, message);
 	}
+	
 	
 	@Test 
 	public void testGetShallowEntityPath() throws Exception {
@@ -1630,23 +1863,20 @@ public class NodeDAOImplTest {
 		}
 		EntityHeader[] array = new EntityHeader[depth];
 		for (int i=0; i<depth; i++) {
-			array[i] = nodeDao.getEntityHeader(ids[i], null);
-			// 'getEntityPath' doesn't retreive version info, so we clear these fields for the sake of comparison
-			array[i].setVersionLabel(null);
-			array[i].setVersionNumber(null);
-			array[i].setBenefactorId(null);
-			array[i].setCreatedBy(null);
-			array[i].setCreatedOn(null);
-			array[i].setModifiedBy(null);
-			array[i].setModifiedOn(null);
+			array[i] = nodeDao.getEntityHeader(ids[i]);
 		}
-		List<EntityHeader> path = nodeDao.getEntityPath(ids[depth-1]);
+		List<NameIdType> path = nodeDao.getEntityPath(ids[depth-1]);
 		assertNotNull(path);
 		assertEquals(depth, path.size());
 		for (int i=0; i<depth; i++) {
-			assertEquals(array[i], path.get(i));
+			EntityHeader header = array[i];
+			NameIdType nameIdType = path.get(i);
+			assertEquals(header.getId(), nameIdType.getId());
+			assertEquals(header.getName(), nameIdType.getName());
+			assertEquals(header.getType(), nameIdType.getType());
 		}
 	}
+
 	
 	@Test
 	public void testGetChildrenList() throws NotFoundException, DatastoreException, InvalidModelException {
@@ -1838,7 +2068,7 @@ public class NodeDAOImplTest {
 		toDelete.add(projectId);
 		assertNotNull(projectId);
 		// Now get the annotations of the entity
-		Annotations annos = nodeDao.getUserAnnotationsV1(projectId);
+		Annotations annos = nodeDao.getUserAnnotations(projectId);
 		assertNotNull(annos);
 		// Create a very large string
 		byte[] largeArray = new byte[10000];
@@ -1846,14 +2076,14 @@ public class NodeDAOImplTest {
 		Arrays.fill(largeArray, value);
 		String largeString = new String(largeArray, "UTF-8");
 		String key = "veryLargeString";
-		annos.addAnnotation(key, largeString);
+		AnnotationsV2TestUtils.putAnnotations(annos, key, largeString, AnnotationsValueType.STRING);
 		// This update will fail before PLFM-791 is fixed.
-		nodeDao.updateUserAnnotationsV1(projectId, annos);
+		nodeDao.updateUserAnnotations(projectId, annos);
 		// Get the values back
-		annos = nodeDao.getUserAnnotationsV1(projectId);
+		annos = nodeDao.getUserAnnotations(projectId);
 		assertNotNull(annos);
 		// Make sure we can still get the string
-		assertEquals(largeString, annos.getSingleValue(key));
+		assertEquals(largeString, AnnotationsV2Utils.getSingleValue(annos, key));
 	}
 	
 	@Test
@@ -1878,10 +2108,11 @@ public class NodeDAOImplTest {
 		assertEquals(EntityType.project, type);
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetCurrentRevNumberDoesNotExist() throws NotFoundException, DatastoreException{
-		// This should throw a NotFoundException exception
-		Long currentRev = nodeDao.getCurrentRevisionNumber(KeyFactory.keyToString(new Long(-12)));
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.getCurrentRevisionNumber(KeyFactory.keyToString(new Long(-12)));
+		});
 	}
 	
 	@Test 
@@ -1934,10 +2165,11 @@ public class NodeDAOImplTest {
 		assertEquals(creatorUserGroupId, createdBy);
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetCreatedByDoesNotExist() throws NotFoundException, DatastoreException{
-		// This should throw a NotFoundException exception
-		Long createdBy = nodeDao.getCreatedBy(KeyFactory.keyToString(new Long(-12)));
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.getCreatedBy(KeyFactory.keyToString(new Long(-12)));
+		});
 	}
 	
 	/**
@@ -2020,7 +2252,7 @@ public class NodeDAOImplTest {
 		try{
 			fileHandleDao.delete(fileHandle.getId());
 			fail("Should not be able to delete a file handle that has been assigned");
-		}catch(DataIntegrityViolationException e){
+		}catch(FileHandleLinkedException e){
 			// This is expected.
 		}catch(UnexpectedRollbackException e){
 			// This can also happen
@@ -2036,7 +2268,7 @@ public class NodeDAOImplTest {
 		Long v2 = clone.getVersionNumber();
 		assertFalse(v1.equals(v2));
 		// v2 should now have the second file handle
-		assertEquals("Creating a new version should copy the FileHandlId from the previous version", fileHandle.getId(), clone.getFileHandleId());
+		assertEquals(fileHandle.getId(), clone.getFileHandleId(), "Creating a new version should copy the FileHandlId from the previous version");
 		// Now create a third version with a new file handle
 		clone.setFileHandleId(fileHandle2.getId());
 		clone.setVersionLabel("v3");
@@ -2048,9 +2280,9 @@ public class NodeDAOImplTest {
 		Node v1Node = nodeDao.getNodeForVersion(id, v1);
 		Node v2Node = nodeDao.getNodeForVersion(id, v2);
 		Node v3Node = nodeDao.getNodeForVersion(id, v3);
-		assertEquals("V1 should have the first file handle", fileHandle.getId(), v1Node.getFileHandleId());
-		assertEquals("V2 should also have the first file handle", fileHandle.getId(), v2Node.getFileHandleId());
-		assertEquals("V3 should also have the second file handle", fileHandle2.getId(), v3Node.getFileHandleId());
+		assertEquals(fileHandle.getId(), v1Node.getFileHandleId(),"V1 should have the first file handle");
+		assertEquals(fileHandle.getId(), v2Node.getFileHandleId(),"V2 should also have the first file handle");
+		assertEquals(fileHandle2.getId(), v3Node.getFileHandleId(), "V3 should also have the second file handle");
 		// Get the file handle
 		String fileHandleId = nodeDao.getFileHandleIdForVersion(id, null);
 		assertEquals(fileHandle2.getId(), fileHandleId);
@@ -2110,114 +2342,73 @@ public class NodeDAOImplTest {
 		String id1 = this.nodeDao.createNew(n1);
 		toDelete.add(id1);
 		n1 = nodeDao.getNode(id1);
-		assertNotNull("ColumnModel ID were not saved!",n1.getColumnModelIds());
+		assertNotNull(n1.getColumnModelIds(),"ColumnModel ID were not saved!");
 		List<String> expected = new LinkedList<String>();
 		expected.add("123");
 		expected.add("456");
 		assertEquals(expected, n1.getColumnModelIds());
 	}
 
-	@Test
-	public void testGetEntityHeaderByMd5() throws Exception {
 
-		// Nothing yet
-		List<EntityHeader> results = nodeDao.getEntityHeaderByMd5("md5");
+
+	/**
+	 * PLFM-5960
+	 * @throws Exception
+	 */
+	@Test
+	public void testGetEntityHeaderByMd5NoMatches() {
+		// Call under test
+		List<EntityHeader> results = nodeDao.getEntityHeaderByMd5(fileHandle3.getContentMd5());
 		assertNotNull(results);
 		assertEquals(0, results.size());
+	}
 
-		// Add a node with a file handle
-		Node node1 = NodeTestUtils.createNew("testGetEntityHeaderByMd5 node 1", creatorUserGroupId);
-		node1.setFileHandleId(fileHandle.getId());
-		final String node1Label1 = "1";
-		node1.setVersionLabel(node1Label1);
-		final String id1 = nodeDao.createNew(node1);
-		node1 = nodeDao.getNode(id1);
-		assertNotNull(id1);
-		toDelete.add(id1);
-		node1.setId(id1);
+	/**
+	 * PLFM-5960
+	 */
+	@Test
+	public void testGetEntityHeaderByMd5WithOver200Matching() {
 
-		results = nodeDao.getEntityHeaderByMd5(fileHandle.getContentMd5());
+		for(int i = 0; i < NodeDAO.NODE_VERSION_LIMIT_BY_FILE_MD5 + 1; i++) {
+			// Add a node with a file handle
+			Node curr = NodeTestUtils.createNew("testGetEntityHeaderByMd5 node " + i, creatorUserGroupId);
+			curr.setFileHandleId(fileHandle3.getId());
+			final String id = nodeDao.createNew(curr);
+			assertNotNull(id);
+			toDelete.add(id);
+		}
+
+		// Call under test
+		List<EntityHeader> results = nodeDao.getEntityHeaderByMd5(fileHandle3.getContentMd5());
 		assertNotNull(results);
-		assertEquals(1, results.size());
-		assertEquals(id1, results.get(0).getId());
-		assertNotNull(results.get(0).getBenefactorId());
-		assertEquals(Long.valueOf(1L), results.get(0).getVersionNumber());
-		assertEquals(node1Label1, results.get(0).getVersionLabel());
-		assertEquals(node1.getCreatedByPrincipalId().toString(), results.get(0).getCreatedBy());
-		assertEquals(node1.getCreatedOn(), results.get(0).getCreatedOn());
-		assertEquals(node1.getModifiedByPrincipalId().toString(), results.get(0).getModifiedBy());
-		assertEquals(node1.getModifiedOn(), results.get(0).getModifiedOn());
-
-		// Create a new version of the node of the same file
-		final String node1Label2 = "Node 1 version label 2";
-		node1.setVersionLabel(node1Label2);
-		nodeDao.createNewVersion(node1);
-
-		results = nodeDao.getEntityHeaderByMd5(fileHandle.getContentMd5());
-		assertNotNull(results);
-		assertEquals(2, results.size());
-		assertEquals(id1, results.get(0).getId());
-		assertEquals(id1, results.get(1).getId());
-		assertFalse(results.get(0).getVersionNumber().equals(results.get(1).getVersionNumber()));
-
-		// Add a new node with no file handle
-		Node node2 = NodeTestUtils.createNew("testGetEntityHeaderByMd5 node 2", creatorUserGroupId);
-		final String node2Label1 = "Node 2 version label 1";
-		node1.setVersionLabel(node2Label1);
-		final String id2 = nodeDao.createNew(node2);
-		assertNotNull(id2);
-		toDelete.add(id2);
-		node2.setId(id2);
-
-		results = nodeDao.getEntityHeaderByMd5(fileHandle.getContentMd5());
-		assertNotNull(results);
-		assertEquals(2, results.size());
-		assertEquals(id1, results.get(0).getId());
-		assertEquals(id1, results.get(1).getId());
-
-		// Create a new version of node 2 with file handle
-		final String node2Label2 = "Node 2 version label 2";
-		node2.setVersionLabel(node2Label2);
-		node2.setFileHandleId(fileHandle2.getId());
-		nodeDao.createNewVersion(node2);
-
-		results = nodeDao.getEntityHeaderByMd5(fileHandle.getContentMd5());
-		assertNotNull(results);
-		assertEquals(2, results.size());
-		assertEquals(id1, results.get(0).getId());
-		assertEquals(id1, results.get(1).getId());
-		results = nodeDao.getEntityHeaderByMd5(fileHandle2.getContentMd5());
-		assertNotNull(results);
-		assertEquals(1, results.size());
-		assertEquals(id2, results.get(0).getId());
-		assertEquals(Long.valueOf(2L), results.get(0).getVersionNumber());
+		assertEquals(NodeDAO.NODE_VERSION_LIMIT_BY_FILE_MD5, results.size());
 	}
 	
 	@Test
-	public void testGetProjectStatAdditionalConditionMY_CREATED_PROJECTS(){
+	public void testGetProjectStatAdditionalCondition_CREATED(){
 		Map<String, Object> parameters = new HashMap<>();
 		Long userId = 123L;
-		ProjectListType type = ProjectListType.MY_CREATED_PROJECTS;
+		ProjectListType type = ProjectListType.CREATED;
 		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
 		assertEquals(" AND n.CREATED_BY = :bCreatedBy", result);
 		assertEquals(userId, parameters.get("bCreatedBy"));
 	}
 	
 	@Test
-	public void testGetProjectStatAdditionalConditionMY_PARTICIPATED_PROJECTS(){
+	public void testGetProjectStatAdditionalCondition_PARTICIPATED(){
 		Map<String, Object> parameters = new HashMap<>();
 		Long userId = 123L;
-		ProjectListType type = ProjectListType.MY_PARTICIPATED_PROJECTS;
+		ProjectListType type = ProjectListType.PARTICIPATED;
 		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
 		assertEquals(" AND n.CREATED_BY <> :bCreatedBy", result);
 		assertEquals(userId, parameters.get("bCreatedBy"));
 	}
 	
 	@Test
-	public void testGetProjectStatAdditionalConditionMY_PROJECTS(){
+	public void testGetProjectStatAdditionalCondition_ALL(){
 		Map<String, Object> parameters = new HashMap<>();
 		Long userId = 123L;
-		ProjectListType type = ProjectListType.MY_PROJECTS;
+		ProjectListType type = ProjectListType.ALL;
 		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
 		assertEquals("", result);
 		assertTrue(parameters.isEmpty());
@@ -2227,27 +2418,7 @@ public class NodeDAOImplTest {
 	public void testGetProjectStatAdditionalConditionMY_TEAM_PROJECTS(){
 		Map<String, Object> parameters = new HashMap<>();
 		Long userId = 123L;
-		ProjectListType type = ProjectListType.MY_TEAM_PROJECTS;
-		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
-		assertEquals("", result);
-		assertTrue(parameters.isEmpty());
-	}
-	
-	@Test
-	public void testGetProjectStatAdditionalConditionOTHER_USER_PROJECTS(){
-		Map<String, Object> parameters = new HashMap<>();
-		Long userId = 123L;
-		ProjectListType type = ProjectListType.OTHER_USER_PROJECTS;
-		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
-		assertEquals("", result);
-		assertTrue(parameters.isEmpty());
-	}
-	
-	@Test
-	public void testGetProjectStatAdditionalConditionTEAM_PROJECTS(){
-		Map<String, Object> parameters = new HashMap<>();
-		Long userId = 123L;
-		ProjectListType type = ProjectListType.TEAM_PROJECTS;
+		ProjectListType type = ProjectListType.TEAM;
 		String result = NodeDAOImpl.getProjectStatAdditionalCondition(parameters, userId, type);
 		assertEquals("", result);
 		assertTrue(parameters.isEmpty());
@@ -2312,7 +2483,7 @@ public class NodeDAOImplTest {
 		Node projectTwo = createProject("testGetProjectHeaders.two", user1);
 		Node projectThree = createProject("testGetProjectHeaders.three", user1);
 		Set<Long> projectIds = Sets.newHashSet(KeyFactory.stringToKey(projectTwo.getId()), KeyFactory.stringToKey(projectThree.getId()));
-		ProjectListType type = ProjectListType.MY_CREATED_PROJECTS;
+		ProjectListType type = ProjectListType.CREATED;
 		ProjectListSortColumn sortColumn = ProjectListSortColumn.LAST_ACTIVITY;
 		SortDirection sortDirection = SortDirection.ASC;
 		Long limit = 10L;
@@ -2336,7 +2507,7 @@ public class NodeDAOImplTest {
 		Long user1Id = Long.parseLong(user1);
 		// empty project ids should return an empty set.
 		Set<Long> projectIds = new HashSet<>();
-		ProjectListType type = ProjectListType.MY_CREATED_PROJECTS;
+		ProjectListType type = ProjectListType.CREATED;
 		ProjectListSortColumn sortColumn = ProjectListSortColumn.LAST_ACTIVITY;
 		SortDirection sortDirection = SortDirection.ASC;
 		Long limit = 10L;
@@ -2348,14 +2519,15 @@ public class NodeDAOImplTest {
 	}
 
 
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateNodeLongNameTooLong() throws DatastoreException, InvalidModelException, NotFoundException {
 		char[] chars = new char[260];
 		Arrays.fill(chars, 'x');
 		String name = new String(chars);
 		Node n = NodeTestUtils.createNew(name, creatorUserGroupId);
-		String id = nodeDao.createNew(n);
-		assertNull(id);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.createNew(n);
+		});
 	}
 	
 	@Test
@@ -2408,7 +2580,7 @@ public class NodeDAOImplTest {
 	 * 
 	 * @throws LimitExceededException
 	 */
-	@Test (expected=LimitExceededException.class)
+	@Test
 	public void testGetAllContainerIdsLimitExceededFlat() throws LimitExceededException{
 		// Generate some hierarchy
 		// Create a project
@@ -2428,8 +2600,29 @@ public class NodeDAOImplTest {
 		}
 		// loading more than two from a single page should fail.
 		int maxIds = 2;
-		// call under test
-		nodeDao.getAllContainerIds(Arrays.asList(projectIdLong), maxIds);
+		assertThrows(LimitExceededException.class, ()->{
+			// call under test
+			nodeDao.getAllContainerIds(Arrays.asList(projectIdLong), maxIds);
+		});
+	}
+	
+	@Test
+	public void testGetAllContainerIdsOrderByDistanceDesc() {
+		int treeDepth = 20;
+
+		List<Long> nodeIds = createNestedNodes(treeDepth).stream().map(KeyFactory::stringToKey).collect(Collectors.toList());
+
+		int limit = 1000;
+
+		// Call under test
+		List<Long> result = nodeDao.getSubTreeNodeIdsOrderByDistanceDesc(nodeIds.get(0), limit);
+
+		List<Long> expected = nodeIds.subList(1, nodeIds.size());
+		
+		Collections.reverse(expected);
+
+		assertEquals(expected, result);
+
 	}
 	
 	/**
@@ -2437,7 +2630,7 @@ public class NodeDAOImplTest {
 	 * 
 	 * @throws LimitExceededException
 	 */
-	@Test (expected=LimitExceededException.class)
+	@Test
 	public void testGetAllContainerIdsLimitExceededExpanded() throws LimitExceededException{
 		// Generate some hierarchy
 		// Create a project
@@ -2459,8 +2652,10 @@ public class NodeDAOImplTest {
 		}
 		// loading more than two from a single page should fail.
 		int maxIds = 2;
-		// call under test
-		nodeDao.getAllContainerIds(Arrays.asList(projectIdLong), maxIds);
+		assertThrows(LimitExceededException.class, ()->{
+			// call under test
+			nodeDao.getAllContainerIds(Arrays.asList(projectIdLong), maxIds);
+		});
 	}
 	
 	@Test
@@ -2478,11 +2673,38 @@ public class NodeDAOImplTest {
 		assertEquals(id, lookupId);
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetNodeIdByAliasNotFound(){
 		String alias = "doesNotExist";
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getNodeIdByAlias(alias);
+		});
+	}
+	
+	@Test
+	public void testGetAliasByNodeId() {
+		Node node = privateCreateNew("testGetAliasByNodeId");
+		String alias = UUID.randomUUID().toString();
+		node.setAlias(alias);
+		node.setVersionComment("v1");
+		node.setVersionLabel("1");
+		String id = nodeDao.createNew(node);
+		toDelete.add(id);
+		assertNotNull(id);
 		// call under test
-		nodeDao.getNodeIdByAlias(alias);
+		List<IdAndAlias> actual = nodeDao.getAliasByNodeId(Collections.singletonList(id));
+		
+		List<IdAndAlias> expected = Collections.singletonList(new IdAndAlias(id, alias));
+		assertEquals(expected, actual);
+	}
+	
+	@Test
+	public void testGetAliasByNodeIdEmptyList() {
+		// call under test
+		List<IdAndAlias> actual = nodeDao.getAliasByNodeId(Collections.EMPTY_LIST);
+		
+		assertTrue(actual.isEmpty());
 	}
 	
 	@Test
@@ -2516,11 +2738,13 @@ public class NodeDAOImplTest {
 	 * 
 	 * @throws Exception
 	 */
-	@Test (timeout=20000, expected=NotFoundException.class)
+	@Test
 	public void testGetProjectIdChildWithNoParent() throws Exception{
 		Node child = setUpChildWithNoParent();
-		// Before the fix, this call call would hang with 100% CPU.
-		nodeDao.getProjectId(child.getId());
+		assertThrows(NotFoundException.class, ()->{
+			// Before the fix, this call call would hang with 100% CPU.
+			nodeDao.getProjectId(child.getId());
+		});
 	}
 	
 	/**
@@ -2530,11 +2754,13 @@ public class NodeDAOImplTest {
 	 * 
 	 * @throws Exception
 	 */
-	@Test (timeout=20000, expected=NotFoundException.class)
+	@Test
 	public void testGetBenefactorIdChildWithNoParent() throws Exception{
 		Node child = setUpChildWithNoParent();
-		// Before the fix, this call call would hang with 100% CPU.
-		nodeDao.getBenefactor(child.getId());
+		assertThrows(NotFoundException.class, ()->{
+			// Before the fix, this call call would hang with 100% CPU.
+			nodeDao.getBenefactor(child.getId());
+		});
 	}
 	
 	/**
@@ -2543,11 +2769,13 @@ public class NodeDAOImplTest {
 	 * into an infinite loop and should be killed.
 	 * @throws Exception
 	 */
-	@Test (timeout=20000, expected=IllegalStateException.class)
+	@Test
 	public void testGetProjectInfiniteLoop() throws Exception{
 		String id = setUpChildAsItsOwnParent();
-		// Before the fix, this call call would hang with 100% CPU.
-		nodeDao.getProjectId(id);
+		assertThrows(IllegalStateException.class, ()->{
+			// Before the fix, this call call would hang with 100% CPU.
+			nodeDao.getProjectId(id);
+		});
 	}
 	
 	/**
@@ -2556,11 +2784,13 @@ public class NodeDAOImplTest {
 	 * into an infinite loop and should be killed.
 	 * @throws Exception
 	 */
-	@Test (timeout=20000, expected=IllegalStateException.class)
+	@Test
 	public void testGetBenefactorIdInfiniteLoop() throws Exception{
 		String id = setUpChildAsItsOwnParent();
-		// Before the fix, this call call would hang with 100% CPU.
-		nodeDao.getBenefactor(id);
+		assertThrows(IllegalStateException.class, ()->{
+			// Before the fix, this call call would hang with 100% CPU.
+			nodeDao.getBenefactor(id);
+		});
 	}
 	
 	/**
@@ -2610,13 +2840,9 @@ public class NodeDAOImplTest {
 		toDelete.add(child.getId());
 
 		// to delete the parent without deleting the child:
-		migratableTableDao.runWithKeyChecksIgnored(new Callable<Void>() {
-
-			@Override
-			public Void call() throws Exception {
-				nodeDao.delete(projectid);
-				return null;
-			}
+		migratableTableDao.runWithKeyChecksIgnored(() -> {
+			basicDao.deleteObjectByPrimaryKey(DBONode.class, new MapSqlParameterSource("id", KeyFactory.stringToKey(projectid)));
+			return null;
 		});
 		// the parent should not exist.
 		assertFalse(nodeDao.doesNodeExist(KeyFactory.stringToKey(child.getParentId())));
@@ -2625,27 +2851,34 @@ public class NodeDAOImplTest {
 		return child;
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetProjectNodeDoesNotEixst(){
 		String doesNotExist = "syn9999999";
-		// call under test
-		nodeDao.getProjectId(doesNotExist);
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getProjectId(doesNotExist);
+		});
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetProjectNodeExistsWithNoProject(){
 		// create a node that is not in a project.
 		Node node = NodeTestUtils.createNew("someNode", creatorUserGroupId);
 		node.setNodeType(EntityType.folder);
 		node = nodeDao.createNewNode(node);
+		String nodeId = node.getId();
 		toDelete.add(node.getId());
-		// call under test
-		nodeDao.getProjectId(node.getId());
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getProjectId(nodeId);
+		});
 	}
 
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetFileHandleIdsAssociatedWithFileEntityNullFileHandleIds(){
-		nodeDao.getFileHandleIdsAssociatedWithFileEntity(null, 1L);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getFileHandleIdsAssociatedWithFileEntity(null, 1L);
+		});
 	}
 
 	@Test
@@ -2756,13 +2989,14 @@ public class NodeDAOImplTest {
 		Annotations userAnnos = new Annotations();
 		userAnnos.setId(file.getId());
 		userAnnos.setEtag(file.getETag());
-		userAnnos.addAnnotation("aString", "someString");
-		userAnnos.addAnnotation("aLong", 123L);
-		userAnnos.addAnnotation("aDouble", 1.22);
-		nodeDao.updateUserAnnotationsV1(file.getId(), userAnnos);
+		AnnotationsV2TestUtils.putAnnotations(userAnnos, "aString", "someString", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(userAnnos, "aLong", "123", AnnotationsValueType.LONG);
+		AnnotationsV2TestUtils.putAnnotations(userAnnos, "aDouble", "1.22", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(userAnnos, "aDouble2", "1.22", AnnotationsValueType.DOUBLE);
+		nodeDao.updateUserAnnotations(file.getId(), userAnnos);
 		//Ensure that entity property annotations are not included in the entity replication (PLFM-4601)
 
-		Annotations entityPropertyAnnotations = new Annotations();
+		org.sagebionetworks.repo.model.Annotations entityPropertyAnnotations = new org.sagebionetworks.repo.model.Annotations();
 		entityPropertyAnnotations.setId(file.getId());
 		entityPropertyAnnotations.setEtag(file.getETag());
 		entityPropertyAnnotations.addAnnotation("primaryString", "primaryTest");
@@ -2770,18 +3004,19 @@ public class NodeDAOImplTest {
 
 		int maxAnnotationChars = 10;
 		
+		List<Long> ids = KeyFactory.stringToKey(ImmutableList.of(project.getId(), file.getId()));
 		// call under test
-		List<EntityDTO> results = nodeDao.getEntityDTOs(Lists.newArrayList(project.getId(),file.getId()), maxAnnotationChars);
+		List<ObjectDataDTO> results = nodeDao.getEntityDTOs(ids, maxAnnotationChars);
 		assertNotNull(results);
 		assertEquals(2, results.size());
-		EntityDTO fileDto = results.get(1);
+		ObjectDataDTO fileDto = results.get(1);
 		assertEquals(KeyFactory.stringToKey(file.getId()), fileDto.getId());
 		assertEquals(file.getVersionNumber(), fileDto.getCurrentVersion());
 		assertEquals(file.getCreatedByPrincipalId(), fileDto.getCreatedBy());
 		assertEquals(file.getCreatedOn(), fileDto.getCreatedOn());
 		assertEquals(file.getETag(), fileDto.getEtag());
 		assertEquals(file.getName(), fileDto.getName());
-		assertEquals(file.getNodeType(), fileDto.getType());
+		assertEquals(file.getNodeType().name(), fileDto.getSubType());
 		assertEquals(KeyFactory.stringToKey(project.getId()), fileDto.getParentId());
 		assertEquals(KeyFactory.stringToKey(project.getId()), fileDto.getBenefactorId());
 		assertEquals(KeyFactory.stringToKey(project.getId()), fileDto.getProjectId());
@@ -2790,17 +3025,22 @@ public class NodeDAOImplTest {
 		assertEquals(new Long(Long.parseLong(file.getFileHandleId())), fileDto.getFileHandleId());
 		assertEquals(fileHandle.getContentSize(), fileDto.getFileSizeBytes());
 		assertEquals(NodeUtils.isBucketSynapseStorage(fileHandle.getBucketName()), fileDto.getIsInSynapseStorage());
+		assertEquals(fileHandle.getContentMd5(), fileDto.getFileMD5());
 
 		assertNotNull(fileDto.getAnnotations());
-		assertEquals(3, fileDto.getAnnotations().size());
-		List<AnnotationDTO> expected = Lists.newArrayList(
-				new AnnotationDTO(fileIdLong, "aString", AnnotationType.STRING, "someString"),
-				new AnnotationDTO(fileIdLong, "aLong", AnnotationType.LONG, "123"),
-				new AnnotationDTO(fileIdLong, "aDouble", AnnotationType.DOUBLE, "1.22")
+		assertEquals(4, fileDto.getAnnotations().size());
+		List<ObjectAnnotationDTO> expected = Lists.newArrayList(
+				new ObjectAnnotationDTO(fileIdLong, "aString", AnnotationType.STRING, "someString"),
+				new ObjectAnnotationDTO(fileIdLong, "aLong", AnnotationType.LONG, "123"),
+				new ObjectAnnotationDTO(fileIdLong, "aDouble", AnnotationType.DOUBLE, "1.22"),
+				new ObjectAnnotationDTO(fileIdLong, "aDouble2", AnnotationType.DOUBLE, "1.22")
 		);
-		assertEquals(expected, fileDto.getAnnotations());
+		// Annotation order is not preserved by the JSON database column used to store annotations
+		for(ObjectAnnotationDTO expectedDto: expected) {
+			assertTrue(fileDto.getAnnotations().contains(expectedDto));
+		}
 		// null checks on the project
-		EntityDTO projectDto = results.get(0);
+		ObjectDataDTO projectDto = results.get(0);
 		assertEquals(KeyFactory.stringToKey(project.getId()), projectDto.getId());
 		assertEquals(null, projectDto.getParentId());
 		assertEquals(projectDto.getId(), projectDto.getBenefactorId());
@@ -2828,19 +3068,19 @@ public class NodeDAOImplTest {
 		annos.setId(file.getId());
 		annos.setEtag(file.getETag());
 		// added for PLFM_4184
-		annos.getStringAnnotations().put("emptyList", new LinkedList<String>());
+		AnnotationsV2TestUtils.putAnnotations(annos,"emptyList", Collections.emptyList(), AnnotationsValueType.STRING);
 		// added for PLFM-4224
-		annos.getLongAnnotations().put("nullList", null);
-		annos.getDoubleAnnotations().put("listWithNullValue", Lists.newArrayList((Double)null));
-		nodeDao.updateUserAnnotationsV1(file.getId(), annos);
+		AnnotationsV2TestUtils.putAnnotations(annos, "listWithNullValue", Collections.singletonList(null), AnnotationsValueType.DOUBLE);
+		nodeDao.updateUserAnnotations(file.getId(), annos);
 		
 		int maxAnnotationChars = 10;
 		
+		List<Long> ids = KeyFactory.stringToKey(ImmutableList.of(project.getId(), file.getId()));
 		// call under test
-		List<EntityDTO> results = nodeDao.getEntityDTOs(Lists.newArrayList(project.getId(),file.getId()), maxAnnotationChars);
+		List<ObjectDataDTO> results = nodeDao.getEntityDTOs(ids, maxAnnotationChars);
 		assertNotNull(results);
 		assertEquals(2, results.size());
-		EntityDTO fileDto = results.get(1);
+		ObjectDataDTO fileDto = results.get(1);
 		assertEquals(KeyFactory.stringToKey(file.getId()), fileDto.getId());
 		assertNotNull(fileDto.getAnnotations());
 		assertEquals(0, fileDto.getAnnotations().size());
@@ -2862,12 +3102,12 @@ public class NodeDAOImplTest {
 	 * @return
 	 */
 	private List<Node> createHierarchy(){
-		List<Node> resutls = new LinkedList<Node>();
+		List<Node> results = new LinkedList<Node>();
 		// Create a project
 		Node project = NodeTestUtils.createNew("hierarchy", creatorUserGroupId);
 		project.setNodeType(EntityType.project);
 		String projectId = nodeDao.createNew(project);
-		resutls.add(nodeDao.getNode(projectId));
+		results.add(nodeDao.getNode(projectId));
 		toDelete.add(projectId);
 		
 		String levelOneFolderId = null;
@@ -2877,7 +3117,7 @@ public class NodeDAOImplTest {
 			folder.setNodeType(EntityType.folder);
 			folder.setParentId(projectId);
 			levelOneFolderId = nodeDao.createNew(folder);
-			resutls.add(nodeDao.getNode(levelOneFolderId));
+			results.add(nodeDao.getNode(levelOneFolderId));
 			toDelete.add(levelOneFolderId);
 		}
 		
@@ -2887,7 +3127,7 @@ public class NodeDAOImplTest {
 		file.setParentId(projectId);
 		file.setFileHandleId(fileHandle.getId());
 		String fileId = nodeDao.createNew(file);
-		resutls.add(nodeDao.getNode(fileId));
+		results.add(nodeDao.getNode(fileId));
 		toDelete.add(fileId);
 		
 		// folder2
@@ -2895,7 +3135,7 @@ public class NodeDAOImplTest {
 		folder.setNodeType(EntityType.folder);
 		folder.setParentId(levelOneFolderId);
 		String folder2Id = nodeDao.createNew(folder);
-		resutls.add(nodeDao.getNode(folder2Id));
+		results.add(nodeDao.getNode(folder2Id));
 		toDelete.add(folder2Id);
 		
 		// file1
@@ -2904,7 +3144,7 @@ public class NodeDAOImplTest {
 		file.setParentId(levelOneFolderId);
 		file.setFileHandleId(fileHandle.getId());
 		fileId = nodeDao.createNew(file);
-		resutls.add(nodeDao.getNode(fileId));
+		results.add(nodeDao.getNode(fileId));
 		toDelete.add(fileId);
 		
 		// file2
@@ -2913,13 +3153,13 @@ public class NodeDAOImplTest {
 		file.setParentId(folder2Id);
 		file.setFileHandleId(fileHandle.getId());
 		fileId = nodeDao.createNew(file);
-		resutls.add(nodeDao.getNode(fileId));
+		results.add(nodeDao.getNode(fileId));
 		// Set file2 to be its own benefactor
 		AccessControlList acl = AccessControlListUtil.createACLToGrantEntityAdminAccess(fileId, adminUser, new Date());
 		accessControlListDAO.create(acl, ObjectType.ENTITY);
 		toDelete.add(fileId);
 		
-		return resutls;
+		return results;
 	}
 
 	private Node createProject(String projectName, String user) throws Exception {
@@ -3007,11 +3247,20 @@ public class NodeDAOImplTest {
 		String result = NodeDAOImpl.getFragmentSortColumn(sortBy);
 		assertEquals(NodeDAOImpl.N_CREATED_ON, result);
 	}
-	
-	@Test (expected=IllegalArgumentException.class)
+
+	@Test
+	public void testGetFragmentSortColumnModifiedOn() {
+		SortBy sortBy = SortBy.MODIFIED_ON;
+		String result = NodeDAOImpl.getFragmentSortColumn(sortBy);
+		assertEquals(NodeDAOImpl.R_MODIFIED_ON, result);
+	}
+
+	@Test
 	public void testGetFragmentSortColumnNull(){
 		SortBy sortBy = null;
-		NodeDAOImpl.getFragmentSortColumn(sortBy);
+		assertThrows(IllegalArgumentException.class, ()->{
+			NodeDAOImpl.getFragmentSortColumn(sortBy);
+		});
 	}
 	
 	/**
@@ -3041,7 +3290,7 @@ public class NodeDAOImplTest {
 		assertTrue(results.isEmpty());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenNullParentId(){
 		String parentId = null;
 		List<EntityType> includeTypes = Lists.newArrayList(EntityType.file);
@@ -3050,10 +3299,12 @@ public class NodeDAOImplTest {
 		Direction sortDirection = Direction.ASC;
 		long limit = 10L;
 		long offset = 0L;
-		nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenNullTypes(){
 		String parentId = "syn123";
 		List<EntityType> includeTypes = null;
@@ -3062,10 +3313,12 @@ public class NodeDAOImplTest {
 		Direction sortDirection = Direction.ASC;
 		long limit = 10L;
 		long offset = 0L;
-		nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenEmptyTypes(){
 		String parentId = "syn123";
 		List<EntityType> includeTypes = new LinkedList<EntityType>();
@@ -3074,10 +3327,12 @@ public class NodeDAOImplTest {
 		Direction sortDirection = Direction.ASC;
 		long limit = 10L;
 		long offset = 0L;
-		nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenNullSortByt(){
 		String parentId = "syn123";
 		List<EntityType> includeTypes = Lists.newArrayList(EntityType.file);
@@ -3086,10 +3341,12 @@ public class NodeDAOImplTest {
 		Direction sortDirection = Direction.ASC;
 		long limit = 10L;
 		long offset = 0L;
-		nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenNullDirection(){
 		String parentId = "syn123";
 		List<EntityType> includeTypes = Lists.newArrayList(EntityType.file);
@@ -3098,7 +3355,9 @@ public class NodeDAOImplTest {
 		Direction sortDirection = null;
 		long limit = 10L;
 		long offset = 0L;
-		nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.getChildren(parentId, includeTypes, childIdsToExclude, sortBy, sortDirection, limit, offset);
+		});
 	}
 	
 	@Test
@@ -3137,6 +3396,103 @@ public class NodeDAOImplTest {
 		String benefactorId = nodeDao.getBenefactor(header.getId());
 		Long benefactorLong = KeyFactory.stringToKey(benefactorId);
 		assertEquals(benefactorLong, header.getBenefactorId());
+	}
+
+	/**
+	 * Generate the following Hierarchy:
+	 * <ul>
+	 * <li>project</li>
+	 * <li>folder0->project, modifiedOn = 01/01/1000</li>
+	 * <li>folder1->project, modifiedOn = 01/01/2000</li>
+	 * <li>folder2->project, modifiedOn = 01/01/3000</li>
+	 * </ul>
+	 *
+	 * @return list of nodes with the hierarchy outlined above
+	 */
+	private List<Node> createHierarchyToTestModifiedOnSort(){
+		List<Node> results = new LinkedList<Node>();
+
+		SimpleDateFormat date = new SimpleDateFormat("dd/MM/yyyy");
+
+		// Create a project
+		Node project = NodeTestUtils.createNew("hierarchy", creatorUserGroupId);
+		project.setNodeType(EntityType.project);
+		String projectId = nodeDao.createNew(project);
+		results.add(nodeDao.getNode(projectId));
+		toDelete.add(projectId);
+
+		String folderId = null;
+		Node folder1 = NodeTestUtils.createNew("folder1", creatorUserGroupId);
+		folder1.setNodeType(EntityType.folder);
+		folder1.setParentId(projectId);
+
+		try {
+			// set modifiedOn to year 1000
+			folder1.setModifiedOn(date.parse("01/01/1000"));
+		} catch (ParseException error) {
+			fail(error);
+		}
+		folderId = nodeDao.createNew(folder1);
+		results.add(nodeDao.getNode(folderId));
+		toDelete.add(folderId);
+
+		Node folder2 = NodeTestUtils.createNew("folder2", creatorUserGroupId);
+		folder2.setNodeType(EntityType.folder);
+		folder2.setParentId(projectId);
+		try {
+			// set modifiedOn to year 2000
+			folder2.setModifiedOn(date.parse("01/01/2000"));
+		} catch (ParseException error) {
+			fail(error);
+		}
+		folderId = nodeDao.createNew(folder2);
+		results.add(nodeDao.getNode(folderId));
+		toDelete.add(folderId);
+
+		Node folder3 = NodeTestUtils.createNew("folder3", creatorUserGroupId);
+		folder3.setNodeType(EntityType.folder);
+		folder3.setParentId(projectId);
+		try {
+			// set modifiedOn to year 3000
+			folder3.setModifiedOn(date.parse("01/01/3000"));
+		} catch (ParseException error) {
+			fail(error);
+		}
+		folderId = nodeDao.createNew(folder3);
+		results.add(nodeDao.getNode(folderId));
+		toDelete.add(folderId);
+
+		return results;
+	}
+
+	@Test
+	public void testGetChildrenSortByModifiedOn(){
+		List<Node> nodes = createHierarchyToTestModifiedOnSort();
+
+		String parentId = nodes.get(0).getId();
+		// children of the project created by createHierarchyToTestModifiedOnSort
+		Node folder1 = nodes.get(1); // created first
+		Node folder2 = nodes.get(2); // created second
+		Node folder3 = nodes.get(3); // created third
+		// set up params for request
+		List<EntityType> includeTypes = Lists.newArrayList(EntityType.folder);
+		SortBy sortBy = SortBy.MODIFIED_ON;
+		long limit = 10L;
+		long offset = 0L;
+		// sort in descending order
+		List<EntityHeader> descendingResults = nodeDao.getChildren(parentId, includeTypes, null, sortBy, Direction.DESC, limit, offset);
+		assertNotNull(descendingResults);
+		assertEquals(3, descendingResults.size());
+		assertEquals(folder3.getCreatedOn(), descendingResults.get(0).getCreatedOn());
+		assertEquals(folder2.getCreatedOn(), descendingResults.get(1).getCreatedOn());
+		assertEquals(folder1.getCreatedOn(), descendingResults.get(2).getCreatedOn());
+		// sort in ascending order
+		List<EntityHeader> ascendingResults = nodeDao.getChildren(parentId, includeTypes, null, sortBy, Direction.ASC, limit, offset);
+		assertNotNull(ascendingResults);
+		assertEquals(3, ascendingResults.size());
+		assertEquals(folder1.getCreatedOn(), ascendingResults.get(0).getCreatedOn());
+		assertEquals(folder2.getCreatedOn(), ascendingResults.get(1).getCreatedOn());
+		assertEquals(folder3.getCreatedOn(), ascendingResults.get(2).getCreatedOn());
 	}
 	
 	@Test
@@ -3272,43 +3628,51 @@ public class NodeDAOImplTest {
 		assertEquals(new Long(0), results.getSumFileSizesBytes());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenStatsNullRequest() {
-		// call under test
-		nodeDao.getChildernStats(null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.getChildernStats(null);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenStatsNullParentId() {
 		String parentId = null;
 		List<EntityType> includeTypes = Lists.newArrayList(EntityType.file, EntityType.folder);
 		Set<Long> childIdsToExclude = Sets.newHashSet(111L);
-		// call under test
-		nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
-				.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
-				.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
+					.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
+					.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenStatsNullTypes() {
 		String parentId = "syn123";
 		List<EntityType> includeTypes = null;
 		Set<Long> childIdsToExclude = Sets.newHashSet(111L);
-		// call under test
-		nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
-				.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
-				.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
+					.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
+					.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetChildrenStatsEmptyTypes() {
 		String parentId = "syn123";
 		List<EntityType> includeTypes = new LinkedList<>();
 		Set<Long> childIdsToExclude = Sets.newHashSet(111L);
-		// call under test
-		nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
-				.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
-				.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.getChildernStats(new ChildStatsRequest().withParentId(parentId)
+					.withIncludeTypes(includeTypes).withChildIdsToExclude(childIdsToExclude)
+					.withIncludeTotalChildCount(true).withIncludeSumFileSizes(false));
+		});
 	}
 	
 	@Test
@@ -3363,24 +3727,32 @@ public class NodeDAOImplTest {
 		assertEquals(0, results.size());
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testLoopupChildWithNullParentId(){
-		nodeDao.lookupChild(null, "entityName");
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.lookupChild(null, "entityName");
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testLoopupChildWithInvalidParentId(){
-		nodeDao.lookupChild("parentId", "entityName");
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.lookupChild("parentId", "entityName");
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testLoopupChildWithNullEntityName(){
-		nodeDao.lookupChild("syn1", null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			nodeDao.lookupChild("syn1", null);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test 
 	public void testLoopupChildNotFound(){
-		nodeDao.lookupChild("syn1", "entityName");
+		assertThrows(NotFoundException.class, ()->{
+			nodeDao.lookupChild("syn1", "entityName");
+		});
 	}
 
 	@Test
@@ -3400,10 +3772,12 @@ public class NodeDAOImplTest {
 		assertEquals(childId, nodeDao.lookupChild(projectId, entityName));
 	}
 	
-	@Test (expected=NotFoundException.class)
+	@Test
 	public void testGetBenefactorEntityDoesNotExist(){
-		// should not exist
-		nodeDao.getBenefactor("syn9999");
+		assertThrows(NotFoundException.class, ()->{
+			// should not exist
+			nodeDao.getBenefactor("syn9999");
+		});
 	}
 	
 	@Test
@@ -3433,7 +3807,7 @@ public class NodeDAOImplTest {
 		accessControlListDAO.create(acl, ObjectType.ENTITY);
 		
 		String benefactor = nodeDao.getBenefactor(grandparent.getId());
-		assertEquals("Entity should be its own benefactor",grandparent.getId(), benefactor);
+		assertEquals(grandparent.getId(), benefactor, "Entity should be its own benefactor");
 	}
 	
 	@Test
@@ -3697,7 +4071,7 @@ public class NodeDAOImplTest {
 		assertEquals(null, current.getActivityId());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testSnapshotVersionNullId() {
 		Long user1Id = Long.parseLong(user1);
 		String nodeId = null;
@@ -3705,9 +4079,10 @@ public class NodeDAOImplTest {
 		request.setSnapshotComment(null);
 		request.setSnapshotLabel(null);
 		request.setSnapshotActivityId(null);
-		
-		// call under test
-		nodeDao.snapshotVersion(user1Id, nodeId, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.snapshotVersion(user1Id, nodeId, request);
+		});
 	}
 	
 	@Test
@@ -3728,20 +4103,23 @@ public class NodeDAOImplTest {
 		assertEquals(null, current.getActivityId());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testSnapshotVersionNullUserId() {
-		Long user1Id = null;
+		Long user1Id = Long.parseLong(user1);;
 		Node node = NodeTestUtils.createNew("one",  user1Id);
 		node = nodeDao.createNewNode(node);
+		String nodeId = node.getId();
 		toDelete.add(node.getId());
 		
 		SnapshotRequest request = new SnapshotRequest();
 		request.setSnapshotComment(null);
 		request.setSnapshotLabel(null);
 		request.setSnapshotActivityId(null);
-		
-		// call under test
-		Long snapshotVersion = nodeDao.snapshotVersion(user1Id, node.getId(), request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			Long nullUserId = null;
+			Long snapshotVersion = nodeDao.snapshotVersion(nullUserId, nodeId, request);
+		});
 	}
 	
 	@Test
@@ -3763,29 +4141,382 @@ public class NodeDAOImplTest {
 	}
 
 	@Test
-	public void testAnnotations_EmptyAnnotationsRoundTrip(){
+	public void testUserAnnotations_EmptyAnnotationsRoundTrip(){
 		Node node = nodeDao.createNewNode(privateCreateNew("testEmptyNamedAnnotations"));
 		String id = node.getId();
 		toDelete.add(id);
 		assertNotNull(id);
 		// Now get the annotations for this node.
-		Annotations annos = nodeDao.getUserAnnotationsV1(id);
+		Annotations annos = nodeDao.getUserAnnotations(id);
 		assertNotNull(annos);
-		assertTrue(annos.isEmpty());
+		assertTrue(annos.getAnnotations().isEmpty());
 		// Write the annotation to database
-		nodeDao.updateUserAnnotationsV1(id, annos);
+		nodeDao.updateUserAnnotations(id, annos);
 
 		//check no BLOB no data has been stored in the actual JDOREVISIONS table
 		MapSqlParameterSource parameterSource = new MapSqlParameterSource();
 		parameterSource.addValue("owner", KeyFactory.stringToKey(id));
 		parameterSource.addValue("revisionNumber", nodeDao.getCurrentRevisionNumber(id));
 		DBORevision nodeRevision = basicDao.getObjectByPrimaryKey(DBORevision.class, parameterSource);
-		assertNull(nodeRevision.getAnnotations());
 
 		// Now retrieve it and we should stil get back an empty NamedAnnotation
-		Annotations copy = nodeDao.getUserAnnotationsV1(id);
+		Annotations copy = nodeDao.getUserAnnotations(id);
 		assertNotNull(copy);
-		assertTrue(copy.isEmpty());
+		assertTrue(copy.getAnnotations().isEmpty());
 		assertEquals(annos, copy);
+	}
+
+	@Test
+	public void testUserAnnotationsRoundTrip(){
+		Node node = nodeDao.createNewNode(privateCreateNew("testUpdateUserAnnotations"));
+		toDelete.add(node.getId());
+
+
+		Annotations annotationsV2 = new Annotations();
+		annotationsV2.setAnnotations(Collections.singletonMap(
+				"myKey",
+				AnnotationsV2TestUtils.createNewValue(AnnotationsValueType.STRING, "myValue1", "myValue2"
+				)));
+		nodeDao.updateUserAnnotations(node.getId(), annotationsV2);
+
+		Annotations retrievedAnnotations = nodeDao.getUserAnnotations(node.getId());
+
+		//verify id and etag information were added
+		assertEquals(node.getId(), retrievedAnnotations.getId());
+		assertNotNull(retrievedAnnotations.getEtag());
+
+		//verify that the annotations map are equivalent but not same object
+		assertNotSame(annotationsV2.getAnnotations(), retrievedAnnotations.getAnnotations());
+		assertEquals(annotationsV2.getAnnotations(), retrievedAnnotations.getAnnotations());
+	}
+
+	@Test
+	public void testGetUserAnnotationsForVersion(){
+		Node node = nodeDao.createNewNode(privateCreateNew("testGetUserAnnotationsForVersion"));
+		String nodeId = node.getId();
+		toDelete.add(nodeId);
+
+		//set up annotations for first version
+		Annotations oldNodeVersionAnnotations = new Annotations();
+		oldNodeVersionAnnotations.setAnnotations(Collections.singletonMap(
+				"myKey",
+				AnnotationsV2TestUtils.createNewValue(AnnotationsValueType.STRING, "version1Value", "version1Value2"
+				)));
+		nodeDao.updateUserAnnotations(nodeId, oldNodeVersionAnnotations);
+		Long oldVersion = node.getVersionNumber();
+
+
+		//create a new version of the node and give it annotations
+		node.setVersionComment("Comment "+2);
+		node.setVersionLabel("2");
+		Long newVersion = nodeDao.createNewVersion(node);
+
+		assertNotEquals(oldVersion, newVersion);
+
+		Annotations newNodeVersionAnnotations = new Annotations();
+		newNodeVersionAnnotations.setAnnotations(Collections.singletonMap(
+				"myKey",
+				AnnotationsV2TestUtils.createNewValue(AnnotationsValueType.STRING, "version2Value", "version2Value2"
+				)));
+		nodeDao.updateUserAnnotations(nodeId, newNodeVersionAnnotations);
+
+
+		Annotations retrievedOldVersion = nodeDao.getUserAnnotationsForVersion(nodeId, oldVersion);
+		Annotations retrievedNewVersion = nodeDao.getUserAnnotationsForVersion(nodeId, newVersion);
+
+		//verify old and new versions do not have same content
+		assertNotEquals(retrievedOldVersion.getAnnotations(),retrievedNewVersion.getAnnotations());
+
+		//verify that the annotations map are equivalent but not same object
+		assertNotSame(oldNodeVersionAnnotations.getAnnotations(), retrievedOldVersion.getAnnotations());
+		assertEquals(oldNodeVersionAnnotations.getAnnotations(), retrievedOldVersion.getAnnotations());
+
+		//verify that the annotations map are equivalent but not same object
+		assertNotSame(newNodeVersionAnnotations.getAnnotations(), retrievedNewVersion.getAnnotations());
+		assertEquals(newNodeVersionAnnotations.getAnnotations(), retrievedNewVersion.getAnnotations());
+	}
+
+	@Test
+	public void testEntityPropertiesRoundTrip(){
+
+		String nodeId = nodeDao.createNewNode(privateCreateNew("testEntityPropertiesRoundTrip")).getId();
+		
+		toDelete.add(nodeId);
+
+		org.sagebionetworks.repo.model.Annotations entityPropertyAnnotations = new org.sagebionetworks.repo.model.Annotations();
+		entityPropertyAnnotations.addAnnotation("primaryString", "primaryTest");
+		nodeDao.updateEntityPropertyAnnotations(nodeId, entityPropertyAnnotations);
+		org.sagebionetworks.repo.model.Annotations retrieved = nodeDao.getEntityPropertyAnnotations(nodeId);
+
+		assertEquals(entityPropertyAnnotations.getStringAnnotations(), retrieved.getStringAnnotations());
+	}
+
+	@Test
+	public void testEntityPropertiesForVersion(){
+		org.sagebionetworks.repo.model.Annotations oldEntityPropertyAnnotations = new org.sagebionetworks.repo.model.Annotations();
+		oldEntityPropertyAnnotations.addAnnotation("primaryString", "primaryTest");
+
+		Node node = nodeDao.createNewNode(privateCreateNew("testEntityPropertiesRoundTrip"));
+		String nodeId = node.getId();
+		Long oldNodeVersion = node.getVersionNumber();
+
+		nodeDao.updateEntityPropertyAnnotations(nodeId, oldEntityPropertyAnnotations);
+
+		Node newNode = nodeDao.getNode(nodeId);
+		newNode.setVersionComment("Comment "+2);
+		newNode.setVersionLabel("2");
+		Long newNodeVersion = nodeDao.createNewVersion(newNode);
+		org.sagebionetworks.repo.model.Annotations newEntityPropertiesAnnotations = new org.sagebionetworks.repo.model.Annotations();
+		newEntityPropertiesAnnotations.addAnnotation("primaryString", "NEW VALUE YEAH");
+		nodeDao.updateEntityPropertyAnnotations(nodeId, newEntityPropertiesAnnotations);
+
+
+		org.sagebionetworks.repo.model.Annotations retrievedOldVersion = nodeDao.getEntityPropertyAnnotationsForVersion(nodeId, oldNodeVersion);
+		org.sagebionetworks.repo.model.Annotations retrievedNewVersion = nodeDao.getEntityPropertyAnnotationsForVersion(nodeId, newNodeVersion);
+
+		assertNotEquals(retrievedOldVersion.getStringAnnotations(), retrievedNewVersion.getStringAnnotations());
+
+		assertEquals(oldEntityPropertyAnnotations.getStringAnnotations(), retrievedOldVersion.getStringAnnotations());
+		assertEquals(newEntityPropertiesAnnotations.getStringAnnotations(), retrievedNewVersion.getStringAnnotations());
+	}
+	
+	@Test
+	public void testGetName() {
+		String name = "some name to test for";
+		Node node = nodeDao.createNewNode(privateCreateNew(name));
+		toDelete.add(node.getId());
+		// call under test
+		String resultName = nodeDao.getNodeName(node.getId());
+		assertEquals(name, resultName);
+	}
+	
+	@Test
+	public void testGetNameNotFound() {
+		assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getNodeName("syn999999");
+		});
+	}
+	
+	@Test
+	public void testFindFirstBoundJsonSchema() throws JSONObjectAdapterException {
+		jsonSchemaTestHelper.truncateAll();
+		// Setup some hierarchy.
+		// grandparent
+		Node grandparent = NodeTestUtils.createNew("grandparent", creatorUserGroupId);
+		grandparent = nodeDao.createNewNode(grandparent);
+		Long grandId = KeyFactory.stringToKey(grandparent.getId());
+		toDelete.add(grandparent.getId());
+		// parent
+		Node parent = NodeTestUtils.createNew("parent", creatorUserGroupId);
+		parent.setParentId(grandparent.getId());
+		parent = nodeDao.createNewNode(parent);
+		Long parentId = KeyFactory.stringToKey(parent.getId());
+		toDelete.add(parent.getId());
+		// child
+		Node child = NodeTestUtils.createNew("child", creatorUserGroupId);
+		child.setParentId(parent.getId());
+		child = nodeDao.createNewNode(child);
+		Long childId = KeyFactory.stringToKey(child.getId());
+		toDelete.add(child.getId());
+
+		String schema$id = "my.org-foo.bar-1.2.3";
+		int index = 0;
+		JsonSchemaVersionInfo schemaInfo = jsonSchemaTestHelper.createNewSchemaVersion(creatorUserGroupId, schema$id,
+				index);
+		// bind the schema to the grand parent
+		JsonSchemaObjectBinding binding = jsonSchemaTestHelper.bindSchemaToObject(creatorUserGroupId, schema$id,
+				grandId, BoundObjectType.entity);
+
+		// call under test
+		Long boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(childId);
+		assertEquals(grandId, boundEntityId);
+		// call under test
+		boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(parentId);
+		assertEquals(grandId, boundEntityId);
+		// call under test
+		boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(grandId);
+		assertEquals(grandId, boundEntityId);
+
+		// override the schema at the parent level
+		binding = jsonSchemaTestHelper.bindSchemaToObject(creatorUserGroupId, schema$id, parentId,
+				BoundObjectType.entity);
+
+		// call under test
+		boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(childId);
+		assertEquals(parentId, boundEntityId);
+		// call under test
+		boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(parentId);
+		assertEquals(parentId, boundEntityId);
+		// call under test
+		boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(grandId);
+		assertEquals(grandId, boundEntityId);
+	}
+	
+	@Test
+	public void testFindFirstBoundJsonSchemaWithMaxDepth() throws JSONObjectAdapterException {
+		jsonSchemaTestHelper.truncateAll();
+		// Setup some hierarchy.
+		// grandparent
+		Node grandparent = NodeTestUtils.createNew("grandparent", creatorUserGroupId);
+		grandparent = nodeDao.createNewNode(grandparent);
+		Long grandId = KeyFactory.stringToKey(grandparent.getId());
+		toDelete.add(grandparent.getId());
+		// parent
+		Node parent = NodeTestUtils.createNew("parent", creatorUserGroupId);
+		parent.setParentId(grandparent.getId());
+		parent = nodeDao.createNewNode(parent);
+		Long parentId = KeyFactory.stringToKey(parent.getId());
+		toDelete.add(parent.getId());
+		// child
+		Node child = NodeTestUtils.createNew("child", creatorUserGroupId);
+		child.setParentId(parent.getId());
+		child = nodeDao.createNewNode(child);
+		Long childId = KeyFactory.stringToKey(child.getId());
+		toDelete.add(child.getId());
+
+		String schema$id = "my.org-foo.bar-1.2.3";
+		int index = 0;
+		JsonSchemaVersionInfo schemaInfo = jsonSchemaTestHelper.createNewSchemaVersion(creatorUserGroupId, schema$id,
+				index);
+		// bind the schema to the grand parent
+		JsonSchemaObjectBinding binding = jsonSchemaTestHelper.bindSchemaToObject(creatorUserGroupId, schema$id,
+				grandId, BoundObjectType.entity);
+		
+		// call under test
+		Long boundEntityId = nodeDao.getEntityIdOfFirstBoundSchema(childId, 3/*maxDepth*/);
+		assertEquals(grandId, boundEntityId);
+		String message = assertThrows(NotFoundException.class, () -> {
+			// call under test
+			nodeDao.getEntityIdOfFirstBoundSchema(childId, 2/*maxDepth*/);
+		}).getMessage();
+		assertEquals("No JSON schema found for 'syn" + childId + "'", message);
+	}
+
+	@Test
+	public void testFindFirstBoundJsonSchemaWithNoMatch() {
+		jsonSchemaTestHelper.truncateAll();
+		// setup a node with no binding.
+		Node grandparent = NodeTestUtils.createNew("grandparent", creatorUserGroupId);
+		grandparent = nodeDao.createNewNode(grandparent);
+		Long grandId = KeyFactory.stringToKey(grandparent.getId());
+		toDelete.add(grandparent.getId());
+		String message = assertThrows(NotFoundException.class, () -> {
+			// call under test
+			nodeDao.getEntityIdOfFirstBoundSchema(grandId);
+		}).getMessage();
+		assertEquals("No JSON schema found for 'syn" + grandId + "'", message);
+	}
+
+	@Test
+	public void testFindFirstBoundJsonSchemaWithNullNodeId() {
+		jsonSchemaTestHelper.truncateAll();
+		Long nodeId = null;
+		assertThrows(IllegalArgumentException.class, () -> {
+			// call under test
+			nodeDao.getEntityIdOfFirstBoundSchema(nodeId);
+		});
+	}
+	
+	@Test
+	public void testUpdateRevisionFileHandle() {
+		Node node = NodeTestUtils.createNew("Node", creatorUserGroupId);
+		node.setNodeType(EntityType.file);
+		node.setFileHandleId(fileHandle.getId());
+		node = nodeDao.createNewNode(node);
+		
+		toDelete.add(node.getId());
+		
+		String nodeId = node.getId();
+		Long versionNumber = node.getVersionNumber();
+		String newFileHandleId = fileHandle2.getId();
+		
+		// Call under test
+		boolean result = nodeDao.updateRevisionFileHandle(nodeId, versionNumber, newFileHandleId);
+		
+		assertTrue(result);
+	}
+	
+	@Test
+	public void testUpdateRevisionFileHandleWithNonExistingNode() {
+		
+		String nodeId = "123";
+		Long versionNumber = 2L;
+		String newFileHandleId = fileHandle2.getId();
+		
+		// Call under test
+		boolean result = nodeDao.updateRevisionFileHandle(nodeId, versionNumber, newFileHandleId);
+		
+		assertFalse(result);
+	}
+	
+	@Test
+	public void testUpdateRevisionFileHandleWithNonExistingRevision() {
+		
+		Node node = NodeTestUtils.createNew("Node", creatorUserGroupId);
+		node.setNodeType(EntityType.file);
+		node.setFileHandleId(fileHandle.getId());
+		node = nodeDao.createNewNode(node);
+		
+		toDelete.add(node.getId());
+		
+		String nodeId = node.getId();
+		Long versionNumber = node.getVersionNumber() + 1;
+		String newFileHandleId = fileHandle2.getId();
+		
+		// Call under test
+		boolean result = nodeDao.updateRevisionFileHandle(nodeId, versionNumber, newFileHandleId);
+		
+		assertFalse(result);
+	}
+	
+	@Test
+	public void testGetEntityPathDepthWithNullId() {
+		String entityId = null;
+		int maxDepth = 10;
+		String message = assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			nodeDao.getEntityPathDepth(entityId, maxDepth);
+		}).getMessage();
+		assertEquals("entityId is required.", message);
+	}
+	
+	@Test
+	public void testGetEntityPathDepthWithDoesNotExist() {
+		String entityId = "syn111";
+		int maxDepth = 10;
+		String message = assertThrows(NotFoundException.class, ()->{
+			// call under test
+			nodeDao.getEntityPathDepth(entityId, maxDepth);
+		}).getMessage();
+		assertEquals("Not found entityId: 'syn111'", message);
+	}
+	
+	@Test
+	public void testGetEntityPathDepth() {
+		Node project = nodeDaoHelper.create(n -> {
+			n.setName("aProject");
+			n.setCreatedByPrincipalId(creatorUserGroupId);
+		});
+		toDelete.add(project.getId());
+		Node folder = nodeDaoHelper.create(n -> {
+			n.setName("aFolder");
+			n.setCreatedByPrincipalId(creatorUserGroupId);
+			n.setParentId(project.getId());
+			n.setNodeType(EntityType.folder);
+		});
+		Node file = nodeDaoHelper.create(n -> {
+			n.setName("aFile");
+			n.setCreatedByPrincipalId(creatorUserGroupId);
+			n.setParentId(folder.getId());
+			n.setNodeType(EntityType.file);
+		});
+		int maxDepth = 10;
+		// call under test
+		assertEquals(1, nodeDao.getEntityPathDepth(project.getId(), maxDepth));
+		assertEquals(2, nodeDao.getEntityPathDepth(folder.getId(), maxDepth));
+		assertEquals(3, nodeDao.getEntityPathDepth(file.getId(), maxDepth));
+		maxDepth = 1;
+		assertEquals(1, nodeDao.getEntityPathDepth(file.getId(), maxDepth));
 	}
 }

@@ -7,6 +7,7 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Map;
 
+import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.ClientProtocolException;
@@ -25,6 +26,7 @@ import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.client.exceptions.SynapseTooManyRequestsException;
 import org.sagebionetworks.client.exceptions.SynapseUnauthorizedException;
 import org.sagebionetworks.client.exceptions.UnknownSynapseServerException;
+import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.ErrorResponse;
 import org.sagebionetworks.repo.model.ErrorResponseCode;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
@@ -78,12 +80,11 @@ public class ClientUtils {
 			ErrorResponse errorResponse = EntityFactory.createEntityFromJSONString(reasonStr, ErrorResponse.class);
 			errorMessage = errorResponse.getReason();
 			errorResponseCode = errorResponse.getErrorCode();
-		} catch (JSONObjectAdapterException e){
+		} catch (JSONObjectAdapterException e) {
 			//this is fine, just use the original reasonStr
 			errorMessage = reasonStr;
 			errorResponseCode = null;
 		}
-
 
 		if (statusCode == HttpStatus.SC_UNAUTHORIZED) {
 			throw new SynapseUnauthorizedException(errorMessage, errorResponseCode);
@@ -114,8 +115,7 @@ public class ClientUtils {
 	 * This method is used to check the SimpleHttpResponse that has expected
 	 * content in JSON format.
 	 * 
-	 * @param responseBody
-	 * @param statusCode
+	 * @param response
 	 * @return
 	 * @throws SynapseException
 	 */
@@ -235,5 +235,11 @@ public class ClientUtils {
 			default: 
 				throw new IllegalArgumentException("Unsupported method: "+requestMethod);
 		}
+	}
+	
+	
+	public static String createBasicAuthorizationHeader(String username, String password) {
+		return AuthorizationConstants.BASIC_PREFIX+ (new String(Base64.
+				encodeBase64((username + ":" + password).getBytes(Charset.forName("UTF-8")))));
 	}
 }

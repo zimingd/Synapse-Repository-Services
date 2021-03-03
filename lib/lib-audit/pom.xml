@@ -47,11 +47,6 @@
 			<artifactId>spring-context</artifactId>
 		</dependency>		
 		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk</artifactId>
-		</dependency>
-
-		<dependency>
 			<groupId>org.junit.platform</groupId>
 			<artifactId>junit-platform-launcher</artifactId>
 			<scope>test</scope>
@@ -99,4 +94,9 @@
         </dependency>
 
     </dependencies>
+
+	<properties>
+		<jacoco.branch.minumum>0.40</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.70</jacoco.line.minumum>
+	</properties>
 </project>

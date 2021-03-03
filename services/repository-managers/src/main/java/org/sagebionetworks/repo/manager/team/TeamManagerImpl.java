@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.http.entity.ContentType;
 import org.sagebionetworks.manager.util.Validate;
 import org.sagebionetworks.reflection.model.PaginatedResults;
@@ -28,13 +29,13 @@ import org.sagebionetworks.repo.manager.EmailUtils;
 import org.sagebionetworks.repo.manager.MessageToUserAndBody;
 import org.sagebionetworks.repo.manager.ProjectStatsManager;
 import org.sagebionetworks.repo.manager.UserProfileManager;
+import org.sagebionetworks.repo.manager.dataaccess.RestrictionInformationManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
 import org.sagebionetworks.repo.manager.file.FileHandleUrlRequest;
 import org.sagebionetworks.repo.manager.principal.PrincipalManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AccessControlListDAO;
-import org.sagebionetworks.repo.model.AccessRequirementDAO;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.AuthorizationUtils;
 import org.sagebionetworks.repo.model.Count;
@@ -50,6 +51,7 @@ import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.PaginatedTeamIds;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.RestrictableObjectType;
+import org.sagebionetworks.repo.model.RestrictionInformationRequest;
 import org.sagebionetworks.repo.model.Team;
 import org.sagebionetworks.repo.model.TeamDAO;
 import org.sagebionetworks.repo.model.TeamMember;
@@ -61,6 +63,7 @@ import org.sagebionetworks.repo.model.UserGroup;
 import org.sagebionetworks.repo.model.UserGroupDAO;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.UserProfile;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOUserGroup;
 import org.sagebionetworks.repo.model.dbo.principal.PrincipalPrefixDAO;
@@ -105,8 +108,6 @@ public class TeamManagerImpl implements TeamManager {
 	@Autowired
 	private MembershipRequestDAO membershipRequestDAO;
 	@Autowired
-	private AccessRequirementDAO accessRequirementDAO;
-	@Autowired
 	private PrincipalManager principalManager;
 	@Autowired
 	PrincipalPrefixDAO principalPrefixDAO;
@@ -116,12 +117,25 @@ public class TeamManagerImpl implements TeamManager {
 	private UserProfileManager userProfileManager;
 	@Autowired
 	private ProjectStatsManager projectStatsManager;
+	@Autowired
+	private RestrictionInformationManager restrictionInformationManager;
 
 	private static final String MSG_TEAM_MUST_HAVE_AT_LEAST_ONE_TEAM_MANAGER = "Team must have at least one team manager.";
 	private List<BootstrapTeam> teamsToBootstrap;
 	public static final String USER_HAS_JOINED_TEAM_TEMPLATE = "message/userHasJoinedTeamTemplate.html";
 	public static final String ADMIN_HAS_ADDED_USER_TEMPLATE = "message/teamAdminHasAddedUserTemplate.html";
 	private static final String JOIN_TEAM_CONFIRMATION_MESSAGE_SUBJECT = "New Member Has Joined the Team";
+
+	public static final AuthorizationStatus UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_BE_TEAM_MANAGER = AuthorizationStatus.accessDenied("You must be a team manager to perform this operation.");
+	public static final AuthorizationStatus UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_HAVE_REQUEST = AuthorizationStatus.accessDenied("The prospective member must request to join the team.");
+	public static final AuthorizationStatus UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_HAVE_INVITATION = AuthorizationStatus.accessDenied("An invitation is required to join the team.");
+	public static final AuthorizationStatus UNAUTHORIZED_ADD_TEAM_MEMBER_UNMET_AR_SELF = AuthorizationStatus.accessDenied("You can't join the team until you meet the Access Requirements");
+	private static final String MSG_CANNOT_ADD_TEAM_MEMBER_UNMET_AR = "Cannot add member to team because they have not met all access restrictions. " +
+			"Please remove the pending request and then invite the member again. " +
+			"They will then be prompted to meet the requirement(s) before joining the team.";
+	public static final AuthorizationStatus UNAUTHORIZED_ADD_TEAM_MEMBER_UNMET_AR_OTHER = AuthorizationStatus.accessDenied(MSG_CANNOT_ADD_TEAM_MEMBER_UNMET_AR);
+
+	public static final AuthorizationStatus AUTHORIZED_ADD_TEAM_MEMBER =  AuthorizationStatus.authorized();
 	
 	public void setTeamsToBootstrap(List<BootstrapTeam> teamsToBootstrap) {
 		this.teamsToBootstrap = teamsToBootstrap;
@@ -239,9 +253,11 @@ public class TeamManagerImpl implements TeamManager {
 	@WriteTransaction
 	public Team create(UserInfo userInfo, Team team) throws DatastoreException,
 			InvalidModelException, UnauthorizedException, NotFoundException {
-		if (AuthorizationUtils.isUserAnonymous(userInfo))
+		if (AuthorizationUtils.isUserAnonymous(userInfo)) {
 				throw new UnauthorizedException("Anonymous user cannot create Team.");
+		}
 		validateForCreate(team);
+		
 		// create UserGroup (fail if UG with the given name already exists)
 		UserGroup ug = new UserGroup();
 		ug.setIsIndividual(false);
@@ -249,6 +265,8 @@ public class TeamManagerImpl implements TeamManager {
 		Long id = userGroupDAO.create(ug);
 		// bind the team name to this principal
 		bindTeamName(team.getName(), id);
+		
+		validateTeamIcon(userInfo, null, team.getIcon());
 		
 		team.setId(id.toString());
 		Date now = new Date();
@@ -259,6 +277,31 @@ public class TeamManagerImpl implements TeamManager {
 		AccessControlList acl = createInitialAcl(userInfo, id.toString(), now);
 		aclDAO.create(acl, ObjectType.TEAM);
 		return created;
+	}
+	
+	/**
+	 * 
+	 * @param userInfo
+	 * @param currentFileHandle
+	 * @param newFileHandle
+	 */
+	private void validateTeamIcon(UserInfo userInfo, String currentFileHandle, String newFileHandle) {
+		// Nothing to check if the user removes a file handle
+		if (newFileHandle == null) {
+			return;
+		}
+		
+		// The file handle didn't change
+		if (newFileHandle.equals(currentFileHandle)) {
+			return;
+		}
+		
+		AuthorizationStatus status = authorizationManager.canAccessRawFileHandleById(userInfo, newFileHandle);
+	
+		if (!status.isAuthorized()) {
+			throw new UnauthorizedException("Only the user that uploaded the file can set it as the team icon.");
+		}
+		
 	}
 	
 	/**
@@ -321,13 +364,15 @@ public class TeamManagerImpl implements TeamManager {
 
 	@Override
 	public PaginatedResults<TeamMember> listMembers(String teamId, TeamMemberTypeFilterOptions memberType, long limit,
-			long offset) throws DatastoreException {
+			long offset) throws DatastoreException, NotFoundException {
+		teamDAO.validateTeamExists(teamId);
 		List<TeamMember> results;
 		Set<Long> adminIds = teamDAO.getAdminTeamMemberIds(teamId).stream().map(Long::valueOf).collect(Collectors.toSet());
 		switch (memberType) {
 			case ADMIN:
 				if (adminIds.isEmpty()) { // No team admins is possible at the DAO level
-					return new PaginatedResults<>();
+					results = Collections.EMPTY_LIST;
+					break;
 				}
 				results = teamDAO.getMembersInRange(teamId, adminIds, null, limit, offset);
 				results.forEach(tm -> tm.setIsAdmin(true));
@@ -352,7 +397,8 @@ public class TeamManagerImpl implements TeamManager {
 	@Override
 	public PaginatedResults<TeamMember> listMembersForPrefix(String fragment, String teamId,
 															 TeamMemberTypeFilterOptions memberType,
-															 long limit, long offset) throws DatastoreException {
+															 long limit, long offset) throws DatastoreException, NotFoundException {
+		teamDAO.validateTeamExists(teamId);
 		List<Long> prefixMemberIds;
 		switch (memberType) {
 			case ADMIN:
@@ -422,8 +468,8 @@ public class TeamManagerImpl implements TeamManager {
 	 * @see org.sagebionetworks.repo.manager.team.TeamManager#get(java.lang.String)
 	 */
 	@Override
-	public Team get(String id) throws DatastoreException, NotFoundException {
-		return teamDAO.get(id);
+	public Team get(String teamId) throws DatastoreException, NotFoundException {
+		return teamDAO.get(teamId);
 	}
 
 	/* (non-Javadoc)
@@ -436,8 +482,10 @@ public class TeamManagerImpl implements TeamManager {
 		authorizationManager.canAccess(userInfo, team.getId(), ObjectType.TEAM, ACCESS_TYPE.UPDATE).checkAuthorizationOrElseThrow();
 		validateForUpdate(team);
 		populateUpdateFields(userInfo, team, new Date());
+		Team existingTeam = teamDAO.get(team.getId());
 		// bind the team name to this principal
 		bindTeamName(team.getName(), Long.parseLong(team.getId()));
+		validateTeamIcon(userInfo, existingTeam.getIcon(), team.getIcon());
 		return teamDAO.update(team);
 	}
 
@@ -470,52 +518,71 @@ public class TeamManagerImpl implements TeamManager {
 	
 	
 	private boolean hasUnmetAccessRequirements(UserInfo memberUserInfo, String teamId) throws NotFoundException {
-		List<Long> unmetRequirements = accessRequirementDAO.getAllUnmetAccessRequirements(
-				Collections.singletonList(teamId), RestrictableObjectType.TEAM, memberUserInfo.getGroups(), 
-				Collections.singletonList(ACCESS_TYPE.PARTICIPATE));
-		return !unmetRequirements.isEmpty();
-
+		RestrictionInformationRequest request = new RestrictionInformationRequest();
+		request.setObjectId(teamId);
+		request.setRestrictableObjectType(RestrictableObjectType.TEAM);
+		return restrictionInformationManager.getRestrictionInformation(memberUserInfo, request).getHasUnmetAccessRequirement();
 	}
+
+	private AuthorizationStatus checkCanAddOther(String teamId, boolean amTeamAdmin, String principalId, long now) {
+		// the member to be added is someone other than me
+		if (!amTeamAdmin) return UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_BE_TEAM_MANAGER; // can't add someone unless I'm a Team administrator
+		// can't add someone unless they are asking to be added
+		long openRequestCount = membershipRequestDAO.getOpenByTeamAndRequesterCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
+		return openRequestCount>0L  ? AUTHORIZED_ADD_TEAM_MEMBER : UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_HAVE_REQUEST;
+	}
+
+	private AuthorizationStatus checkCanAddSelf(String teamId, boolean amTeamAdmin, String principalId, long now) {
+		// trying to add myself to Team.
+		if (amTeamAdmin) return AUTHORIZED_ADD_TEAM_MEMBER;
+		// if the team is open, I can join
+		Team team = teamDAO.get(teamId);
+		if (BooleanUtils.isTrue(team.getCanPublicJoin())) return AUTHORIZED_ADD_TEAM_MEMBER;
+		// if I'm not a team admin and the team is not open, then I need to have an open invitation
+		long openInvitationCount = membershipInvitationDAO.getOpenByTeamAndUserCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
+		return openInvitationCount>0L ? AUTHORIZED_ADD_TEAM_MEMBER : UNAUTHORIZED_ADD_TEAM_MEMBER_MUST_HAVE_INVITATION;
+	}
+
+
 	/**
 	 * Either:
 		principalId is self and membership invitation has been extended (and not yet accepted), or
     	principalId is self and have MEMBERSHIP permission on Team, or
     	have MEMBERSHIP permission on Team and membership request has been created (but not yet accepted) for principalId
-	 * @param userInfo
+	 * @param userInfo the user adding principalUserInfo to the team
 	 * @param teamId the ID of the team
-	 * @param principalId the ID of the one to be added to the team
-	 * @return
+	 * @param principalUserInfo the user trying to join the team
+	 * @param alreadyInTeam if principalUserInfo is already in the team
+	 * @return AuthorizationStatus
 	 */
-	public boolean canAddTeamMember(UserInfo userInfo, String teamId, UserInfo principalUserInfo, boolean alreadyInTeam) throws NotFoundException {
-		if (userInfo.isAdmin()) return true;
-		if (hasUnmetAccessRequirements(principalUserInfo, teamId)) return false;
+	public AuthorizationStatus canAddTeamMember(UserInfo userInfo, String teamId, UserInfo principalUserInfo, boolean alreadyInTeam) throws NotFoundException {
+		// admin can always accept membership
+		if (userInfo.isAdmin()) return AUTHORIZED_ADD_TEAM_MEMBER;
+		if (alreadyInTeam) return AUTHORIZED_ADD_TEAM_MEMBER;
+
 		String principalId = principalUserInfo.getId().toString();
-		boolean principalIsSelf = userInfo.getId().toString().equals(principalId);
+		boolean principalIsSelf = userInfo.equals(principalUserInfo);
 		boolean amTeamAdmin = authorizationManager.canAccess(userInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.TEAM_MEMBERSHIP_UPDATE).isAuthorized();
 		long now = System.currentTimeMillis();
+		AuthorizationStatus canJoin = null;
 		if (principalIsSelf) {
-			// trying to add myself to Team.  
-			if (amTeamAdmin) return true;
-			// if the team is open, I can join
-			Team team = teamDAO.get(teamId);
-			if (team.getCanPublicJoin()!=null && team.getCanPublicJoin()==true) return true;
-			// if I'm not a team admin and the team is not open, then I need to have an open invitation
-			if (alreadyInTeam) return true;
-			long openInvitationCount = membershipInvitationDAO.getOpenByTeamAndUserCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
-			return openInvitationCount>0L;
+			// check that principalUserInfo has an invitation to this team or that this team is public
+			canJoin = this.checkCanAddSelf(teamId, amTeamAdmin, principalId, now);
 		} else {
-			// the member to be added is someone other than me
-			if (!amTeamAdmin) return false; // can't add somone unless I'm a Team administrator
-			// can't add someone unless they are asking to be added
-			if (alreadyInTeam) return true;
-			long openRequestCount = membershipRequestDAO.getOpenByTeamAndRequesterCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
-			return openRequestCount>0L;
+			// check that principalUserInfo has requested to join this team
+			canJoin = this.checkCanAddOther(teamId, amTeamAdmin, principalId, now);
 		}
-	}
-	
-	public static boolean userGroupsHasPrincipalId(Collection<UserGroup> userGroups, String principalId) {
-		for (UserGroup ug : userGroups) if (ug.getId().equals(principalId)) return true;
-		return false;
+		if (!canJoin.isAuthorized()) {
+			return canJoin;
+		}
+		if (hasUnmetAccessRequirements(principalUserInfo, teamId)) {
+			if (principalIsSelf) {
+				return UNAUTHORIZED_ADD_TEAM_MEMBER_UNMET_AR_SELF;
+			} else {
+				return UNAUTHORIZED_ADD_TEAM_MEMBER_UNMET_AR_OTHER;
+			}
+		};
+		return AUTHORIZED_ADD_TEAM_MEMBER;
 	}
 	
 	@Override
@@ -536,14 +603,17 @@ public class TeamManagerImpl implements TeamManager {
 			String memberDisplayName = EmailUtils.getDisplayNameWithUsername(memberUserProfile);
 			fieldValues.put(TEMPLATE_KEY_DISPLAY_NAME, memberDisplayName);
 			fieldValues.put(TEMPLATE_KEY_USER_ID, memberInfo.getId().toString());
+			
+			String messageContent = EmailUtils.readMailTemplate(USER_HAS_JOINED_TEAM_TEMPLATE, fieldValues);
+			
 			for (String recipient : getInviters(Long.parseLong(teamId), memberInfo.getId())) {
 				MessageToUser mtu = new MessageToUser();
-				mtu.setSubject(JOIN_TEAM_CONFIRMATION_MESSAGE_SUBJECT);
-				String messageContent = EmailUtils.readMailTemplate(USER_HAS_JOINED_TEAM_TEMPLATE, fieldValues);
+				mtu.setSubject(JOIN_TEAM_CONFIRMATION_MESSAGE_SUBJECT);	
 				mtu.setRecipients(Collections.singleton(recipient));
 				mtu.setNotificationUnsubscribeEndpoint(notificationUnsubscribeEndpoint);
 				result.add(new MessageToUserAndBody(mtu, messageContent, ContentType.TEXT_HTML.getMimeType()));
 			}
+			
 		} else {
 			UserProfile joinerUserProfile = userProfileManager.getUserProfile(joinerInfo.getId().toString());
 			String joinerDisplayName = EmailUtils.getDisplayNameWithUsername(joinerUserProfile);
@@ -574,8 +644,10 @@ public class TeamManagerImpl implements TeamManager {
 	public boolean addMember(UserInfo userInfo, String teamId, UserInfo principalUserInfo)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
 		String principalId = principalUserInfo.getId().toString();
-		boolean alreadyInTeam = userGroupsHasPrincipalId(groupMembersDAO.getMembers(teamId), principalId);
-		if (!canAddTeamMember(userInfo, teamId, principalUserInfo, alreadyInTeam)) throw new UnauthorizedException("Cannot add member to Team.");
+		Set<Long> currentMembers = groupMembersDAO.getMemberIdsForUpdate(Long.valueOf(teamId));
+		boolean alreadyInTeam = currentMembers.contains(principalUserInfo.getId());
+		AuthorizationStatus canAddTeamMemberStatus = canAddTeamMember(userInfo, teamId, principalUserInfo, alreadyInTeam);
+		canAddTeamMemberStatus.checkAuthorizationOrElseThrow();
 
 		if (!alreadyInTeam) {
 			groupMembersDAO.addMembers(teamId, Collections.singletonList(principalId));
@@ -617,9 +689,9 @@ public class TeamManagerImpl implements TeamManager {
 			UnauthorizedException, NotFoundException {
 		if (!canRemoveTeamMember(userInfo, teamId, principalId)) throw new UnauthorizedException("Cannot remove member from Team.");
 		// check that member is actually in Team
-		List<UserGroup> currentMembers = groupMembersDAO.getMembers(teamId);
-		if (userGroupsHasPrincipalId(currentMembers, principalId)) {
-			if (currentMembers.size()==1) throw new UnauthorizedException("Cannot remove the last member of a Team.");
+		Set<Long> currentMembers = groupMembersDAO.getMemberIdsForUpdate(Long.valueOf(teamId));
+		if (currentMembers.contains(Long.valueOf(principalId))) {
+			if (currentMembers.size() == 1) throw new UnauthorizedException("Cannot remove the last member of a Team.");
 			// remove from ACL
 			AccessControlList acl = aclDAO.get(teamId, ObjectType.TEAM);
 			removeFromACL(acl, principalId);
@@ -654,18 +726,44 @@ public class TeamManagerImpl implements TeamManager {
 
 	@Override
 	public String getIconURL(UserInfo userInfo, String teamId) throws NotFoundException {
-		Team team = teamDAO.get(teamId);
-		
-		String fileHandleId = team.getIcon();
-		
-		if (fileHandleId == null) {
-			throw new NotFoundException("Team " + teamId + " has no icon file handle.");
-		}
-		
+		ValidateArgument.required(userInfo, "userInfo");
+		ValidateArgument.required(teamId, "teamId");
+
+		String fileHandleId = getFileHandleId(teamId);
+
 		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(userInfo, fileHandleId)
 				.withAssociation(FileHandleAssociateType.TeamAttachment, teamId);
 		
 		return fileHandleManager.getRedirectURLForFileHandle(urlRequest);
+	}
+
+	@Override
+	public String getIconPreviewURL(UserInfo userInfo, String teamId) throws NotFoundException {
+		ValidateArgument.required(userInfo, "userInfo");
+		ValidateArgument.required(teamId, "teamId");
+
+		String fileHandleId = getFileHandleId(teamId);
+		String fileHandlePreviewId = null;
+		try {
+			fileHandlePreviewId = fileHandleManager.getPreviewFileHandleId(fileHandleId);
+		} catch(NotFoundException e) {
+			throw new NotFoundException("No preview was found for the icon of the team with id: " + teamId, e);
+		}
+
+		FileHandleUrlRequest urlRequest = new FileHandleUrlRequest(userInfo, fileHandlePreviewId)
+				.withAssociation(FileHandleAssociateType.TeamAttachment, teamId);
+
+		return fileHandleManager.getRedirectURLForFileHandle(urlRequest);
+	}
+
+	String getFileHandleId(String teamId) throws NotFoundException {
+		Team team = teamDAO.get(teamId);
+		String fileHandleId = team.getIcon();
+
+		if (fileHandleId == null) {
+			throw new NotFoundException("Team " + team.getId() + " has no icon file handle.");
+		}
+		return fileHandleId;
 	}
 
 	@Override
@@ -713,14 +811,14 @@ public class TeamManagerImpl implements TeamManager {
 		tms.setTeamId(teamId);
 		String principalId = principalUserInfo.getId().toString();
 		tms.setUserId(principalId);
-		boolean isMember = userGroupsHasPrincipalId(groupMembersDAO.getMembers(teamId), principalId);
+		boolean isMember = groupMembersDAO.areMemberOf(teamId, Collections.singleton(principalId));
 		tms.setIsMember(isMember);
 		long now = System.currentTimeMillis();
 		long openInvitationCount = membershipInvitationDAO.getOpenByTeamAndUserCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
 		tms.setHasOpenInvitation(openInvitationCount>0L);
 		long openRequestCount = membershipRequestDAO.getOpenByTeamAndRequesterCount(Long.parseLong(teamId), Long.parseLong(principalId), now);
 		tms.setHasOpenRequest(openRequestCount>0L);
-		tms.setCanJoin(canAddTeamMember(userInfo, teamId, principalUserInfo, isMember));
+		tms.setCanJoin(canAddTeamMember(userInfo, teamId, principalUserInfo, isMember).isAuthorized());
 		tms.setHasUnmetAccessRequirement(hasUnmetAccessRequirements(principalUserInfo, teamId));
 		tms.setMembershipApprovalRequired(isMembershipApprovalRequired(principalUserInfo, teamId));
 		tms.setCanSendEmail(authorizationManager.canAccess(principalUserInfo, teamId, ObjectType.TEAM, ACCESS_TYPE.SEND_MESSAGE).isAuthorized());

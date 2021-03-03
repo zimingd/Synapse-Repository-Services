@@ -2,13 +2,11 @@ package org.sagebionetworks.repo.web.service;
 
 import java.util.List;
 
-import javax.servlet.http.HttpServletRequest;
-
-import org.sagebionetworks.evaluation.manager.EvaluationManager;
-import org.sagebionetworks.evaluation.manager.EvaluationPermissionsManager;
-import org.sagebionetworks.evaluation.manager.SubmissionManager;
 import org.sagebionetworks.evaluation.model.BatchUploadResponse;
 import org.sagebionetworks.evaluation.model.Evaluation;
+import org.sagebionetworks.evaluation.model.EvaluationRound;
+import org.sagebionetworks.evaluation.model.EvaluationRoundListRequest;
+import org.sagebionetworks.evaluation.model.EvaluationRoundListResponse;
 import org.sagebionetworks.evaluation.model.Submission;
 import org.sagebionetworks.evaluation.model.SubmissionBundle;
 import org.sagebionetworks.evaluation.model.SubmissionContributor;
@@ -21,17 +19,21 @@ import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.MessageToUserAndBody;
 import org.sagebionetworks.repo.manager.NotificationManager;
 import org.sagebionetworks.repo.manager.UserManager;
+import org.sagebionetworks.repo.manager.evaluation.EvaluationManager;
+import org.sagebionetworks.repo.manager.evaluation.EvaluationPermissionsManager;
+import org.sagebionetworks.repo.manager.evaluation.SubmissionManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.ACLInheritanceException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Entity;
-import org.sagebionetworks.repo.model.EntityBundle;
 import org.sagebionetworks.repo.model.InvalidModelException;
-import org.sagebionetworks.repo.model.ServiceConstants;
+import org.sagebionetworks.repo.model.NextPageToken;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundle;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundleRequest;
 import org.sagebionetworks.repo.model.query.BasicQuery;
 import org.sagebionetworks.repo.model.query.QueryDAO;
 import org.sagebionetworks.repo.model.query.QueryTableResults;
@@ -44,6 +46,7 @@ import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.springframework.beans.factory.annotation.Autowired;
 
 public class EvaluationServiceImpl implements EvaluationService {
+	
 	@Autowired
 	private ServiceProvider serviceProvider;
 	@Autowired
@@ -58,28 +61,6 @@ public class EvaluationServiceImpl implements EvaluationService {
 	private QueryDAO queryDAO;
 	@Autowired
 	private NotificationManager notificationManager;
-	
-	public EvaluationServiceImpl() {}
-	
-	// for testing
-	public EvaluationServiceImpl(
-			ServiceProvider serviceProvider,
-			EvaluationManager evaluationManager,
-			SubmissionManager submissionManager,
-			EvaluationPermissionsManager evaluationPermissionsManager,
-			UserManager userManager,
-			QueryDAO queryDAO,
-			NotificationManager notificationManager
-			) {
-		this.serviceProvider = serviceProvider;
-		this.evaluationManager = evaluationManager;
-		this.submissionManager = submissionManager;
-		this.evaluationPermissionsManager = evaluationPermissionsManager;
-		this.userManager = userManager;
-		this.queryDAO = queryDAO;
-		this.notificationManager = notificationManager;	
-	}
-	
 
 	@Override
 	@WriteTransaction
@@ -95,41 +76,45 @@ public class EvaluationServiceImpl implements EvaluationService {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return evaluationManager.getEvaluation(userInfo, id);
 	}
-	
+
 	@Override
-	public PaginatedResults<Evaluation> getEvaluationByContentSource(Long userId, String id, long limit, long offset, HttpServletRequest request)
+	public PaginatedResults<Evaluation> getEvaluationByContentSource(Long userId, String contentSource,
+			ACCESS_TYPE accessType, boolean activeOnly, List<Long> evaluationIds, long limit, long offset)
 			throws DatastoreException, NotFoundException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		List<Evaluation> res = evaluationManager.getEvaluationByContentSource(userInfo, id, limit, offset);
+		List<Evaluation> res = evaluationManager.getEvaluationsByContentSource(userInfo, contentSource, accessType,
+				activeOnly, evaluationIds, limit, offset);
 		return PaginatedResults.createWithLimitAndOffset(res, limit, offset);
 	}
 
 	@Override
-	@Deprecated
-	public PaginatedResults<Evaluation> getEvaluationsInRange(Long userId, long limit, long offset) 
-			throws DatastoreException, NotFoundException {
+	public PaginatedResults<Evaluation> getEvaluations(Long userId, ACCESS_TYPE accessType, boolean activeOnly,
+			List<Long> evaluationIds, long limit, long offset) throws DatastoreException, NotFoundException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		List<Evaluation> res = evaluationManager.getInRange(userInfo, limit, offset);
+		List<Evaluation> res = evaluationManager.getEvaluations(userInfo, accessType, activeOnly, evaluationIds, limit,
+				offset);
 		return PaginatedResults.createWithLimitAndOffset(res, limit, offset);
 	}
-	
+
 	/**
-	 * Get a collection of Evaluations to which the user may SUBMIT, within a given range
+	 * Get a collection of Evaluations to which the user may SUBMIT, within a given
+	 * range
 	 *
-	 * @param userId the userId (email address) of the user making the request
+	 * @param userId        the userId (email address) of the user making the
+	 *                      request
+	 * @param evaluationIds
 	 * @param limit
 	 * @param offset
-	 * @param evaluationIds
 	 * @return
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
 	@Override
-	public PaginatedResults<Evaluation> getAvailableEvaluationsInRange(
-			Long userId, long limit, long offset, List<Long> evaluationIds, HttpServletRequest request) 
-			throws DatastoreException, NotFoundException {
+	public PaginatedResults<Evaluation> getAvailableEvaluations(Long userId, boolean activeOnly,
+			List<Long> evaluationIds, long limit, long offset) throws DatastoreException, NotFoundException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		List<Evaluation> res = evaluationManager.getAvailableInRange(userInfo, limit, offset, evaluationIds);
+		List<Evaluation> res = evaluationManager.getAvailableEvaluations(userInfo, activeOnly, evaluationIds, limit,
+				offset);
 		return PaginatedResults.createWithLimitAndOffset(res, limit, offset);
 	}
 
@@ -158,22 +143,28 @@ public class EvaluationServiceImpl implements EvaluationService {
 	}
 
 	@Override
-	@WriteTransaction
 	public Submission createSubmission(Long userId, Submission submission, String entityEtag, 
-			String submissionEligibilityHash, HttpServletRequest request, String challengeEndpoint, String notificationUnsubscribeEndpoint)
+			String submissionEligibilityHash, String challengeEndpoint, String notificationUnsubscribeEndpoint)
 			throws NotFoundException, DatastoreException, UnauthorizedException, ACLInheritanceException, ParseException, JSONObjectAdapterException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		
-		// fetch EntityBundle to be serialized
-		int mask = ServiceConstants.DEFAULT_ENTITYBUNDLE_MASK_FOR_SUBMISSIONS;
 		String entityId = submission.getEntityId();
 		Long versionNumber = submission.getVersionNumber();
-		EntityBundle bundle = serviceProvider.getEntityBundleService().getEntityBundle(userId, entityId, versionNumber, mask, request);
+		EntityBundleRequest entityBundleRequest = new EntityBundleRequest();
+
+		entityBundleRequest.setIncludeEntity(true);
+		entityBundleRequest.setIncludeAnnotations(true);
+		entityBundleRequest.setIncludeFileHandles(true);
+
+		EntityBundle bundle = serviceProvider.getEntityBundleService().getEntityBundle(userId, entityId, versionNumber, entityBundleRequest);
 		Submission created = submissionManager.createSubmission(userInfo, submission, entityEtag, submissionEligibilityHash, bundle);
+		
 		List<MessageToUserAndBody> messages = submissionManager.
 				createSubmissionNotifications(userInfo,created,submissionEligibilityHash,
 						challengeEndpoint, notificationUnsubscribeEndpoint);
+		
 		notificationManager.sendNotifications(userInfo, messages);
+		
 		return created;
 	}
 	
@@ -233,7 +224,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
 	@Override
 	public PaginatedResults<Submission> getAllSubmissions(Long userId, String evalId,
-			SubmissionStatusEnum status, long limit, long offset, HttpServletRequest request)
+			SubmissionStatusEnum status, long limit, long offset)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
 
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -243,7 +234,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 	
 	@Override
 	public PaginatedResults<SubmissionStatus> getAllSubmissionStatuses(Long userId, String evalId,
-			SubmissionStatusEnum status, long limit, long offset, HttpServletRequest request)
+			SubmissionStatusEnum status, long limit, long offset)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
 
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -253,7 +244,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 	
 	@Override
 	public PaginatedResults<SubmissionBundle> getAllSubmissionBundles(Long userId, String evalId,
-			SubmissionStatusEnum status, long limit, long offset, HttpServletRequest request)
+			SubmissionStatusEnum status, long limit, long offset)
 			throws DatastoreException, UnauthorizedException, NotFoundException {
 
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -263,7 +254,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 	
 	@Override
 	public PaginatedResults<Submission> getMyOwnSubmissionsByEvaluation(
-			String evalId, Long userId, long limit, long offset, HttpServletRequest request)
+			String evalId, Long userId, long limit, long offset)
 			throws DatastoreException, NotFoundException {
 
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -273,7 +264,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 	
 	@Override
 	public PaginatedResults<SubmissionBundle> getMyOwnSubmissionBundlesByEvaluation(
-			String evalId, Long userId, long limit, long offset, HttpServletRequest request)
+			String evalId, Long userId, long limit, long offset)
 			throws DatastoreException, NotFoundException {
 
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -298,8 +289,7 @@ public class EvaluationServiceImpl implements EvaluationService {
 
 	@Override
 	@Deprecated
-	public <T extends Entity> boolean hasAccess(String id, Long userId,
-			HttpServletRequest request, String accessType)
+	public <T extends Entity> boolean hasAccess(String id, Long userId, String accessType)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return evaluationPermissionsManager.hasAccess(userInfo, id, ACCESS_TYPE.valueOf(accessType)).isAuthorized();
@@ -353,4 +343,40 @@ public class EvaluationServiceImpl implements EvaluationService {
 		submissionManager.processUserCancelRequest(userInfo, subId);
 	}
 
+	@Override
+	public EvaluationRound createEvaluationRound(Long userId, EvaluationRound evaluationRound){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return evaluationManager.createEvaluationRound(userInfo, evaluationRound);
+	}
+
+	@Override
+	public EvaluationRound updateEvaluationRound(Long userId, EvaluationRound evaluationRound){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return evaluationManager.updateEvaluationRound(userInfo, evaluationRound);
+	}
+
+	@Override
+	public EvaluationRound getEvaluationRound(Long userId, String evaluationId, String evaluationRoundId){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return evaluationManager.getEvaluationRound(userInfo, evaluationId, evaluationRoundId);
+	}
+
+	@Override
+	public EvaluationRoundListResponse getAllEvaluationRounds(Long userId, String evaluationId, EvaluationRoundListRequest request){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+
+		return evaluationManager.getAllEvaluationRounds(userInfo, evaluationId, request);
+	}
+
+	@Override
+	public void deleteEvaluationRound(Long userId, String evaluationId, String evaluationRoundId){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		evaluationManager.deleteEvaluationRound(userInfo, evaluationId, evaluationRoundId);
+	}
+
+	@Override
+	public void migrateEvaluationSubmissionQuota(Long userId, String evaluationId){
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		evaluationManager.migrateSubmissionQuota(userInfo, evaluationId);
+	}
 }

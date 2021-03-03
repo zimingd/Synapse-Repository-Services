@@ -1,14 +1,15 @@
 package org.sagebionetworks.file.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
-import java.net.URL;
 import java.util.List;
 
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.fileupload.FileUploadException;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.sagebionetworks.file.services.FileUploadService;
 import org.sagebionetworks.repo.model.AsynchJobFailedException;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
@@ -28,10 +29,6 @@ import org.sagebionetworks.repo.model.file.BatchPresignedUploadUrlRequest;
 import org.sagebionetworks.repo.model.file.BatchPresignedUploadUrlResponse;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadRequest;
 import org.sagebionetworks.repo.model.file.BulkFileDownloadResponse;
-import org.sagebionetworks.repo.model.file.ChunkRequest;
-import org.sagebionetworks.repo.model.file.ChunkedFileToken;
-import org.sagebionetworks.repo.model.file.CompleteAllChunksRequest;
-import org.sagebionetworks.repo.model.file.CreateChunkedFileTokenRequest;
 import org.sagebionetworks.repo.model.file.DownloadList;
 import org.sagebionetworks.repo.model.file.DownloadOrder;
 import org.sagebionetworks.repo.model.file.DownloadOrderSummaryRequest;
@@ -40,14 +37,15 @@ import org.sagebionetworks.repo.model.file.ExternalFileHandleInterface;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleAssociationList;
-import org.sagebionetworks.repo.model.file.MultipartUploadRequest;
+import org.sagebionetworks.repo.model.file.GoogleCloudFileHandle;
+import org.sagebionetworks.repo.model.file.MultipartRequest;
 import org.sagebionetworks.repo.model.file.MultipartUploadStatus;
 import org.sagebionetworks.repo.model.file.ProxyFileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
-import org.sagebionetworks.repo.model.file.UploadDaemonStatus;
 import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.ServiceUnavailableException;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.controller.RedirectUtils;
@@ -67,7 +65,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 
 /**
  * <p>
- * FileHandle is an abstraction for a reference to a file in Synapse.  For details on the various types see: <a
+ * A FileHandle is an abstraction for a reference to a file in Synapse.  For details on the various types see: <a
  * href="${org.sagebionetworks.repo.model.file.FileHandle}">FileHandle</a>.
  * </p>
  * <p>
@@ -81,13 +79,13 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * all parts that Synapse reports as missing.
  * </p>
  * <p>
- * <i>Note: For mutli-part upload 1 MB is defined as 1024*1024 bytes </i>
+ * <i>Note: For multi-part upload 1 MB is defined as 1024*1024 bytes </i>
  * </p>
  * <p>
- * The first task in mutli-part upload is choosing a part size. The minimum part
- * size is 5 MB (1024*1024*5). Therefore, any file with a size less than or
- * equal to 5 MB will have a single part and a partSize=5242880. The maximum
- * number of parts for a single file 10,000 parts. The following should be used
+ * The first task in multi-part upload is choosing a part size. The minimum part
+ * size is 5 MB (1024*1024*5) and the maximum part size is 5 GB (1024*1024*1024*5). 
+ * Therefore, any file with a size less than or equal to 5 MB will have a single part and a partSize=5242880. 
+ * The maximum number of parts for a single file 10,000 parts. The following should be used
  * to choose a part size:
  * </p>
  * <p>
@@ -98,7 +96,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * following: <a href="${POST.file.multipart}">POST /file/multipart</a> which
  * will return an <a
  * href="${org.sagebionetworks.repo.model.file.MultipartUploadStatus}"
- * >MultipartUploadStatus</a>. The client is expected the use
+ * >MultipartUploadStatus</a>. The client is expected to use
  * MultipartUploadStatus to drive the upload. The client will need to upload
  * each missing part (parts with '0' in the partsState) as follows:
  * </p>
@@ -108,7 +106,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * href="${POST.file.multipart.uploadId.presigned.url.batch}">POST
  * /file/multipart/{uploadId}/presigned/url/batch</a></li>
  * <li>Upload the part to the pre-signed URL using HTTPs PUT</li>
- * <li>Add the part to the mutli-part upload using: <a
+ * <li>Add the part to the multi-part upload using: <a
  * href="${PUT.file.multipart.uploadId.add.partNumber}">PUT
  * /file/multipart/{uploadId}/add/{partNumber}</a></li>
  * </ol>
@@ -122,6 +120,54 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * the upload fails for any reason, the client should start over ( <a
  * href="${POST.file.multipart}">POST /file/multipart</a>) and continue by
  * uploading any parts that are reported as missing.
+ * </p>
+ * <p>
+ * <b>Multi-part File Copy API</b>
+ * </p>
+ * <p>
+ * The multipart API supports a robust copy of existing files to other locations (e.g. in case of a data migration)
+ * without the need to download and re-upload the file. This is currently supported only from and to S3 storage locations that reside in the same region.
+ * In order to initiate a multipart copy, a <a href="${POST.file.multipart}">POST /file/multipart</a> request can be sent
+ * using as the body of the request a <a href="${org.sagebionetworks.repo.model.file.MultipartUploadCopyRequest}">MultipartUploadCopyRequest</a>.
+ * </p>
+ * <p>
+ * The part size allows to parallelize the copy in multiple sub-parts, the same limits of the upload applies to the copy (e.g. it is possible to copy 
+ * a file in a single part up to 5 GB).
+ * </p>
+ * <p>
+ * Once the multipart copy is initiated the process is the same as the multipart upload:
+ * </p>
+ * <p>
+ * <ol>
+ * <li>
+ * Get the part copy pre-signed URLs using: <a
+ * href="${POST.file.multipart.uploadId.presigned.url.batch}">POST
+ * /file/multipart/{uploadId}/presigned/url/batch</a>
+ * </li>
+ * <li>
+ * For each pre-signed URL perform an HTTP PUT request with no body, the response of the previous endpoint contains a map of headers that are 
+ * signed with the URL, all of the headers MUST be included in the PUT request.
+ * </li>
+ * <li>Once the copy request is performed, add the part to the multi-part copy using: <a
+ * href="${PUT.file.multipart.uploadId.add.partNumber}">PUT
+ * /file/multipart/{uploadId}/add/{partNumber}</a>. 
+ * The value of the partMD5Hex parameter will be MD5 checksum returned in the response of the request sent to the pre-signed URL.
+ * </li>
+ * <li>
+ * Once all parts have been successfully added to the multi-part copy, the
+ * copy can be completed using: <a
+ * href="${PUT.file.multipart.uploadId.complete}">PUT
+ * /file/multipart/{uploadId}/complete</a> to produce a new <a
+ * href="${org.sagebionetworks.repo.model.file.FileHandle}">FileHandle</a>
+ * </li>
+ * </ol>
+ * </p>
+ * <p>
+ * Note about the copy integrity: The resulting file handle will have the same content MD5 of the source file handle, but synapse
+ * does not try to re-compute or verify this value. Instead, the integrity check is performed by the cloud provider (currently only S3)
+ * during the copy request for the part (the request sent to the pre-signed URL). Each copy pre-signed URL is signed with a special
+ * header that makes sure that the source file didn't change during the copy, if this is the case the PUT request to the pre-signed URL
+ * will fail and a new copy should be re-started.
  * </p>
  * <p>
  * <b>Associating FileHandles with Synapse objects</b>
@@ -142,6 +188,24 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * <li><a href="${GET.entity.id.version.versionNumber.filehandles}">GET
  * /entity/{id}/version/{versionNumber}/filehandles</a>
  * </ul>
+ * <b>Service Limits</b>
+ * <table border="1">
+ * <tr>
+ * <th>resource</th>
+ * <th>limit</th>
+ * <th>notes</th>
+ * </tr>
+ * <tr>
+ * <td>Minimum file size</td>
+ * <td>0 bytes</td>
+ * <td></td>
+ * </tr>
+ * <tr>
+ * <td>Maximum file size</td>
+ * <td>5 terabytes</td>
+ * <td></td>
+ * </tr>
+ * </table>
  */
 @ControllerInfo(displayName = "File Services", path = "file/v1")
 @Controller
@@ -149,8 +213,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 public class UploadController {
 
 	public static final String HEADER_KEY_CONTENT_LENGTH = "content-length";
-
-	static private Log log = LogFactory.getLog(UploadController.class);
 
 	@Autowired
 	ServiceProvider serviceProvider;
@@ -170,8 +232,9 @@ public class UploadController {
 	 * @throws ServiceUnavailableException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = "/fileHandle/batch", method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.FILE_HANDLE_BATCH, method = RequestMethod.POST)
 	public @ResponseBody BatchFileResult getFileHandleAndUrlBatch(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestBody BatchFileRequest request)
@@ -195,8 +258,9 @@ public class UploadController {
 	 * @throws ServiceUnavailableException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = "/fileHandle/{handleIdToCopyFrom}/copy", method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.FILE_HANDLE_COPY, method = RequestMethod.POST)
 	public @ResponseBody S3FileHandle copyS3FileHandle(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String handleIdToCopyFrom,
@@ -226,8 +290,9 @@ public class UploadController {
 	 * @throws ServiceUnavailableException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/fileHandle/{handleId}", method = RequestMethod.GET)
+	@RequestMapping(value = UrlHelpers.FILE_HANDLE_HANDLE_ID, method = RequestMethod.GET)
 	public @ResponseBody FileHandle getFileHandle(
 			@PathVariable String handleId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws FileUploadException,
@@ -255,9 +320,10 @@ public class UploadController {
 	 * @throws ServiceUnavailableException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/fileHandle/{handleId}", method = RequestMethod.DELETE)
-	public @ResponseBody void deleteFileHandle(
+	@RequestMapping(value = UrlHelpers.FILE_HANDLE_HANDLE_ID, method = RequestMethod.DELETE)
+	public void deleteFileHandle(
 			@PathVariable String handleId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws FileUploadException,
 			IOException, DatastoreException, NotFoundException,
@@ -280,9 +346,10 @@ public class UploadController {
 	 * @throws ServiceUnavailableException
 	 * @throws JSONObjectAdapterException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/fileHandle/{handleId}/filepreview", method = RequestMethod.DELETE)
-	public @ResponseBody void clearPreview(
+	@RequestMapping(value = UrlHelpers.FILE_HANDLE_PREVIEW, method = RequestMethod.DELETE)
+	public void clearPreview(
 			@PathVariable String handleId,
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId) throws FileUploadException,
 			IOException, DatastoreException, NotFoundException,
@@ -305,8 +372,9 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/externalFileHandle", method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.EXTERNAL_FILE_HANDLE, method = RequestMethod.POST)
 	public @ResponseBody ExternalFileHandleInterface createExternalFileHandle(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestBody ExternalFileHandleInterface fileHandle)
@@ -333,14 +401,45 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/externalFileHandle/s3", method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.EXTERNAL_FILE_HANDLE_S3, method = RequestMethod.POST)
 	public @ResponseBody S3FileHandle createExternalFileHandle(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@RequestBody S3FileHandle fileHandle) throws DatastoreException,
 			NotFoundException {
 		// Pass it along
 		return fileService.createExternalS3FileHandle(userId, fileHandle);
+	}
+
+	/**
+	 * Create an GoogleCloudFileHandle to represent a Google Cloud Blob in a user's Google Cloud bucket.
+	 * <p>
+	 * In order to use this method an ExternalGoogleCloudStorageLocationSetting must
+	 * first be created for the user's bucket. The ID of the resulting
+	 * ExternalGoogleCloudStorageLocationSetting must be set in the
+	 * GoogleCloudFileHandle.storageLocationId. Only the user that created to the
+	 * ExternalGoogleCloudStorageLocationSetting will be allowed to create GoogleCloudFileHandle
+	 * using that storageLocationId.
+	 * </p>
+	 *
+	 * @param userId
+	 * @param fileHandle
+	 *            The GoogleCloudFileHandle to create
+	 * @return
+	 * @throws DatastoreException
+	 * @throws NotFoundException
+	 */
+	@RequiredScope({view,modify})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.EXTERNAL_FILE_HANDLE_GOOGLE_CLOUD, method = RequestMethod.POST)
+	public @ResponseBody
+	GoogleCloudFileHandle createExternalFileHandle(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@RequestBody GoogleCloudFileHandle fileHandle) throws DatastoreException,
+			NotFoundException {
+		// Pass it along
+		return fileService.createExternalGoogleCloudFileHandle(userId, fileHandle);
 	}
 	
 	/**
@@ -360,8 +459,9 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/externalFileHandle/proxy", method = RequestMethod.POST)
+	@RequestMapping(value = UrlHelpers.EXTERNAL_FILE_HANDLE_PROXY, method = RequestMethod.POST)
 	@Deprecated
 	public @ResponseBody ProxyFileHandle createExternalFileHandle(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
@@ -369,112 +469,6 @@ public class UploadController {
 			NotFoundException {
 		// Pass it along
 		return (ProxyFileHandle) fileService.createExternalFileHandle(userId, fileHandle);
-	}
-
-	/**
-	 * This is the first step in uploading a large file. The resulting <a
-	 * href="${org.sagebionetworks.repo.model.file.ChunkedFileToken}"
-	 * >ChunkedFileToken</a> will be required for all remain chunk file
-	 * requests.
-	 * 
-	 * @param userId
-	 * @param fileName
-	 *            - The short name of the file (ie foo.bar).
-	 * @param contentType
-	 *            - The content type of the file (ie 'text/plain' or
-	 *            'application/json').
-	 * @return
-	 * @throws DatastoreException
-	 * @throws NotFoundException
-	 */
-	@Deprecated
-	// replaced with multi-part upload V2
-	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = "/createChunkedFileUploadToken", method = RequestMethod.POST)
-	public @ResponseBody ChunkedFileToken createChunkedFileUploadToken(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody CreateChunkedFileTokenRequest ccftr)
-			throws DatastoreException, NotFoundException {
-		return fileService.createChunkedFileUploadToken(userId, ccftr);
-	}
-
-	/**
-	 * Create a pre-signed URL that will be used to upload a single chunk of a
-	 * large file (see: <a href="${POST.createChunkedFileUploadToken}">POST
-	 * /createChunkedFileUploadToken</a>). This method will return the URL in
-	 * the body of the HttpServletResponse with a content type of 'text/plain'.
-	 * 
-	 * @param userId
-	 * @param cpr
-	 *            - Includes the {@link ChunkedFileToken} and the chunk number.
-	 *            The chunk number indicates this chunks position in the larger
-	 *            file. If there are 'n' chunks then the first chunk is '1' and
-	 *            the last chunk is 'n'.
-	 * @param response
-	 * @throws DatastoreException
-	 * @throws NotFoundException
-	 * @throws IOException
-	 */
-	@Deprecated
-	// replaced with multi-part upload V2
-	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = "/createChunkedFileUploadChunkURL", method = RequestMethod.POST)
-	public void createChunkedPresignedUrl(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody ChunkRequest cpr, HttpServletResponse response)
-			throws DatastoreException, NotFoundException, IOException {
-		URL url = fileService.createChunkedFileUploadPartURL(userId, cpr);
-		// Return the redirect url instead of redirecting.
-		response.setStatus(HttpStatus.CREATED.value());
-		response.setContentType("text/plain");
-		response.getWriter().write(url.toString());
-		response.getWriter().flush();
-	}
-
-	/**
-	 * After all of the chunks are added, start a Daemon that will copy all of
-	 * the parts and complete the request. The daemon status can be monitored by
-	 * calling <a href="${GET.completeUploadDaemonStatus.daemonId}">GET
-	 * /completeUploadDaemonStatus/{daemonId}</a>.
-	 * 
-	 * @param userId
-	 * @param cacf
-	 * @return
-	 * @throws DatastoreException
-	 * @throws NotFoundException
-	 */
-	@Deprecated
-	// replaced with multi-part upload V2
-	@ResponseStatus(HttpStatus.CREATED)
-	@RequestMapping(value = "/startCompleteUploadDaemon", method = RequestMethod.POST)
-	public @ResponseBody UploadDaemonStatus startCompleteUploadDaemon(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody CompleteAllChunksRequest cacf)
-			throws DatastoreException, NotFoundException {
-		return fileService.startUploadDeamon(userId, cacf);
-	}
-
-	/**
-	 * Get the status of a daemon started with <a
-	 * href="${POST.startCompleteUploadDaemon}">POST
-	 * /startCompleteUploadDaemon</a>.
-	 * 
-	 * @param userId
-	 * @param daemonId
-	 *            The ID of the daemon (UploadDaemonStatus.id).
-	 * @return
-	 * @throws DatastoreException
-	 * @throws NotFoundException
-	 */
-	@Deprecated
-	// replaced with multi-part upload V2
-	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(value = "/completeUploadDaemonStatus/{daemonId}", method = RequestMethod.GET)
-	public @ResponseBody UploadDaemonStatus completeUploadDaemonStatus(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@PathVariable String daemonId) throws DatastoreException,
-			NotFoundException {
-		return fileService.getUploadDaemonStatus(userId, daemonId);
 	}
 
 	/**
@@ -488,6 +482,7 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@Deprecated
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_ID + "/uploadDestinations", method = RequestMethod.GET)
@@ -511,6 +506,7 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_ID
 			+ "/uploadDestinationLocations", method = RequestMethod.GET)
@@ -534,6 +530,7 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_ID
 			+ "/uploadDestination/{storageLocationId}", method = RequestMethod.GET)
@@ -548,8 +545,11 @@ public class UploadController {
 	}
 
 	/**
-	 * Get the default upload destinations for this entity id. This will always
-	 * return an upload destination
+	 * Get the default upload destination for the entity with the given id. The id might refer to the parent container (e.g. a folder or a project) where a file needs to be uploaded.
+	 * <p> 
+	 * The upload destination is generated according to the default <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a>
+	 * for the project where the entity resides. If the project does not contain any custom <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a>
+	 * the default synapse storage location is used to generate an upload destination.
 	 * 
 	 * @param userId
 	 * @param id
@@ -557,6 +557,7 @@ public class UploadController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_ID + "/uploadDestination", method = RequestMethod.GET)
 	public @ResponseBody UploadDestination getDefaultUploadDestination(
@@ -591,8 +592,9 @@ public class UploadController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = "/fileHandle/{handleId}/url", method = RequestMethod.GET)
-	public @ResponseBody void getFileHandleURL(
+	public void getFileHandleURL(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String handleId,
 			@RequestParam(required = false) Boolean redirect,
@@ -635,6 +637,7 @@ public class UploadController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.BULK_FILE_DOWNLOAD_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody AsyncJobId startBulkFileDownloadJob(
@@ -666,6 +669,7 @@ public class UploadController {
 	 * @throws NotFoundException
 	 * @throws AsynchJobFailedException
 	 */
+	@RequiredScope({download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.BULK_FILE_DOWNLOAD_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody BulkFileDownloadResponse getBulkFileDownloadResults(
@@ -702,6 +706,7 @@ public class UploadController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.FILE_DOWNLOAD, method = RequestMethod.GET)
 	public void fileRedirectURLForAffiliate(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
@@ -718,9 +723,17 @@ public class UploadController {
 	}
 
 	/**
-	 * Start or resume a multi-part upload of a file. By default this method is
+	 * Start or resume a multi-part upload or copy of a file. By default this method is
 	 * idempotent, so subsequent calls will simply return the current status of
-	 * the file upload.
+	 * the file upload/copy.
+	 * 
+	 * <p>
+	 * The body of the request will determine if an upload or a copy is performed: 
+	 * Using a <a href="${org.sagebionetworks.repo.model.file.MultipartUploadRequest}">MultipartUploadRequest</a> will start
+	 * a normal multipart upload, while posting a 
+	 * <a href="${org.sagebionetworks.repo.model.file.MultipartUploadCopyRequest}">MultipartUploadCopyRequest</a> will start
+	 * a multipart copy.
+	 * </p>
 	 * 
 	 * @param userId
 	 * @param request
@@ -731,28 +744,36 @@ public class UploadController {
 	 *            upload will be started.
 	 * @return
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.FILE_MULTIPART, method = RequestMethod.POST)
-	public @ResponseBody MultipartUploadStatus startMultipartUpload(
+	public @ResponseBody MultipartUploadStatus startMultipartOperation(
 			@RequestParam(required = true, value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody(required = true) MultipartUploadRequest request,
+			@RequestBody(required = true) MultipartRequest request,
 			@RequestParam(required = false, defaultValue = "false") boolean forceRestart) {
-		return fileService.startMultipartUpload(userId, request, forceRestart);
+		return fileService.startMultipart(userId, request, forceRestart);
 	}
 
 	/**
-	 * Get a batch of pre-signed URLS that should be used to upload file parts.
-	 * Each part will require a unique pre-signed URL. The client is expected to
-	 * PUT the contents of each part to the corresponding pre-signed URL. Each
-	 * per-signed URL will expire 15 minute after issued. If a URL has expired,
-	 * the client will need to request a new URL for that part.
-	 * 
+	 * <p>
+	 * Get a batch of pre-signed URLS that should be used to upload or copy file parts.
+	 * Each part will require a unique pre-signed URL. For an upload the client is expected to
+	 * PUT the contents of each part to the corresponding pre-signed URL, while for a copy the request body should be empty. 
+	 * </p>
+	 * <p>
+	 * The response will include for each part a pre-signed URL together with a map of signed headers. All the signed headers
+	 * will need to be sent along with the PUT request.
+	 * </p>
+	 * <p>
+	 * Each pre-signed URL will expire 15 minute after issued. If a URL has expired, the client will need to request a new URL for that part.
+	 * </p>
 	 * @param userId
 	 * @param uploadId
 	 *            The unique identifier of the file upload.
 	 * @param request
 	 * @return
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.FILE_MULTIPART_UPLOAD_ID_PRESIGNED, method = RequestMethod.POST)
 	public @ResponseBody BatchPresignedUploadUrlResponse getPresignedUrlBatch(
@@ -764,10 +785,13 @@ public class UploadController {
 	}
 
 	/**
-	 * After the contents of part have been upload (PUT to a pre-signed URL)
-	 * this method is used to added the part to the multipart upload. If the
-	 * upload part can be found, and the provided MD5 matches the MD5 of the
-	 * part, the part will be accepted and added to the multipart upload.
+	 * After the contents of part have been uploaded or copied with the PUT to the part pre-signed URL
+	 * this service is used to confirm the addition of the part to the multipart upload or copy. 
+	 * When uploading a file if the upload part can be found, and the provided MD5 matches the MD5 of the part, 
+	 * the part will be accepted and added to the multipart upload. 
+	 * For a copy this is used only to keep track of the MD5 of each part which is returned as part of 
+	 * the response of the pre-signed URL request and needed to complete the multipart copy.
+	 * 
 	 * <p>
 	 * If add part fails for any reason, the client must re-upload the part and
 	 * then re-attempt to add the part to the upload.
@@ -785,6 +809,7 @@ public class UploadController {
 	 * @return The response will indicate if add succeeded or failed. When an
 	 *         add fails, the response will include an error message.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.FILE_MULTIPART_UPLOAD_ID_ADD_PART, method = RequestMethod.PUT)
 	public @ResponseBody AddPartResponse addPart(
@@ -796,7 +821,7 @@ public class UploadController {
 
 	/**
 	 * After all of the parts have been upload and added successfully, this
-	 * method is called to complete the upload resulting in the creation of a
+	 * service is called to complete the upload resulting in the creation of a
 	 * new file handle.
 	 * 
 	 * @param userId
@@ -805,6 +830,7 @@ public class UploadController {
 	 * @return If successful, the response will include the ID of the new file
 	 *         handle.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.FILE_MULTIPART_UPLOAD_ID_COMPLETE, method = RequestMethod.PUT)
 	public @ResponseBody MultipartUploadStatus completeMultipartUpload(
@@ -838,6 +864,7 @@ public class UploadController {
 	 * @throws HttpStatus.BAD_REQUEST for request with duplicated FileHandleId.
 	 * @return
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.FILE_HANDLES_COPY, method = RequestMethod.POST)
 	public @ResponseBody BatchFileHandleCopyResult copyFileHandles(
@@ -864,6 +891,7 @@ public class UploadController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST_ADD_START_ASYNCH, method = RequestMethod.POST)
 	public @ResponseBody AsyncJobId startAddFileToDownloadList(
@@ -891,6 +919,7 @@ public class UploadController {
 	 * @return
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST_ADD_GET_ASYNCH, method = RequestMethod.GET)
 	public @ResponseBody AddFileToDownloadListResponse getAddFileToDownloadListResults(
@@ -914,6 +943,7 @@ public class UploadController {
 	 * @return
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,modify,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST_ADD, method = RequestMethod.POST)
 	public @ResponseBody DownloadList addFilesToDownloadList(
@@ -930,6 +960,7 @@ public class UploadController {
 	 * @return
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,modify,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST_REMOVE, method = RequestMethod.POST)
 	public @ResponseBody DownloadList removeFilesFromDownloadList(
@@ -945,6 +976,7 @@ public class UploadController {
 	 * @param request
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,modify,download})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST, method = RequestMethod.DELETE)
 	public @ResponseBody void clearUsersDownloadList(
@@ -958,6 +990,7 @@ public class UploadController {
 	 * @param userId
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_LIST, method = RequestMethod.GET)
 	public @ResponseBody DownloadList getDownloadList(
@@ -987,6 +1020,7 @@ public class UploadController {
 	 * @return
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,modify,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_ORDER, method = RequestMethod.POST)
 	public @ResponseBody DownloadOrder createDownloadOrder(
@@ -1004,6 +1038,7 @@ public class UploadController {
 	 * @return
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_ORDER_ID, method = RequestMethod.GET)
 	public @ResponseBody DownloadOrder getDownloadOrder(
@@ -1020,6 +1055,7 @@ public class UploadController {
 	 * @return A single page of download order summaries.
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.DOWNLOAD_ORDER_HISTORY, method = RequestMethod.POST)
 	public @ResponseBody DownloadOrderSummaryResponse getDownloadOrderHistory(

@@ -1,34 +1,40 @@
 package org.sagebionetworks.repo.manager.dataaccess;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
 import org.sagebionetworks.repo.model.ACTAccessRequirement;
 import org.sagebionetworks.repo.model.AccessApproval;
 import org.sagebionetworks.repo.model.AccessApprovalDAO;
+import org.sagebionetworks.repo.model.AccessRequirement;
 import org.sagebionetworks.repo.model.AccessRequirementDAO;
 import org.sagebionetworks.repo.model.ApprovalState;
 import org.sagebionetworks.repo.model.ManagedACTAccessRequirement;
@@ -52,6 +58,9 @@ import org.sagebionetworks.repo.model.dataaccess.Renewal;
 import org.sagebionetworks.repo.model.dataaccess.Request;
 import org.sagebionetworks.repo.model.dataaccess.ResearchProject;
 import org.sagebionetworks.repo.model.dataaccess.Submission;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfo;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPage;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPageRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionOrder;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPageRequest;
@@ -61,13 +70,14 @@ import org.sagebionetworks.repo.model.dataaccess.SubmissionStatus;
 import org.sagebionetworks.repo.model.dbo.dao.dataaccess.ResearchProjectDAO;
 import org.sagebionetworks.repo.model.dbo.dao.dataaccess.SubmissionDAO;
 import org.sagebionetworks.repo.model.message.ChangeType;
+import org.sagebionetworks.repo.model.message.MessageToSend;
 import org.sagebionetworks.repo.model.message.TransactionalMessenger;
 import org.sagebionetworks.repo.model.subscription.SubscriptionObjectType;
 import org.sagebionetworks.repo.web.NotFoundException;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.google.common.collect.Sets;
 
+@ExtendWith(MockitoExtension.class)
 public class SubmissionManagerImplTest {
 
 	@Mock
@@ -93,9 +103,12 @@ public class SubmissionManagerImplTest {
 	@Mock
 	private TransactionalMessenger mockTransactionalMessenger;
 	@Mock
+	private AccessApprovalManager mockAccessAprovalManager;
+	@Mock
 	private RequestManager mockRequestManager;
-
-	private SubmissionManager manager;
+	@InjectMocks
+	private SubmissionManagerImpl manager;
+	
 	private Renewal request;
 	private String userId;
 	private Long userIdLong;
@@ -116,19 +129,8 @@ public class SubmissionManagerImplTest {
 	private CreateSubmissionRequest csRequest;
 	private String subjectId;
 
-	@Before
+	@BeforeEach
 	public void before() {
-		MockitoAnnotations.initMocks(this);
-		manager = new SubmissionManagerImpl();
-		ReflectionTestUtils.setField(manager, "authorizationManager", mockAuthorizationManager);
-		ReflectionTestUtils.setField(manager, "researchProjectDao", mockResearchProjectDao);
-		ReflectionTestUtils.setField(manager, "accessRequirementDao", mockAccessRequirementDao);
-		ReflectionTestUtils.setField(manager, "submissionDao", mockSubmissionDao);
-		ReflectionTestUtils.setField(manager, "accessApprovalDao", mockAccessApprovalDao);
-		ReflectionTestUtils.setField(manager, "subscriptionDao", mockSubscriptionDao);
-		ReflectionTestUtils.setField(manager, "transactionalMessenger", mockTransactionalMessenger);
-		ReflectionTestUtils.setField(manager, "requestManager", mockRequestManager);
-
 		userId = "1";
 		userIdLong = 1L;
 		requestId = "2";
@@ -161,25 +163,26 @@ public class SubmissionManagerImplTest {
 		request.setSummaryOfUse(summaryOfUse);
 		request.setEtag(etag);
 
-		when(mockRequestManager.getRequestForSubmission(requestId)).thenReturn(request);
-		when(mockUser.getId()).thenReturn(1L);
-		when(mockResearchProjectDao.get(researchProjectId)).thenReturn(mockResearchProject);
-		when(mockResearchProject.getId()).thenReturn(researchProjectId);
-		when(mockAccessRequirementDao.get(accessRequirementId)).thenReturn(mockAccessRequirement);
-		when(mockSubmissionDao.hasSubmissionWithState(
+		lenient().when(mockRequestManager.getRequestForSubmission(requestId)).thenReturn(request);
+		lenient().when(mockUser.getId()).thenReturn(1L);
+		lenient().when(mockResearchProjectDao.get(researchProjectId)).thenReturn(mockResearchProject);
+		lenient().when(mockResearchProject.getId()).thenReturn(researchProjectId);
+		lenient().when(mockAccessRequirementDao.get(accessRequirementId)).thenReturn(mockAccessRequirement);
+		lenient().when(mockSubmissionDao.hasSubmissionWithState(
 				userId, accessRequirementId, SubmissionState.SUBMITTED))
 				.thenReturn(false);
-		when(mockAccessRequirement.getIsDUCRequired()).thenReturn(true);
-		when(mockAccessRequirement.getIsIRBApprovalRequired()).thenReturn(true);
-		when(mockAccessRequirement.getAreOtherAttachmentsRequired()).thenReturn(true);
-		when(mockAccessRequirement.getIsCertifiedUserRequired()).thenReturn(true);
-		when(mockAccessRequirement.getIsValidatedProfileRequired()).thenReturn(true);
-		when(mockAccessRequirement.getVersionNumber()).thenReturn(accessRequirementVersion);
+		lenient().when(mockAccessRequirement.getIsDUCRequired()).thenReturn(true);
+		lenient().when(mockAccessRequirement.getIsIRBApprovalRequired()).thenReturn(true);
+		lenient().when(mockAccessRequirement.getAreOtherAttachmentsRequired()).thenReturn(true);
+		lenient().when(mockAccessRequirement.getIsCertifiedUserRequired()).thenReturn(true);
+		lenient().when(mockAccessRequirement.getIsValidatedProfileRequired()).thenReturn(true);
+		lenient().when(mockAccessRequirement.getVersionNumber()).thenReturn(accessRequirementVersion);
+		lenient().when(mockAccessRequirement.getIsIDUPublic()).thenReturn(true);
 
-		when(mockSubmissionDao.createSubmission(any(Submission.class)))
+		lenient().when(mockSubmissionDao.createSubmission(any(Submission.class)))
 				.thenReturn(mockSubmissionStatus);
-		when(mockSubmissionStatus.getSubmissionId()).thenReturn(submissionId);
-		when(mockAccessApprovalDao.hasApprovalsSubmittedBy(accessorIds, userId, accessRequirementId)).thenReturn(true);
+		lenient().when(mockSubmissionStatus.getSubmissionId()).thenReturn(submissionId);
+		lenient().when(mockAccessApprovalDao.hasApprovalsSubmittedBy(accessorIds, userId, accessRequirementId)).thenReturn(true);
 
 		submission = new Submission();
 		submission.setRequestId(requestId);
@@ -191,7 +194,7 @@ public class SubmissionManagerImplTest {
 		submission.setId(submissionId);
 		submission.setAccessRequirementVersion(accessRequirementVersion);
 		submission.setResearchProjectSnapshot(mockResearchProject);
-		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
+		lenient().when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
 
 		subjectId = "syn987";
 		csRequest = new CreateSubmissionRequest();
@@ -201,140 +204,184 @@ public class SubmissionManagerImplTest {
 		csRequest.setSubjectType(RestrictableObjectType.ENTITY);
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullUserInfo() {
+		assertThrows(IllegalArgumentException.class, ()->{
 		manager.create(null, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullRequesto() {
-		manager.create(mockUser, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, null);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullRequestID() {
 		csRequest.setRequestId(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullEtag() {
 		csRequest.setRequestEtag(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullSubjectId() {
 		csRequest.setSubjectId(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullSubjectType() {
 		csRequest.setSubjectType(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testCreateWithOutdatedEtag() {
 		csRequest.setRequestEtag("outdated etag");
 		when(mockRequestManager.getRequestForSubmission(requestId)).thenThrow(new NotFoundException());
-		manager.create(mockUser, csRequest);
+		assertThrows(NotFoundException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testCreateWithNonExistRequest() {
 		when(mockRequestManager.getRequestForSubmission(requestId)).thenThrow(new NotFoundException());
-		manager.create(mockUser, csRequest);
+		assertThrows(NotFoundException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testCreateWithNotExistResearchProject() {
 		when(mockResearchProjectDao.get(researchProjectId)).thenThrow(new NotFoundException());
-		manager.create(mockUser, csRequest);
+		assertThrows(NotFoundException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullAccessRequirementID() {
 		request.setAccessRequirementId(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithSubmittedSubmission() {
 		when(mockSubmissionDao.hasSubmissionWithState(
 				userId, accessRequirementId, SubmissionState.SUBMITTED))
 				.thenReturn(true);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testCreateWithNotExistAccessRequirement() {
 		when(mockAccessRequirementDao.get(accessRequirementId)).thenThrow(new NotFoundException());
-		manager.create(mockUser, csRequest);
+		assertThrows(NotFoundException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNonACTAccessRequirement() {
 		when(mockAccessRequirementDao.get(accessRequirementId)).thenReturn(new TermsOfUseAccessRequirement());
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithDUCRequired() {
 		request.setDucFileHandleId(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithIRBRequired() {
 		request.setIrbFileHandleId(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithAttachmentsRequiredAndNullList() {
 		request.setAttachments(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithAttachmentsRequiredAndEmptyList() {
 		request.setAttachments(new LinkedList<String>());
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithNullAccessors() {
 		request.setAccessorChanges(null);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithEmptyAccessorList() {
 		request.setAccessorChanges(new LinkedList<AccessorChange>());
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithAccessorRequirementNotSatisfied() {
 		doThrow(new IllegalArgumentException()).when(mockAuthorizationManager).validateHasAccessorRequirement(mockAccessRequirement, accessorIds);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithSubmitterIsNotAccessor() {
 		when(mockUser.getId()).thenReturn(2L);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateWithRenewAccessorUserDidNotSubmit() {
 		when(mockAccessApprovalDao.hasApprovalsSubmittedBy(accessorIds, userId, accessRequirementId)).thenReturn(false);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCreateListAccessorTwice() {
 		AccessorChange accesorChange = new AccessorChange();
 		accesorChange.setUserId(userId);
@@ -344,7 +391,9 @@ public class SubmissionManagerImplTest {
 		accesorChange2.setType(AccessType.RENEW_ACCESS);
 		accessors = Arrays.asList(accesorChange, accesorChange2);
 		request.setAccessorChanges(accessors);
-		manager.create(mockUser, csRequest);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.create(mockUser, csRequest);
+		});
 	}
 
 	@Test
@@ -370,8 +419,15 @@ public class SubmissionManagerImplTest {
 		assertEquals(summaryOfUse, captured.getSummaryOfUse());
 		assertEquals(SubmissionState.SUBMITTED, captured.getState());
 		verify(mockSubscriptionDao).create(userId, submissionId, SubscriptionObjectType.DATA_ACCESS_SUBMISSION_STATUS);
-		verify(mockTransactionalMessenger).sendMessageAfterCommit(eq(submissionId),
-				eq(ObjectType.DATA_ACCESS_SUBMISSION), anyString(), eq(ChangeType.CREATE), eq(userIdLong));
+		
+		MessageToSend expectedMessage = new MessageToSend()
+				.withUserId(userIdLong)
+				.withObjectType(ObjectType.DATA_ACCESS_SUBMISSION)
+				.withObjectId(submissionId)
+				.withChangeType(ChangeType.CREATE);
+		
+		verify(mockTransactionalMessenger).sendMessageAfterCommit(expectedMessage);
+		
 		verify(mockAuthorizationManager).validateHasAccessorRequirement(mockAccessRequirement, accessorIds);
 	}
 
@@ -406,60 +462,80 @@ public class SubmissionManagerImplTest {
 		assertNull(captured.getSummaryOfUse());
 		assertEquals(SubmissionState.SUBMITTED, captured.getState());
 		verify(mockSubscriptionDao).create(userId, submissionId, SubscriptionObjectType.DATA_ACCESS_SUBMISSION_STATUS);
-		verify(mockTransactionalMessenger).sendMessageAfterCommit(eq(submissionId),
-				eq(ObjectType.DATA_ACCESS_SUBMISSION), anyString(), eq(ChangeType.CREATE), eq(userIdLong));
+		
+		MessageToSend expectedMessage = new MessageToSend()
+				.withUserId(userIdLong)
+				.withObjectType(ObjectType.DATA_ACCESS_SUBMISSION)
+				.withObjectId(submissionId)
+				.withChangeType(ChangeType.CREATE);
+		
+		verify(mockTransactionalMessenger).sendMessageAfterCommit(expectedMessage);
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCancelNullUserInfo() {
-		manager.cancel(null, submissionId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.cancel(null, submissionId);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCancelNullSubmissionId() {
-		manager.cancel(mockUser, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.cancel(mockUser, null);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testCancelWithNotFoundSubmission() {
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenThrow(new NotFoundException());
-		manager.cancel(mockUser, submissionId);
+		assertThrows(NotFoundException.class, ()->{
+			manager.cancel(mockUser, submissionId);
+		});
 	}
 
-	@Test (expected = UnauthorizedException.class)
+	@Test
 	public void testCancelSubmissionUserHasNotSubmitted() {
 		Submission submission = new Submission();
 		submission.setSubmittedBy("111");
 		submission.setState(SubmissionState.SUBMITTED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.cancel(mockUser, submissionId);
+		assertThrows(UnauthorizedException.class, ()->{
+			manager.cancel(mockUser, submissionId);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCancelApprovedSubmission() {
 		Submission submission = new Submission();
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.APPROVED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.cancel(mockUser, submissionId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.cancel(mockUser, submissionId);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCancelRejectedSubmission() {
 		Submission submission = new Submission();
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.REJECTED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.cancel(mockUser, submissionId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.cancel(mockUser, submissionId);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testCancelCanceledSubmission() {
 		Submission submission = new Submission();
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.CANCELLED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.cancel(mockUser, submissionId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.cancel(mockUser, submissionId);
+		});
 	}
 
 	@Test
@@ -473,67 +549,83 @@ public class SubmissionManagerImplTest {
 		assertEquals(mockSubmissionStatus, manager.cancel(mockUser, submissionId));
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithNullUserInfo() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
-		manager.updateStatus(null, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(null, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithRequest() {
-		manager.updateStatus(mockUser, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, null);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithNullSubmissionId() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setNewState(SubmissionState.APPROVED);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithNullNewState() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithCancelledState() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
 		request.setNewState(SubmissionState.CANCELLED);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusWithSubmittedState() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
 		request.setNewState(SubmissionState.SUBMITTED);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = UnauthorizedException.class)
+	@Test
 	public void testUpdateStatusUnauthorized() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
 		request.setNewState(SubmissionState.APPROVED);
 		when(mockAuthorizationManager.isACTTeamMemberOrAdmin(mockUser)).thenReturn(false);
-		manager.updateStatus(mockUser, request);
+		assertThrows(UnauthorizedException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testUpdateStatusSubmissionNotFound() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
 		request.setNewState(SubmissionState.APPROVED);
 		when(mockAuthorizationManager.isACTTeamMemberOrAdmin(mockUser)).thenReturn(true);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenThrow(new NotFoundException());
-		manager.updateStatus(mockUser, request);
+		assertThrows(NotFoundException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusCancelledSubmission() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
@@ -543,10 +635,12 @@ public class SubmissionManagerImplTest {
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.CANCELLED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusRejectedSubmission() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
@@ -556,10 +650,12 @@ public class SubmissionManagerImplTest {
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.REJECTED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testUpdateStatusApprovedSubmission() {
 		SubmissionStateChangeRequest request = new SubmissionStateChangeRequest();
 		request.setSubmissionId(submissionId);
@@ -569,7 +665,9 @@ public class SubmissionManagerImplTest {
 		submission.setSubmittedBy(userId);
 		submission.setState(SubmissionState.APPROVED);
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
-		manager.updateStatus(mockUser, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.updateStatus(mockUser, request);
+		});
 	}
 
 	@Test
@@ -593,7 +691,14 @@ public class SubmissionManagerImplTest {
 				anyLong())).thenReturn(submission);
 		// call under test
 		assertEquals(submission, manager.updateStatus(mockUser, request));
-		verify(mockTransactionalMessenger).sendMessageAfterCommit(submissionId, ObjectType.DATA_ACCESS_SUBMISSION_STATUS, etag, ChangeType.UPDATE, userIdLong);
+		
+		MessageToSend expectedMessage = new MessageToSend()
+				.withUserId(userIdLong)
+				.withObjectType(ObjectType.DATA_ACCESS_SUBMISSION_STATUS)
+				.withObjectId(submissionId)
+				.withChangeType(ChangeType.UPDATE);
+		
+		verify(mockTransactionalMessenger).sendMessageAfterCommit(expectedMessage);
 		verify(mockRequestManager, never()).updateApprovedRequest(anyString());
 	}
 
@@ -621,19 +726,14 @@ public class SubmissionManagerImplTest {
 		when(mockSubmissionDao.updateSubmissionStatus(eq(submissionId),
 				eq(SubmissionState.APPROVED), eq(reason), eq(userId),
 				anyLong())).thenReturn(submission);
+		
 		// call under test
 		assertEquals(submission, manager.updateStatus(mockUser, request));
-
-		ArgumentCaptor<String> stringCaptor = ArgumentCaptor.forClass(String.class);
+		
+		verify(mockAccessAprovalManager).revokeGroup(mockUser, accessRequirementId, userId, Arrays.asList(userId, "2"));
+		
 		ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
-		verify(mockAccessApprovalDao).revokeBySubmitter(stringCaptor.capture(),
-				stringCaptor.capture(), captor.capture(), stringCaptor.capture());
-		List accessorsToRevoke = captor.getValue();
-		assertNotNull(accessorsToRevoke);
-		assertEquals(2, accessorsToRevoke.size());
-		assertTrue(accessorsToRevoke.contains(userId));
-		assertTrue(accessorsToRevoke.contains("2"));
-
+		
 		verify(mockAccessApprovalDao).createOrUpdateBatch(captor.capture());
 		List<AccessApproval> approvals = captor.getValue();
 		assertEquals(2, approvals.size());
@@ -655,8 +755,14 @@ public class SubmissionManagerImplTest {
 		assertNull(approval3.getExpiredOn());
 		assertEquals(approval3.getState(), ApprovalState.APPROVED);
 		assertEquals(accessRequirementId, approval3.getRequirementId().toString());
+		
+		MessageToSend expectedMessage = new MessageToSend()
+				.withUserId(userIdLong)
+				.withObjectType(ObjectType.DATA_ACCESS_SUBMISSION_STATUS)
+				.withObjectId(submissionId)
+				.withChangeType(ChangeType.UPDATE);
 
-		verify(mockTransactionalMessenger).sendMessageAfterCommit(submissionId, ObjectType.DATA_ACCESS_SUBMISSION_STATUS, etag, ChangeType.UPDATE, userIdLong);
+		verify(mockTransactionalMessenger).sendMessageAfterCommit(expectedMessage);
 		verify(mockRequestManager).updateApprovedRequest(requestId);
 	}
 
@@ -670,21 +776,18 @@ public class SubmissionManagerImplTest {
 		request.setRejectedReason(reason);
 		when(mockAuthorizationManager.isACTTeamMemberOrAdmin(mockUser)).thenReturn(true);
 		submission.setAccessorChanges(accessors);
+		
 		when(mockSubmissionDao.getForUpdate(submissionId)).thenReturn(submission);
 		when(mockSubmissionDao.updateSubmissionStatus(eq(submissionId),
 				eq(SubmissionState.APPROVED), eq(reason), eq(userId),
 				anyLong())).thenReturn(submission);
+		
 		// call under test
 		assertEquals(submission, manager.updateStatus(mockUser, request));
 
-		ArgumentCaptor<String> stringCaptor = ArgumentCaptor.forClass(String.class);
+		verify(mockAccessAprovalManager).revokeGroup(mockUser, accessRequirementId, userId, Arrays.asList(userId));
+		
 		ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
-		verify(mockAccessApprovalDao).revokeBySubmitter(stringCaptor.capture(),
-				stringCaptor.capture(), captor.capture(), stringCaptor.capture());
-		List accessorsToRevoke = captor.getValue();
-		assertNotNull(accessorsToRevoke);
-		assertEquals(1, accessorsToRevoke.size());
-		assertTrue(accessorsToRevoke.contains(userId));
 
 		verify(mockAccessApprovalDao).createOrUpdateBatch(captor.capture());
 		List<AccessApproval> approvals = captor.getValue();
@@ -698,32 +801,46 @@ public class SubmissionManagerImplTest {
 		assertNotNull(approval.getExpiredOn());
 		assertEquals(approval.getState(), ApprovalState.APPROVED);
 		assertEquals(accessRequirementId, approval.getRequirementId().toString());
+		
+		MessageToSend expectedMessage = new MessageToSend()
+				.withUserId(userIdLong)
+				.withObjectType(ObjectType.DATA_ACCESS_SUBMISSION_STATUS)
+				.withObjectId(submissionId)
+				.withChangeType(ChangeType.UPDATE);
 
-		verify(mockTransactionalMessenger).sendMessageAfterCommit(submissionId, ObjectType.DATA_ACCESS_SUBMISSION_STATUS, etag, ChangeType.UPDATE, userIdLong);
+		verify(mockTransactionalMessenger).sendMessageAfterCommit(expectedMessage);
 		verify(mockRequestManager).updateApprovedRequest(requestId);
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testListSubmissionsWithNullUserInfo() {
-		manager.listSubmission(null, new SubmissionPageRequest());
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.listSubmission(null, new SubmissionPageRequest());
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testListSubmissionsWithNullRequest() {
-		manager.listSubmission(mockUser, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.listSubmission(mockUser, null);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testListSubmissionsWithNullAccessRequirementId() {
-		manager.listSubmission(mockUser, new SubmissionPageRequest());
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.listSubmission(mockUser, new SubmissionPageRequest());
+		});
 	}
 
-	@Test (expected = UnauthorizedException.class)
+	@Test
 	public void testListSubmissionsUnauthorized() {
 		SubmissionPageRequest request = new SubmissionPageRequest();
 		request.setAccessRequirementId(accessRequirementId);
 		when(mockAuthorizationManager.isACTTeamMemberOrAdmin(mockUser)).thenReturn(false);
-		manager.listSubmission(mockUser, request);
+		assertThrows(UnauthorizedException.class, ()->{
+			manager.listSubmission(mockUser, request);
+		});
 	}
 
 	@Test
@@ -748,21 +865,95 @@ public class SubmissionManagerImplTest {
 				true, NextPageToken.DEFAULT_LIMIT+1, NextPageToken.DEFAULT_OFFSET);
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
+	public void testListResearchProjectsForApprovedSubmissionsWithNullRequest() {
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.listInfoForApprovedSubmissions(null);
+		});
+	}
+
+	@Test
+	public void testListResearchProjectsForApprovedSubmissionsWithNullAccessRequirementId() {
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.listInfoForApprovedSubmissions(new SubmissionInfoPageRequest());
+		});
+	}
+	
+	@Test
+	public void testListResearchProjectsForApprovedSubmissionsNotManaged() {
+		AccessRequirement wrongARType = new ACTAccessRequirement();
+		when(mockAccessRequirementDao.get(accessRequirementId)).thenReturn(wrongARType);
+		SubmissionInfoPageRequest request = new SubmissionInfoPageRequest();
+		request.setAccessRequirementId(accessRequirementId);
+		
+		assertThrows(IllegalArgumentException.class, ()->{
+			// method under test
+			manager.listInfoForApprovedSubmissions(request);
+		});
+		verify(mockSubmissionDao, never()).getSubmissions(any(), any(), any(), any(), anyLong(), anyLong());
+	}
+	
+	@Test
+	public void testListResearchProjectsForApprovedSubmissionsNotPublic() {
+		ManagedACTAccessRequirement privateAR = new ManagedACTAccessRequirement();
+		privateAR.setIsIDUPublic(false);
+		SubmissionInfoPageRequest request = new SubmissionInfoPageRequest();
+		request.setAccessRequirementId(accessRequirementId);
+		when(mockAccessRequirementDao.get(accessRequirementId)).thenReturn(privateAR);
+		
+		assertThrows(IllegalArgumentException.class, ()->{
+			// method under test
+			manager.listInfoForApprovedSubmissions(request);
+		});
+		verify(mockSubmissionDao, never()).getSubmissions(any(), any(), any(), any(), anyLong(), anyLong());
+	}
+
+	@Test
+	public void testListResearchProjectsForApprovedSubmissionsAuthorized() {
+		SubmissionInfoPageRequest request = new SubmissionInfoPageRequest();
+		request.setAccessRequirementId(accessRequirementId);
+		
+		List<SubmissionInfo> expected = new ArrayList<SubmissionInfo>();
+		expected.add(new SubmissionInfo());
+		
+		when(mockSubmissionDao.listInfoForApprovedSubmissions(accessRequirementId, 
+				NextPageToken.DEFAULT_LIMIT+1, NextPageToken.DEFAULT_OFFSET)).thenReturn(expected);
+		
+		// call under test
+		SubmissionInfoPage page = manager.listInfoForApprovedSubmissions(request);
+		
+		assertNotNull(page);
+		
+		List<SubmissionInfo> actual = page.getResults();
+		assertEquals(expected, actual);
+		// in this test we've returned the last page, so the next page token will be null
+		assertNull(page.getNextPageToken());
+
+		verify(mockSubmissionDao).listInfoForApprovedSubmissions(accessRequirementId,
+				NextPageToken.DEFAULT_LIMIT+1, NextPageToken.DEFAULT_OFFSET);
+	}
+
+	@Test
 	public void testGetAccessRequirementStatusWithNullUser() {
-		manager.getAccessRequirementStatus(null, accessRequirementId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.getAccessRequirementStatus(null, accessRequirementId);
+		});
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testGetAccessRequirementStatusWithNullAccessRequirementId() {
-		manager.getAccessRequirementStatus(mockUser, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.getAccessRequirementStatus(mockUser, null);
+		});
 	}
 
-	@Test (expected = NotFoundException.class)
+	@Test
 	public void testGetAccessRequirementStatusWithNonExistingAccessRequirement() {
 		when(mockAccessRequirementDao.getConcreteType(accessRequirementId))
 			.thenThrow(new NotFoundException());
-		manager.getAccessRequirementStatus(mockUser, accessRequirementId);
+		assertThrows(NotFoundException.class, ()->{
+			manager.getAccessRequirementStatus(mockUser, accessRequirementId);
+		});
 	}
 
 	@Test
@@ -875,14 +1066,18 @@ public class SubmissionManagerImplTest {
 		verify(mockSubmissionDao).getStatusByRequirementIdAndPrincipalId(accessRequirementId, userId);
 	}
 
-	@Test (expected = IllegalArgumentException.class)
+	@Test
 	public void testGetOpenSubmissionsWithNullUserInfo() {
-		manager.getOpenSubmissions(null, null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			manager.getOpenSubmissions(null, null);
+		});
 	}
 
-	@Test (expected = UnauthorizedException.class)
+	@Test
 	public void testGetOpenSubmissionsUnauthorized() {
-		manager.getOpenSubmissions(mockUser, null);
+		assertThrows(UnauthorizedException.class, ()->{
+			manager.getOpenSubmissions(mockUser, null);
+		});
 	}
 
 	@Test
@@ -896,9 +1091,11 @@ public class SubmissionManagerImplTest {
 		verify(mockSubmissionDao).getOpenSubmissions(NextPageToken.DEFAULT_LIMIT+1, NextPageToken.DEFAULT_OFFSET);
 	}
 
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetLatestExpirationDateWithNullList() {
-		SubmissionManagerImpl.getLatestExpirationDate(null);
+		assertThrows(IllegalArgumentException.class, ()->{
+			SubmissionManagerImpl.getLatestExpirationDate(null);
+		});
 	}
 
 	@Test

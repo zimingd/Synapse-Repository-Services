@@ -1,10 +1,11 @@
 package org.sagebionetworks.repo.web.controller;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,19 +15,24 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.sagebionetworks.evaluation.manager.EvaluationPermissionsManager;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.sagebionetworks.evaluation.dao.EvaluationDAO;
+import org.sagebionetworks.evaluation.dao.SubmissionDAO;
+import org.sagebionetworks.evaluation.dao.SubmissionStatusDAO;
 import org.sagebionetworks.evaluation.model.Evaluation;
+import org.sagebionetworks.evaluation.model.EvaluationRoundListResponse;
 import org.sagebionetworks.evaluation.model.EvaluationStatus;
 import org.sagebionetworks.evaluation.model.Submission;
+import org.sagebionetworks.evaluation.model.SubmissionQuota;
 import org.sagebionetworks.evaluation.model.SubmissionStatus;
 import org.sagebionetworks.evaluation.model.SubmissionStatusEnum;
 import org.sagebionetworks.evaluation.model.UserEvaluationPermissions;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.NodeManager;
 import org.sagebionetworks.repo.manager.UserManager;
+import org.sagebionetworks.repo.manager.evaluation.EvaluationPermissionsManager;
 import org.sagebionetworks.repo.manager.team.TeamManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
@@ -36,20 +42,19 @@ import org.sagebionetworks.repo.model.GroupMembersDAO;
 import org.sagebionetworks.repo.model.Node;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.Team;
-import org.sagebionetworks.repo.model.TeamDAO;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.annotation.Annotations;
 import org.sagebionetworks.repo.model.annotation.DoubleAnnotation;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2TestUtils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Utils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValueType;
 import org.sagebionetworks.repo.model.auth.NewUser;
-import org.sagebionetworks.repo.model.evaluation.EvaluationDAO;
-import org.sagebionetworks.repo.model.evaluation.SubmissionDAO;
-import org.sagebionetworks.repo.model.evaluation.SubmissionStatusDAO;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 
-public class EvaluationControllerAutowiredTest extends AbstractAutowiredControllerTestBase {
+public class EvaluationControllerAutowiredTest extends AbstractAutowiredControllerJunit5TestBase {
 	
 	@Autowired
 	private UserManager userManager;
@@ -93,7 +98,7 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 	private List<String> submissionsToDelete;
 	private List<String> nodesToDelete;
 	
-	@Before
+	@BeforeEach
 	public void before() throws Exception {
 		evaluationsToDelete = new ArrayList<String>();
 		submissionsToDelete = new ArrayList<String>();
@@ -145,7 +150,7 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
         sub2.setSubmitterAlias("Team Even Better!");
 	}
 	
-	@After
+	@AfterEach
 	public void after() throws Exception {
 		// clean up submissions
 		for (String id : submissionsToDelete) {
@@ -196,23 +201,18 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		// Read
 		Evaluation fetched = entityServletHelper.getEvaluation(adminUserId, eval1.getId());
 		assertEquals(eval1, fetched);
-		try {
-			fetched = entityServletHelper.getEvaluation(testUserId, eval1.getId());
-			fail();
-		} catch (UnauthorizedException e) {
-			// Expected
-		}
+		
+		assertThrows(UnauthorizedException.class, ()-> {
+			entityServletHelper.getEvaluation(testUserId, eval1.getId());
+		});
 
 		// Find
 		fetched = entityServletHelper.findEvaluation(adminUserId, eval1.getName());
 		assertEquals(eval1, fetched);
-		try {
-			fetched = entityServletHelper.findEvaluation(testUserId, eval1.getName());
-			assertEquals(eval1, fetched);
-			fail();
-		} catch (NotFoundException e) {
-			// Expected
-		}
+		
+		assertThrows(NotFoundException.class, ()-> {
+			entityServletHelper.findEvaluation(testUserId, eval1.getName());
+		});
 		
 		//can update
 		Boolean canUpdate = entityServletHelper.canAccess(adminUserId, eval1.getId(), ACCESS_TYPE.UPDATE);
@@ -224,20 +224,42 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		// Update
 		fetched.setDescription(eval1.getDescription() + " (modified)");
 		Evaluation updated = entityServletHelper.updateEvaluation(fetched, adminUserId);
-		assertFalse("eTag was not updated", updated.getEtag().equals(fetched.getEtag()));
+		assertFalse(updated.getEtag().equals(fetched.getEtag()), "eTag was not updated");
 		fetched.setEtag(updated.getEtag());
 		assertEquals(fetched, updated);
 		assertEquals(initialCount + 1, entityServletHelper.getAvailableEvaluations(adminUserId).getTotalNumberOfResults());
 		
 		// Delete
 		entityServletHelper.deleteEvaluation(eval1.getId(), adminUserId);
-		try {
-			entityServletHelper.getEvaluation(adminUserId, eval1.getId());
-			fail("Delete failed");
-		} catch (NotFoundException e) {
-			// expected
-		}
+		
+		assertThrows(NotFoundException.class, ()-> {
+			entityServletHelper.getEvaluation(testUserId, eval1.getId());
+		});
 		assertEquals(initialCount, entityServletHelper.getAvailableEvaluations(adminUserId).getTotalNumberOfResults());
+	}
+
+	@Test
+	public void testMigrateSubmissionQuota() throws Exception {
+		SubmissionQuota quota = new SubmissionQuota();
+		quota.setFirstRoundStart(new Date());
+		quota.setRoundDurationMillis(100L);
+		quota.setNumberOfRounds(2L);
+
+		eval1.setQuota(quota);
+
+		eval1 = entityServletHelper.createEvaluation(eval1, adminUserId);
+		assertEquals(quota, eval1.getQuota());
+
+		EvaluationRoundListResponse roundListResponse = entityServletHelper.getAllEvaluationRounds(eval1.getId(), adminUserId);
+		assertEquals(0, roundListResponse.getPage().size());
+
+		entityServletHelper.migrateSubmissionQuota(eval1.getId(), adminUserId);
+
+		roundListResponse = entityServletHelper.getAllEvaluationRounds(eval1.getId(), adminUserId);
+		assertEquals(2, roundListResponse.getPage().size());
+
+		eval1 = entityServletHelper.getEvaluation(adminUserId, eval1.getId());
+		assertNull(eval1.getQuota());
 	}
 	
 	@Test
@@ -267,7 +289,7 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		long initialCount = entityServletHelper.getSubmissionCount(adminUserId, eval1.getId());
 		
 		// create
-		Node node = nodeManager.get(userInfo, nodeId);
+		Node node = nodeManager.getNode(userInfo, nodeId);
 		sub1.setEvaluationId(eval1.getId());
 		sub1.setEntityId(nodeId);
 		sub1 = entityServletHelper.createSubmission(sub1, testUserId, node.getETag());
@@ -299,11 +321,14 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		status.setAnnotations(annots);
 		status.setCanCancel(true);
 		SubmissionStatus statusClone = entityServletHelper.updateSubmissionStatus(status, adminUserId);
-		assertFalse("Modified date was not updated", status.getModifiedOn().equals(statusClone.getModifiedOn()));
+		assertFalse(status.getModifiedOn().equals(statusClone.getModifiedOn()), "Modified date was not updated");
 		status.setModifiedOn(statusClone.getModifiedOn());
-		assertFalse("Etag was not updated", status.getEtag().equals(statusClone.getEtag()));
+		assertFalse(status.getEtag().equals(statusClone.getEtag()), "Etag was not updated");
+		assertNull(statusClone.getSubmissionAnnotations());
+		
 		status.setEtag(statusClone.getEtag());
 		status.setStatusVersion(statusClone.getStatusVersion());
+
 		assertEquals(status, statusClone);
 		// make sure NaNs can make the round trip
 		assertTrue(Double.isNaN(statusClone.getAnnotations().getDoubleAnnos().get(0).getValue()));
@@ -315,16 +340,89 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		
 		// delete
 		entityServletHelper.deleteSubmission(sub1.getId(), adminUserId);
-		try {
+
+		assertThrows(NotFoundException.class, () -> {
 			entityServletHelper.deleteSubmission(sub1.getId(), adminUserId);
-			fail("Failed to delete Submission " + sub1.toString());
-		} catch (NotFoundException e) {
-			// expected
-		}
+		});
+		
 		assertEquals(initialCount, entityServletHelper.getSubmissionCount(adminUserId, eval1.getId()));
 	}
+	
+	@Test
+	public void testSubmissionWithAnnotationsV2() throws Exception {
+		eval1.setStatus(EvaluationStatus.OPEN);
+		eval1 = entityServletHelper.createEvaluation(eval1, adminUserId);
+		evaluationsToDelete.add(eval1.getId());
+		
+		// open the evaluation to join
+		Set<ACCESS_TYPE> accessSet = new HashSet<ACCESS_TYPE>(12);
+		accessSet.add(ACCESS_TYPE.PARTICIPATE);
+		accessSet.add(ACCESS_TYPE.SUBMIT);
+		accessSet.add(ACCESS_TYPE.READ);
+		ResourceAccess ra = new ResourceAccess();
+		ra.setAccessType(accessSet);
+		ra.setPrincipalId(Long.valueOf(submittingTeamId));
+		AccessControlList acl = entityServletHelper.getEvaluationAcl(adminUserId, eval1.getId());
+		acl.getResourceAccess().add(ra);
+		acl = entityServletHelper.updateEvaluationAcl(adminUserId, acl);
+		assertNotNull(acl);
+		
+		UserInfo userInfo = userManager.getUserInfo(testUserId);
+		String nodeId = createNode("An entity", userInfo);
+		assertNotNull(nodeId);
+		nodesToDelete.add(nodeId);
+		
+		long initialCount = entityServletHelper.getSubmissionCount(adminUserId, eval1.getId());
+		
+		// create
+		Node node = nodeManager.getNode(userInfo, nodeId);
+		sub1.setEvaluationId(eval1.getId());
+		sub1.setEntityId(nodeId);
+		sub1 = entityServletHelper.createSubmission(sub1, testUserId, node.getETag());
+		
+		assertNotNull(sub1.getId());
+		submissionsToDelete.add(sub1.getId());
+		assertEquals(initialCount + 1, entityServletHelper.getSubmissionCount(adminUserId, eval1.getId()));
+		
+		SubmissionStatus status = entityServletHelper.getSubmissionStatus(adminUserId, sub1.getId());
+		assertNotNull(status);
+		assertEquals(sub1.getId(), status.getId());
+		assertEquals(SubmissionStatusEnum.RECEIVED, status.getStatus());
+		
+		status.setScore(0.5);
+		status.setStatus(SubmissionStatusEnum.SCORED);
+		
+		org.sagebionetworks.repo.model.annotation.v2.Annotations annotations = AnnotationsV2Utils.emptyAnnotations();
+		
+		AnnotationsV2TestUtils.putAnnotations(annotations, "foo", "bar", AnnotationsValueType.STRING);
+		
+		status.setSubmissionAnnotations(annotations);
 
-	@Test(expected=UnauthorizedException.class)
+		SubmissionStatus statusClone = entityServletHelper.updateSubmissionStatus(status, adminUserId);
+		assertFalse(status.getModifiedOn().equals(statusClone.getModifiedOn()), "Modified date was not updated");
+		status.setModifiedOn(statusClone.getModifiedOn());
+		assertFalse(status.getEtag().equals(statusClone.getEtag()), "Etag was not updated");
+		assertNotNull(statusClone.getSubmissionAnnotations());
+		
+		status.setEtag(statusClone.getEtag());
+		status.setStatusVersion(statusClone.getStatusVersion());
+		
+		annotations.setId(sub1.getId());
+		annotations.setEtag(statusClone.getEtag());
+
+		assertEquals(status, statusClone);
+		
+		// delete
+		entityServletHelper.deleteSubmission(sub1.getId(), adminUserId);
+
+		assertThrows(NotFoundException.class, () -> {
+			entityServletHelper.deleteSubmission(sub1.getId(), adminUserId);
+		});
+		
+		assertEquals(initialCount, entityServletHelper.getSubmissionCount(adminUserId, eval1.getId()));		
+	}
+
+	@Test
 	public void testSubmissionUnauthorized() throws Exception {
 		eval1.setStatus(EvaluationStatus.OPEN);
 		eval1 = entityServletHelper.createEvaluation(eval1, adminUserId);
@@ -333,12 +431,14 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		String nodeId = createNode("An entity", ownerInfo);
 		assertNotNull(nodeId);
 		nodesToDelete.add(nodeId);
-		Node node = nodeManager.get(ownerInfo, nodeId);
+		Node node = nodeManager.getNode(ownerInfo, nodeId);
 		
 		// create
 		sub1.setEvaluationId(eval1.getId());
 		sub1.setEntityId(nodeId);
-		sub1 = entityServletHelper.createSubmission(sub1, testUserId, node.getETag());
+		assertThrows(UnauthorizedException.class, ()-> {
+			sub1 = entityServletHelper.createSubmission(sub1, testUserId, node.getETag());
+		});
 	}
 	
 	@Test
@@ -367,10 +467,10 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		UserInfo userInfo = userManager.getUserInfo(testUserId);
 		String node1 = createNode("entity1", userInfo);
 		assertNotNull(node1);
-		String etag1 = nodeManager.get(userInfo, node1).getETag();
+		String etag1 = nodeManager.getNode(userInfo, node1).getETag();
 		nodesToDelete.add(node1);
 		String node2 = createNode("entity2", userInfo);
-		String etag2 = nodeManager.get(userInfo, node2).getETag();
+		String etag2 = nodeManager.getNode(userInfo, node2).getETag();
 		assertNotNull(node2);
 		nodesToDelete.add(node2);
 		
@@ -393,21 +493,37 @@ public class EvaluationControllerAutowiredTest extends AbstractAutowiredControll
 		PaginatedResults<Evaluation> evals = entityServletHelper.getEvaluationsPaginated(adminUserId, 10, 0);
 		assertEquals(2, evals.getTotalNumberOfResults());
 		for (Evaluation c : evals.getResults()) {
-			assertTrue("Unknown Evaluation returned: " + c.toString(), c.equals(eval1) || c.equals(eval2));
+			assertTrue(c.equals(eval1) || c.equals(eval2), "Unknown Evaluation returned: " + c.toString());
 		}
 		
 		// paginated evaluations by content source
 		evals = entityServletHelper.getEvaluationsByContentSourcePaginated(adminUserId, parentProjectId, 10, 0);
 		assertEquals(2, evals.getTotalNumberOfResults());
 		for (Evaluation c : evals.getResults()) {
-			assertTrue("Unknown Evaluation returned: " + c.toString(), c.equals(eval1) || c.equals(eval2));
+			assertTrue(c.equals(eval1) || c.equals(eval2), "Unknown Evaluation returned: " + c.toString());
 		}
+		
+		// Same result specifiying a different ACCESS TYPE
+		evals = entityServletHelper.getEvaluationsByContentSourcePaginated(adminUserId, parentProjectId, ACCESS_TYPE.READ_PRIVATE_SUBMISSION, 10, 0);
+		assertEquals(2, evals.getTotalNumberOfResults());
+		for (Evaluation c : evals.getResults()) {
+			assertTrue(c.equals(eval1) || c.equals(eval2), "Unknown Evaluation returned: " + c.toString());
+		}
+		
+		// Submitter does not have READ_PRIVATE_SUBMISSION
+		evals = entityServletHelper.getEvaluationsByContentSourcePaginated(testUserId, parentProjectId, ACCESS_TYPE.READ_PRIVATE_SUBMISSION, 10, 0);
+		assertEquals(0, evals.getTotalNumberOfResults());
+		
+		// ..but can read one of the evaluations
+		evals = entityServletHelper.getEvaluationsByContentSourcePaginated(testUserId, parentProjectId, ACCESS_TYPE.READ, 10, 0);
+		assertEquals(1, evals.getTotalNumberOfResults());
+		assertEquals(eval1, evals.getResults().get(0));
 		
 		// paginated submissions
 		PaginatedResults<Submission> subs = entityServletHelper.getAllSubmissions(adminUserId, eval1.getId(), null);
 		assertEquals(2, subs.getTotalNumberOfResults());
 		for (Submission s : subs.getResults()) {
-			assertTrue("Unknown Submission returned: " + s.toString(), s.equals(sub1) || s.equals(sub2));
+			assertTrue(s.equals(sub1) || s.equals(sub2), "Unknown Submission returned: " + s.toString());
 		}
 		
 		subs = entityServletHelper.getAllSubmissions(adminUserId, eval1.getId(), SubmissionStatusEnum.SCORED);

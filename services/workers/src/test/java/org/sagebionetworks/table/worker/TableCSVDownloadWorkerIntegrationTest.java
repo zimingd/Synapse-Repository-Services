@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ETAG;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_ID;
 import static org.sagebionetworks.repo.model.table.TableConstants.ROW_VERSION;
@@ -35,6 +36,7 @@ import org.sagebionetworks.repo.manager.table.ColumnModelManager;
 import org.sagebionetworks.repo.manager.table.TableEntityManager;
 import org.sagebionetworks.repo.manager.table.TableQueryManager;
 import org.sagebionetworks.repo.manager.table.TableViewManager;
+import org.sagebionetworks.repo.manager.table.metadata.DefaultColumnModelMapper;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Project;
@@ -50,8 +52,8 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.DownloadFromTableRequest;
 import org.sagebionetworks.repo.model.table.DownloadFromTableResult;
-import org.sagebionetworks.repo.model.table.EntityField;
 import org.sagebionetworks.repo.model.table.EntityView;
+import org.sagebionetworks.repo.model.table.ObjectField;
 import org.sagebionetworks.repo.model.table.Query;
 import org.sagebionetworks.repo.model.table.QueryOptions;
 import org.sagebionetworks.repo.model.table.RowReferenceSet;
@@ -60,6 +62,8 @@ import org.sagebionetworks.repo.model.table.SortDirection;
 import org.sagebionetworks.repo.model.table.SortItem;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.TableUnavailableException;
+import org.sagebionetworks.repo.model.table.ViewEntityType;
+import org.sagebionetworks.repo.model.table.ViewObjectType;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
 import org.sagebionetworks.repo.web.NotFoundException;
@@ -105,6 +109,8 @@ public class TableCSVDownloadWorkerIntegrationTest {
 	TableViewManager tableViewManager;
 	@Autowired
 	TableTransactionDao tableTransactionDao;
+	@Autowired
+	DefaultColumnModelMapper columnModelMapper;
 	
 	private UserInfo adminUserInfo;
 	RowReferenceSet referenceSet;
@@ -119,6 +125,7 @@ public class TableCSVDownloadWorkerIntegrationTest {
 	public void before() throws NotFoundException{
 		semphoreManager.releaseAllLocksAsAdmin(new UserInfo(true));
 		mockProgressCallback = Mockito.mock(ProgressCallback.class);
+		when(mockProgressCallback.getLockTimeoutSeconds()).thenReturn(2L);
 		// Start with an empty queue.
 		asynchJobStatusManager.emptyAllQueues();
 		// Get the admin user
@@ -226,7 +233,7 @@ public class TableCSVDownloadWorkerIntegrationTest {
 		assertEquals(4, results.size());
 		String[] headers = results.get(0);
 		String headerString = Arrays.toString(headers);
-		String[] expected = new String[]{ROW_ID, ROW_VERSION, EntityField.name.name()};
+		String[] expected = new String[]{ROW_ID, ROW_VERSION, ObjectField.name.name()};
 		String expectedString = Arrays.toString(expected);
 		assertEquals(expectedString, headerString);
 	}
@@ -245,7 +252,7 @@ public class TableCSVDownloadWorkerIntegrationTest {
 		assertEquals(4, results.size());
 		String[] headers = results.get(0);
 		String headerString = Arrays.toString(headers);
-		String[] expected = new String[]{ROW_ID, ROW_VERSION, ROW_ETAG, EntityField.name.name()};
+		String[] expected = new String[]{ROW_ID, ROW_VERSION, ROW_ETAG, ObjectField.name.name()};
 		String expectedString = Arrays.toString(expected);
 		assertEquals(expectedString, headerString);
 	}
@@ -275,8 +282,10 @@ public class TableCSVDownloadWorkerIntegrationTest {
 			projectIds.add(projectId);
 		}
 		toDelete.addAll(projectIds);
+		
 		// Create a projectView
-		ColumnModel nameColumn  = columnManager.createColumnModel(adminUserInfo, EntityField.name.getColumnModel());
+		ColumnModel nameColumn = columnModelMapper.getColumnModels(ViewObjectType.ENTITY, ObjectField.name).get(0);
+
 		schema = Lists.newArrayList(nameColumn);
 		headers = TableModelUtils.getIds(schema);
 		EntityView view = new EntityView();
@@ -287,6 +296,7 @@ public class TableCSVDownloadWorkerIntegrationTest {
 		tableId = entityManager.createEntity(adminUserInfo, view, null);
 		toDelete.add(tableId);
 		ViewScope scope = new ViewScope();
+		scope.setViewEntityType(ViewEntityType.entityview);
 		scope.setScope(projectIds);
 		scope.setViewType(ViewType.project);
 		tableViewManager.setViewSchemaAndScope(adminUserInfo, headers, scope, tableId);

@@ -10,12 +10,16 @@
 		<version>develop-SNAPSHOT</version>
 	</parent>
 
-	<groupId>org.sagebionetworks</groupId>
 	<artifactId>synapseJavaClient</artifactId>
 	<packaging>jar</packaging>
 	<name>synapseJavaClient</name>
 
 	<dependencies>
+		<dependency>
+			<groupId>com.amazonaws</groupId>
+			<artifactId>aws-java-sdk-core</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
@@ -48,8 +52,8 @@
 
 		<!-- JSON -->
 		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
+			<groupId>org.sagebionetworks</groupId>
+			<artifactId>schema-to-pojo-org-json</artifactId>
 		</dependency>
 
 		<dependency>
@@ -88,7 +92,10 @@
 			<artifactId>junit-vintage-engine</artifactId>
 			<scope>test</scope>
 		</dependency>
-
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -107,4 +114,8 @@
 		</plugins>
 	</build>
 
+	<properties>
+		<jacoco.branch.minumum>0.20</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.10</jacoco.line.minumum>
+	</properties>
 </project>

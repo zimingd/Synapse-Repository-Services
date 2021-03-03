@@ -1,5 +1,9 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 
 import javax.servlet.http.HttpServletResponse;
@@ -16,6 +20,7 @@ import org.sagebionetworks.repo.model.file.FileHandleResults;
 import org.sagebionetworks.repo.model.wiki.WikiHeader;
 import org.sagebionetworks.repo.model.wiki.WikiPage;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -109,6 +114,7 @@ public class WikiController {
 	 *             - returned if the user or owner does not exist.
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI, method = RequestMethod.POST)
 	public @ResponseBody
@@ -146,6 +152,7 @@ public class WikiController {
 	 *             - returned if the user or owner does not exist.
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_WIKI, method = RequestMethod.POST)
 	public @ResponseBody
@@ -179,6 +186,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI, method = RequestMethod.POST)
 	public @ResponseBody
@@ -207,6 +215,7 @@ public class WikiController {
 	 * @throws IOException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI, method = RequestMethod.GET)
 	public @ResponseBody
@@ -237,6 +246,7 @@ public class WikiController {
 	 * @throws IOException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI, method = RequestMethod.GET)
 	public @ResponseBody
@@ -256,7 +266,6 @@ public class WikiController {
 	 * >ACCESS_TYPE.READ</a> permission on the owner.
 	 * </p>
 	 * 
-	 * @param userId
 	 * @param ownerId
 	 *            The ID of the owning Entity.
 	 * @return
@@ -265,6 +274,7 @@ public class WikiController {
 	 * @throws IOException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_KEY, method = RequestMethod.GET)
 	public @ResponseBody
@@ -284,7 +294,6 @@ public class WikiController {
 	 * >ACCESS_TYPE.READ</a> permission on the owner.
 	 * </p>
 	 * 
-	 * @param userId
 	 * @param ownerId
 	 *            The ID of the owning Evaluation.
 	 * @return
@@ -293,6 +302,7 @@ public class WikiController {
 	 * @throws IOException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_KEY, method = RequestMethod.GET)
 	public @ResponseBody
@@ -312,7 +322,6 @@ public class WikiController {
 	 * >ACCESS_TYPE.READ</a> permission on the owner.
 	 * </p>
 	 * 
-	 * @param userId
 	 * @param ownerId
 	 *            The ID of the owning Access Requirement.
 	 * @return
@@ -321,6 +330,7 @@ public class WikiController {
 	 * @throws IOException 
 	 * @throws UnauthorizedException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_WIKI_KEY, method = RequestMethod.GET)
 	public @ResponseBody
@@ -351,6 +361,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -382,6 +393,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_WIKI_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -412,6 +424,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -456,6 +469,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_WIKI_ID, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -499,6 +513,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -542,6 +557,7 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -561,7 +577,7 @@ public class WikiController {
 	 * @param wikiId
 	 * @param wikiPage
 	 */
-	private void validateUpateArguments(String wikiId, WikiPage wikiPage) {
+	private static void validateUpateArguments(String wikiId, WikiPage wikiPage) {
 		if (wikiPage == null)
 			throw new IllegalArgumentException("WikiPage cannot be null");
 		if (!wikiId.equals(wikiPage.getId())) {
@@ -592,10 +608,10 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void deleteEntityWikiPage(
+	public void deleteEntityWikiPage(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId)
 			throws DatastoreException, NotFoundException {
@@ -623,10 +639,10 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void deleteCompetitionWikiPage(
+	public void deleteCompetitionWikiPage(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId)
 			throws DatastoreException, NotFoundException {
@@ -662,6 +678,7 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_TREE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -701,6 +718,7 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_TREE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -735,6 +753,7 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID_ATTCHMENT_HANDLE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -767,6 +786,7 @@ public class WikiController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID_ATTCHMENT_HANDLE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -813,9 +833,9 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID_ATTCHMENT_FILE, method = RequestMethod.GET)
-	public @ResponseBody
-	void getEntityWikiAttachmentFile(
+	public void getEntityWikiAttachmentFile(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId,
 			@RequestParam(required = true)  String fileName,
@@ -862,9 +882,9 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID_ATTCHMENT_FILE, method = RequestMethod.GET)
-	public @ResponseBody
-	void getCompetitionAttachmentFile(
+	public void getCompetitionAttachmentFile(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId,
 			@RequestParam(required = true) String fileName,
@@ -912,9 +932,9 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.ENTITY_WIKI_ID_ATTCHMENT_FILE_PREVIEW, method = RequestMethod.GET)
-	public @ResponseBody
-	void getEntityWikiAttachmenPreviewFile(
+	public void getEntityWikiAttachmenPreviewFile(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId,
 			@RequestParam(required = true) String fileName,
@@ -961,9 +981,9 @@ public class WikiController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.EVALUATION_WIKI_ID_ATTCHMENT_FILE_PREVIEW, method = RequestMethod.GET)
-	public @ResponseBody
-	void getCompetitionAttachmenthPreviewFile(
+	public void getCompetitionAttachmenthPreviewFile(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String ownerId, @PathVariable String wikiId,
 			@RequestParam(required = true) String fileName,

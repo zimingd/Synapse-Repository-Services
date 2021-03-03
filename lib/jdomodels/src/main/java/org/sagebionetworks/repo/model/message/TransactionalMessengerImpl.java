@@ -79,16 +79,19 @@ public class TransactionalMessengerImpl implements TransactionalMessenger {
 	@WriteTransaction
 	@Override
 	public void sendDeleteMessageAfterCommit(String objectId, ObjectType objectType) {
-		String etag = null;
-		sendMessageAfterCommit(objectId, objectType, etag, ChangeType.DELETE);
+		sendMessageAfterCommit(objectId, objectType, ChangeType.DELETE);
 	}
 	
 	@WriteTransaction
 	@Override
-	public void sendMessageAfterCommit(String objectId, ObjectType objectType, String etag, ChangeType changeType) {
-		Long userId = null;
-		sendMessageAfterCommit(objectId, objectType, etag, changeType, userId);
+	public void sendMessageAfterCommit(String objectId, ObjectType objectType, ChangeType changeType) {
+		ChangeMessage message = new ChangeMessage();
+		message.setChangeType(changeType);
+		message.setObjectType(objectType);
+		message.setObjectId(objectId);
+		sendMessageAfterCommit(message);
 	}
+	
 	
 	@WriteTransaction
 	@Override
@@ -110,18 +113,6 @@ public class TransactionalMessengerImpl implements TransactionalMessenger {
 		}
 		appendToBoundMessages(message);
 	}
-
-
-	@WriteTransaction
-	@Override
-	public void sendMessageAfterCommit(String objectId, ObjectType objectType, String etag, ChangeType changeType, Long userId) {
-		ChangeMessage message = new ChangeMessage();
-		message.setChangeType(changeType);
-		message.setObjectType(objectType);
-		message.setObjectId(objectId);
-		message.setUserId(userId);
-		sendMessageAfterCommit(message);
-	}
 	
 	@WriteTransaction
 	@Override
@@ -132,7 +123,7 @@ public class TransactionalMessengerImpl implements TransactionalMessenger {
 	private <T extends Message> void appendToBoundMessages(T message) {
 		// Make sure we are in a transaction.
 		if (!transactionSynchronizationManager.isSynchronizationActive())
-			throw new IllegalStateException("Cannot send a transactional message becasue there is no transaction");
+			throw new IllegalStateException("Cannot send a transactional message because there is no transaction");
 		// Bind this message to the transaction
 		// Get the bound list of messages if it already exists.
 		Map<MessageKey, Message> currentMessages = getCurrentBoundMessages();

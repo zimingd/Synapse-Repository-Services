@@ -9,7 +9,6 @@
 		<version>develop-SNAPSHOT</version>
 	</parent>
 
-	<groupId>org.sagebionetworks</groupId>
 	<artifactId>services-repository</artifactId>
 	<packaging>war</packaging>
 	<name>Platform Repository Service</name>
@@ -56,6 +55,11 @@
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
 		</dependency>
+
+		<dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-slf4j-impl</artifactId>
+		</dependency>		
 
 		<dependency>
 			<groupId>commons-fileupload</groupId>
@@ -187,13 +191,6 @@
 					<path>/</path>
 				</configuration>
 			</plugin>
-			<plugin>
-				<artifactId>maven-surefire-plugin</artifactId>
-				<configuration>
-					<argLine>-Xmx1024m -Xms128m -XX:MaxPermSize=512m</argLine>
-				</configuration>
-			</plugin>
-
 			<!-- Added this path to the test classpath so that we do not need to copy 
 				and paste our servlet config into a separate file even though we want the 
 				exact same config for testing -->
@@ -226,7 +223,6 @@
 						<id>attach-javadocs</id>
 						<goals>
 							<goal>jar</goal>
-							<goal>test-jar</goal>
 						</goals>
 					</execution>
 				</executions>
@@ -248,7 +244,7 @@
 					<useStandardDocletOptions>false</useStandardDocletOptions>
 					<destDir>${project.build.directory}/javadoc/restdocs</destDir>
 					<!-- This name is used to link to the authentication controller -->
-					<additionalJOption>-authControllerName org.sagebionetworks.auth.AuthenticationController</additionalJOption>
+					<additionalJOption>-authControllerName org.sagebionetworks.auth.controller.AuthenticationController</additionalJOption>
 					<additionnalDependencies>
 						<additionnalDependency>
 							<groupId>org.sagebionetworks</groupId>
@@ -279,5 +275,10 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<properties>
+		<jacoco.branch.minumum>0.50</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.60</jacoco.line.minumum>
+	</properties>
 </project>
 

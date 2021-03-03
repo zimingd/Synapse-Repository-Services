@@ -1,19 +1,21 @@
 package org.sagebionetworks.javadoc.velocity.controller;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.sagebionetworks.javadoc.JavaDocTestUtil;
 import org.sagebionetworks.javadoc.web.services.FilterUtils;
 
+import com.google.common.collect.ImmutableSet;
 import com.sun.javadoc.ClassDoc;
 import com.sun.javadoc.MethodDoc;
 import com.sun.javadoc.RootDoc;
@@ -23,7 +25,8 @@ public class ControllerUtilsTest {
 	private static RootDoc rootDoc;
 	private static ClassDoc controllerClassDoc;
 	private static Map<String, MethodDoc> methodMap;
-	@BeforeClass
+	
+	@BeforeAll
 	public static void beforeClass() throws Exception {
 		// Lookup the test files.
 		rootDoc = JavaDocTestUtil.buildRootDoc("ExampleController.java");
@@ -69,6 +72,7 @@ public class ControllerUtilsTest {
 		assertEquals(new Link("${GET.multiple.params}", "GET /multiple/params"), model.getMethodLink());
 		assertNotNull(model.getDescription());
 		assertNotNull(model.getShortDescription());
+		assertEquals(ImmutableSet.of("view","modify"), new HashSet<String>(Arrays.asList(model.getRequiredScopes())));
 	}
 	
 	@Test
@@ -95,6 +99,42 @@ public class ControllerUtilsTest {
 		assertNotNull(pathParam);
 		assertEquals("ownerId", pathParam.getName());
 		assertNotNull(pathParam.getDescription());
+	}
+	
+	@Test
+	public void testPathVariablesWithRegEx(){
+		MethodDoc method = methodMap.get("pathIncludesRegEx");
+		assertNotNull(method);
+		// Now translate the message
+		MethodModel model = ControllerUtils.translateMethod(method);
+		assertNotNull(model);
+		assertNotNull(model.getPathVariables());
+		assertEquals(1, model.getPathVariables().size());
+		ParameterModel pathParam = model.getPathVariables().get(0);
+		assertNotNull(pathParam);
+		assertEquals("id", pathParam.getName());
+		assertEquals("POST.someOther.id.secondId", model.getFullMethodName());
+		assertNotNull(model.getMethodLink());
+		assertEquals("POST /someOther/{id}/{secondId}", model.getMethodLink().getDisplay());
+		assertEquals("/someOther/{id}/{secondId}", model.getUrl());
+	}
+	
+	@Test
+	public void testPathVariablesWithStar(){
+		MethodDoc method = methodMap.get("pathIncludesStar");
+		assertNotNull(method);
+		// Now translate the message
+		MethodModel model = ControllerUtils.translateMethod(method);
+		assertNotNull(model);
+		assertNotNull(model.getPathVariables());
+		assertEquals(1, model.getPathVariables().size());
+		ParameterModel pathParam = model.getPathVariables().get(0);
+		assertNotNull(pathParam);
+		assertEquals("id", pathParam.getName());
+		assertEquals("POST.someOther.id", model.getFullMethodName());
+		assertNotNull(model.getMethodLink());
+		assertEquals("POST /someOther/{id}", model.getMethodLink().getDisplay());
+		assertEquals("/someOther/{id}", model.getUrl());
 	}
 	
 	@Test
@@ -143,8 +183,18 @@ public class ControllerUtilsTest {
 	}
 	
 	@Test
-	public void testAuthetincationRequired(){
+	public void testAuthenticationRequired(){
 		MethodDoc method = methodMap.get("getRowMetadataDelta");
+		assertNotNull(method);
+		// Now translate the message
+		MethodModel model = ControllerUtils.translateMethod(method);
+		assertNotNull(model);
+		assertTrue(model.getIsAuthenticationRequired());
+	}
+	
+	@Test
+	public void testAuthenticationRequiredViaHeader(){
+		MethodDoc method = methodMap.get("authorizedService");
 		assertNotNull(method);
 		// Now translate the message
 		MethodModel model = ControllerUtils.translateMethod(method);

@@ -24,16 +24,19 @@ import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseTermsOfUseException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessApproval;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Entity;
-import org.sagebionetworks.repo.model.EntityBundle;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundle;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundleRequest;
 import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityPath;
 import org.sagebionetworks.repo.model.Folder;
 import org.sagebionetworks.repo.model.NameConflictException;
 import org.sagebionetworks.repo.model.RestrictableObjectDescriptor;
 import org.sagebionetworks.repo.model.TermsOfUseAccessRequirement;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2TestUtils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValueType;
 import org.sagebionetworks.repo.model.auth.LoginRequest;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
 import org.sagebionetworks.repo.model.provenance.Activity;
@@ -43,6 +46,7 @@ import org.sagebionetworks.schema.adapter.JSONObjectAdapter;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.sagebionetworks.schema.adapter.org.json.EntityFactory;
 import org.sagebionetworks.schema.adapter.org.json.JSONObjectAdapterImpl;
+import org.sagebionetworks.simpleHttpClient.Header;
 import org.sagebionetworks.simpleHttpClient.SimpleHttpClient;
 import org.sagebionetworks.simpleHttpClient.SimpleHttpRequest;
 import org.sagebionetworks.simpleHttpClient.SimpleHttpResponse;
@@ -57,8 +61,13 @@ public class SynapseTest {
 	SimpleHttpResponse mockResponse;
 	@Mock
 	SimpleHttpClient mockClient;
+	@Mock
+	Header mockHeader;
 	
 	SynapseClientImpl synapse;
+	
+	private static final String CONTENT_TYPE = "Content-Type";
+	private static final String CONTENT_TYPE_APPLICATION_JSON = "application/json";
 	
 	@Before
 	public void before() throws Exception{
@@ -86,6 +95,8 @@ public class SynapseTest {
 	private void configureMockHttpResponse(final int statusCode, final String responseBody) {
 		when(mockResponse.getStatusCode()).thenReturn(statusCode);
 		when(mockResponse.getContent()).thenReturn(responseBody);
+		when(mockHeader.getValue()).thenReturn(CONTENT_TYPE_APPLICATION_JSON);
+		when(mockResponse.getFirstHeader(CONTENT_TYPE)).thenReturn(mockHeader);
 	}
 	
 	@Test (expected=SynapseTermsOfUseException.class)
@@ -275,14 +286,14 @@ public class SynapseTest {
 		// Get/add/update annotations for this entity
 		Annotations a = new Annotations();
 		a.setEtag(s.getEtag());
-		a.addAnnotation("doubleAnno", new Double(45.0001));
-		a.addAnnotation("string", "A string");		
+		AnnotationsV2TestUtils.putAnnotations(a, "doubleAnno", "45.0001", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(a, "string", "A string", AnnotationsValueType.STRING);
 		JSONObjectAdapter adapter0 = new JSONObjectAdapterImpl();
 		a.writeToJSONObject(adapter0);
 		
 		// We want the mock response to return JSON
 		configureMockHttpResponse(200, adapter0.toJSONString());
-		synapse.updateAnnotations(s.getId(), a);
+		synapse.updateAnnotationsV2(s.getId(), a);
 		
 		// Assemble the bundle
 		EntityBundle eb = new EntityBundle();
@@ -295,8 +306,10 @@ public class SynapseTest {
 		configureMockHttpResponse(200, adapter.toJSONString());
 		
 		// Get the bundle, verify contents
-		int mask =  EntityBundle.ENTITY + EntityBundle.ANNOTATIONS;
-		EntityBundle eb2 = synapse.getEntityBundle(s.getId(), mask);
+		EntityBundleRequest request = new EntityBundleRequest();
+		request.setIncludeEntity(true);
+		request.setIncludeAnnotations(true);
+		EntityBundle eb2 = synapse.getEntityBundleV2(s.getId(), request);
 		
 		Folder s2 = (Folder) eb2.getEntity();
 		assertEquals("Retrieved Entity in bundle does not match original one", s, s2);
@@ -309,9 +322,6 @@ public class SynapseTest {
 		
 		EntityPath path = eb2.getPath();
 		assertNull("Path was not requested, but was returned in bundle", path);
-		
-		eb2.getAccessRequirements();
-		assertNull("Access Requirements were not requested, but were returned in bundle", path);
 	}
 
 	

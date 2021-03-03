@@ -31,16 +31,20 @@ public interface MessageManager {
 	public String getMessageFileRedirectURL(UserInfo userInfo, String messageId) throws NotFoundException;
 	
 	/**
-	 * Saves the message so that it can be processed by other queries.
-	 * If the message is going to exactly one recipient, then the message will be sent in this transaction  
-	 * and any failures will be propagated immediately.
-	 * </br> 
-	 * If the message is going to more than one recipient, a worker will asynchronously process the message.
-	 * In case of failure, the user will be notified via bounce message.  
-	 * </br>
-	 * This method also checks to see if file handles (message body) are accessible.  
+	 * See {@link #createMessage(UserInfo, MessageToUser, boolean) createMessage(UserInfo, MessageToUser, false)}
 	 */
 	public MessageToUser createMessage(UserInfo userInfo, MessageToUser dto) throws NotFoundException;
+	
+	/**
+	 * Saves the message so that it can be processed by other queries. A worker will asynchronously process the message.
+	 * In case of failure, the user will be notified via bounce message. 
+	 * </br>
+	 * This method also checks to see if file handles (message body) are accessible.
+	 * </br> 
+	 * If the overrideNotificationSettings is set to true the recipient notification settings will be ignored.
+	 */
+	MessageToUser createMessage(UserInfo userInfo, MessageToUser dto, boolean overrideNotificationSettings)
+			throws NotFoundException;
 
 	/**
 	 * Adds the creator of the given entity to the recipient list of the
@@ -124,28 +128,20 @@ public interface MessageManager {
 	 * @param userId
 	 */
 	public void sendPasswordChangeConfirmationEmail(long userId);
-
-	/**
-	 * Sends a welcome email based on a template via Amazon SES
-	 */
-	public void sendWelcomeEmail(Long recipientId, String notificationUnsubscribeEndpoint) throws NotFoundException;
 	
 	/**
-	 * Sends a delivery failure notification based on a template
+	 * Sends a delivery failure notification based on a template unless the message is a notification message
 	 */
 	public void sendDeliveryFailureEmail(String messageId, List<String> errors) throws NotFoundException;
 
 	/**
-	 * Saves the message so that it can be processed by other queries.
-	 * If the message is going to exactly one recipient, then the message will be sent in this transaction  
-	 * and any failures will be propagated immediately.
-	 * </br> 
-	 * If the message is going to more than one recipient, a worker will asynchronously process the message.
+	 * Saves the message so that it can be processed by other queries. A worker will asynchronously process the message.
 	 * In case of failure, the user will be notified via bounce message.  
 	 * </br>
 	 * This method also handles throttling of message creation 
 	 * and checks to see if file handles (message body) are accessible.  
 	 */
 	public MessageToUser createMessageWithThrottle(UserInfo userInfo, MessageToUser dto);
+
 
 }

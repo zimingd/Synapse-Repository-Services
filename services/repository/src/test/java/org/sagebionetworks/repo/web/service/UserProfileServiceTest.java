@@ -30,7 +30,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.sagebionetworks.repo.manager.AuthorizationStatus;
+import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.EntityManager;
 import org.sagebionetworks.repo.manager.EntityPermissionsManager;
 import org.sagebionetworks.repo.manager.UserManager;
@@ -43,14 +43,20 @@ import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.Favorite;
 import org.sagebionetworks.repo.model.IdList;
 import org.sagebionetworks.repo.model.ListWrapper;
+import org.sagebionetworks.repo.model.NextPageToken;
+import org.sagebionetworks.repo.model.ProjectHeader;
+import org.sagebionetworks.repo.model.ProjectHeaderList;
+import org.sagebionetworks.repo.model.ProjectListSortColumn;
+import org.sagebionetworks.repo.model.ProjectListType;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserBundle;
 import org.sagebionetworks.repo.model.UserGroupHeader;
 import org.sagebionetworks.repo.model.UserGroupHeaderResponsePage;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.UserProfile;
-import org.sagebionetworks.repo.model.VerificationDAO;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.dbo.principal.PrincipalPrefixDAO;
+import org.sagebionetworks.repo.model.entity.query.SortDirection;
 import org.sagebionetworks.repo.model.message.NotificationSettingsSignedToken;
 import org.sagebionetworks.repo.model.message.Settings;
 import org.sagebionetworks.repo.model.principal.AliasList;
@@ -72,8 +78,10 @@ public class UserProfileServiceTest {
 	
 	private static final Long EXTRA_USER_ID = 2398475L;
 	private static final Long NONEXISTENT_USER_ID = 827634L;
+	private static final Long OTHER_USER_ID = 2398999L;
 	private static UserProfile extraProfile;
 	private static UserInfo userInfo;
+	private static UserInfo otherUserInfo;
 	private AliasList aliasList;
 	List<AliasType> typeList;
 	List<UserGroupHeader> headers;
@@ -90,8 +98,6 @@ public class UserProfileServiceTest {
 	private EntityManager mockEntityManager;
 	@Mock
 	private PrincipalAliasDAO mockPrincipalAliasDAO;
-	@Mock
-	private VerificationDAO mockVerificationDao;
 	@Mock
 	private PrincipalPrefixDAO mockPrincipalPrefixDAO;
 	@Mock
@@ -127,12 +133,14 @@ public class UserProfileServiceTest {
 		extraProfile = new UserProfile();
 		extraProfile.setOwnerId(EXTRA_USER_ID.toString());
 		userInfo = new UserInfo(false, EXTRA_USER_ID);
-
+		otherUserInfo = new UserInfo(false, OTHER_USER_ID);
+		
 		when(mockUserProfileManager.getInRange(any(UserInfo.class), anyLong(), anyLong())).thenReturn(profiles);
 		when(mockUserProfileManager.getInRange(any(UserInfo.class), anyLong(), anyLong())).thenReturn(profiles);
 		when(mockUserProfileManager.getUserProfile(eq(EXTRA_USER_ID.toString()))).thenReturn(extraProfile);
 		when(mockUserProfileManager.getUserProfile(eq(NONEXISTENT_USER_ID.toString()))).thenThrow(new NotFoundException());
 		when(mockUserManager.getUserInfo(EXTRA_USER_ID)).thenReturn(userInfo);
+		when(mockUserManager.getUserInfo(OTHER_USER_ID)).thenReturn(otherUserInfo);
 		when(mockPrincipalAliasDAO.listPrincipalAliases(AliasType.TEAM_NAME)).thenReturn(groups);
 
 		ReflectionTestUtils.setField(userProfileService, "entityPermissionsManager", mockPermissionsManager);
@@ -140,7 +148,6 @@ public class UserProfileServiceTest {
 		ReflectionTestUtils.setField(userProfileService, "userManager", mockUserManager);
 		ReflectionTestUtils.setField(userProfileService, "entityManager", mockEntityManager);
 		ReflectionTestUtils.setField(userProfileService, "principalAliasDAO", mockPrincipalAliasDAO);
-		ReflectionTestUtils.setField(userProfileService, "verificationDao", mockVerificationDao);
 		ReflectionTestUtils.setField(userProfileService, "principalPrefixDAO", mockPrincipalPrefixDAO);
 		ReflectionTestUtils.setField(userProfileService, "tokenGenerator", mockTokenGenerator);
 		
@@ -191,7 +198,7 @@ public class UserProfileServiceTest {
 		userProfileService.addFavorite(EXTRA_USER_ID, entityId);
 		
 		verify(mockUserProfileManager).addFavorite(userInfo, entityId);
-		verify(mockEntityManager).getEntityHeader(userInfo, entityId, null);
+		verify(mockEntityManager).getEntityHeader(userInfo, entityId);
 	}
 
 	@Test(expected=UnauthorizedException.class)
@@ -309,8 +316,8 @@ public class UserProfileServiceTest {
 		attachmentMetadata.setId("123");
 		verificationSubmission.setAttachments(Collections.singletonList(attachmentMetadata));
 		verificationSubmission.setEmails(Collections.singletonList("test@example.com"));
-		when(mockVerificationDao.
-				getCurrentVerificationSubmissionForUser(userId)).thenReturn(verificationSubmission);
+		when(mockUserProfileManager.
+				getCurrentVerificationSubmission(userId)).thenReturn(verificationSubmission);
 		return verificationSubmission;
 	}
 	
@@ -336,8 +343,7 @@ public class UserProfileServiceTest {
 	private void mockOrcid(Long userId, String alias) {
 		PrincipalAlias orcidAlias = new PrincipalAlias();
 		orcidAlias.setAlias(alias);
-		when(mockPrincipalAliasDAO.listPrincipalAliases(userId, AliasType.USER_ORCID)).
-			thenReturn(Collections.singletonList(orcidAlias));		
+		when(mockUserProfileManager.getOrcid(userId)).thenReturn(alias);		
 	}
 	
 	@Test
@@ -412,6 +418,24 @@ public class UserProfileServiceTest {
 		assertNull(result.getIsCertified());
 		assertNull(result.getIsVerified());
 		assertNull(result.getORCID());
+		assertNull(result.getVerificationSubmission());
+	}
+	
+	// leaving off the 'isVerified' component (0x10) caused a NPE
+	@Test
+	public void testUserBundleNotVerified() throws Exception {
+		Long bundleOwner = 101L;
+		mockVerificationSubmission(bundleOwner, VerificationStateEnum.APPROVED);
+		
+		UserBundle result = userProfileService.
+				getUserBundleByOwnerId(EXTRA_USER_ID, bundleOwner.toString(), /*VERIFICATION_MASK*/0x04);
+		assertNull(result.getIsACTMember());
+		assertNull(result.getIsCertified());
+		assertNull(result.getIsVerified());
+		assertNull(result.getORCID());
+		assertEquals(bundleOwner.toString(), result.getUserId());
+		assertNull(result.getUserProfile());
+		// since 0x10 is omitted, isVerified is null and therefore this field is set to null
 		assertNull(result.getVerificationSubmission());
 	}
 	
@@ -626,5 +650,33 @@ public class UserProfileServiceTest {
 		verify(mockPrincipalPrefixDAO, never()).listPrincipalsForPrefix(anyString(), anyLong() , anyLong());
 		boolean isIndividual = false;
 		verify(mockPrincipalPrefixDAO).listPrincipalsForPrefix(prefix, isIndividual, new Long(limit), new Long(offset));
+	}
+	
+
+	@Test
+	public void testGetOthersProjects() {
+		long teamId = 999;
+		String nextPageToken = (new NextPageToken(null)).toToken();
+		// call under test
+		userProfileService.getProjects(
+				userInfo.getId(), otherUserInfo.getId(), teamId, ProjectListType.CREATED,
+				ProjectListSortColumn.PROJECT_NAME, SortDirection.ASC, nextPageToken);
+
+		verify(mockUserProfileManager).getProjects(userInfo, otherUserInfo, teamId, ProjectListType.CREATED,
+				ProjectListSortColumn.PROJECT_NAME, SortDirection.ASC, nextPageToken);
+	}
+
+
+	@Test
+	public void testGetOthersProjectsDefaultSort() {
+		long teamId = 999;
+		String nextPageToken = (new NextPageToken(null)).toToken();
+		// call under test
+		userProfileService.getProjects(
+				userInfo.getId(), otherUserInfo.getId(), teamId, null,
+				null, null, nextPageToken);
+
+		verify(mockUserProfileManager).getProjects(userInfo, otherUserInfo, teamId, ProjectListType.ALL,
+				ProjectListSortColumn.LAST_ACTIVITY, SortDirection.DESC, nextPageToken);
 	}
 }

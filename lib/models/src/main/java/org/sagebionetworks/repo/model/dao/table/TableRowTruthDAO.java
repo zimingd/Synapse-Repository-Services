@@ -27,7 +27,7 @@ public interface TableRowTruthDAO {
 	 * @param coutToReserver
 	 * @return
 	 */
-	public IdRange reserveIdsInRange(String tableId, long coutToReserver);
+	IdRange reserveIdsInRange(String tableId, long coutToReserver);
 	
 	/**
 	 * Get the version number for a given table ID and etag.
@@ -36,28 +36,28 @@ public interface TableRowTruthDAO {
 	 * @param etag
 	 * @return
 	 */
-	public long getVersionForEtag(String tableIdString, String etag);
+	long getVersionForEtag(String tableIdString, String etag);
 	
 	/**
 	 * Get the highest row ID in this table
 	 * 
 	 * @return
 	 */
-	public long getMaxRowId(String tableId);
+	long getMaxRowId(String tableId);
 
 	/**
 	 * Get the highest current version for this table
 	 * 
 	 * @return
 	 */
-	public TableRowChange getLastTableRowChange(String tableId);
+	TableRowChange getLastTableRowChange(String tableId);
 	
 	/**
 	 * Get the last transaction ID associated with the given table.
 	 * @param tableId
 	 * @return
 	 */
-	public Optional<Long> getLastTransactionId(String tableId);
+	Optional<Long> getLastTransactionId(String tableId);
 	
 	/**
 	 * Get the latest TableRowChange of a given type.
@@ -66,7 +66,7 @@ public interface TableRowTruthDAO {
 	 * @param changeType
 	 * @return
 	 */
-	public TableRowChange getLastTableRowChange(String tableId, TableChangeType changeType);
+	TableRowChange getLastTableRowChange(String tableId, TableChangeType changeType);
 	
 	/**
 	 * Append a SpareChangeSet to the given table.
@@ -78,7 +78,7 @@ public interface TableRowTruthDAO {
 	 * @return
 	 * @throws IOException
 	 */
-	public String appendRowSetToTable(String userId, String tableId, String etag, long versionNumber, List<ColumnModel> columns, SparseChangeSetDto delta, long transactionId);
+	String appendRowSetToTable(String userId, String tableId, String etag, long versionNumber, List<ColumnModel> columns, SparseChangeSetDto delta, long transactionId);
 	
 	/**
 	 * Append a schema change to the table's changes.
@@ -89,7 +89,7 @@ public interface TableRowTruthDAO {
 	 * @param changes
 	 * @throws IOException 
 	 */
-	public long appendSchemaChangeToTable(String userId, String tableId, List<String> current, List<ColumnChange> changes, long transactionId);
+	long appendSchemaChangeToTable(String userId, String tableId, List<String> current, List<ColumnChange> changes, long transactionId);
 	
 	/**
 	 * Get the schema change for a given version.
@@ -98,7 +98,7 @@ public interface TableRowTruthDAO {
 	 * @return
 	 * @throws IOException 
 	 */
-	public List<ColumnChange> getSchemaChangeForVersion(String tableId, long versionNumber) throws IOException;
+	List<ColumnChange> getSchemaChangeForVersion(String tableId, long versionNumber) throws IOException;
 	
 	/**
 	 * Fetch a sparse change set for a given table.
@@ -108,7 +108,7 @@ public interface TableRowTruthDAO {
 	 * @return
 	 * @throws IOException 
 	 */
-	public SparseChangeSetDto getRowSet(String tableId, long rowVersion) throws IOException;
+	SparseChangeSetDto getRowSet(String tableId, long rowVersion) throws IOException;
 	
 	/**
 	 * Get the ChangeSet for the given dto.
@@ -116,7 +116,7 @@ public interface TableRowTruthDAO {
 	 * @return
 	 * @throws IOException 
 	 */
-	public SparseChangeSetDto getRowSet(TableRowChange dto) throws IOException;
+	SparseChangeSetDto getRowSet(TableRowChange dto) throws IOException;
 
 	/**
 	 * List the keys of all change sets applied to a table.
@@ -127,7 +127,7 @@ public interface TableRowTruthDAO {
 	 * @return
 	 */
 	@Deprecated
-	public List<TableRowChange> listRowSetsKeysForTable(String tableId);
+	List<TableRowChange> listRowSetsKeysForTable(String tableId);
 	
 	/**
 	 * List all changes for a table with a version number greater than the given value (exclusive).
@@ -136,7 +136,7 @@ public interface TableRowTruthDAO {
 	 * @param version
 	 * @return
 	 */
-	public List<TableRowChange> listRowSetsKeysForTableGreaterThanVersion(String tableId, long version);
+	List<TableRowChange> listRowSetsKeysForTableGreaterThanVersion(String tableId, long version);
 
 	/**
 	 * Get the TableRowChange for a given tableId and row version number.
@@ -146,20 +146,20 @@ public interface TableRowTruthDAO {
 	 * @return
 	 * @throws NotFoundException
 	 */
-	public TableRowChange getTableRowChange(String tableId, long rowVersion) throws NotFoundException;
+	TableRowChange getTableRowChange(String tableId, long rowVersion) throws NotFoundException;
 
 	/**
 	 * This should only be called after the table entity has been deleted
 	 * 
 	 * @param tableId
 	 */
-	public void deleteAllRowDataForTable(String tableId);
+	void deleteAllRowDataForTable(String tableId);
 	
 	/**
 	 * This should never be called in a production setting.
 	 * 
 	 */
-	public void truncateAllRowData();
+	void truncateAllRowData();
 
 	/**
 	 * Get a single page of changes for the given table, limit, and offset.
@@ -169,14 +169,14 @@ public interface TableRowTruthDAO {
 	 * @param offset
 	 * @return
 	 */
-	public List<TableRowChange> getTableChangePage(String tableId, long limit, long offset);
+	List<TableRowChange> getTableChangePage(String tableId, long limit, long offset);
 
 	/**
 	 * Get the last change number applied to the given table.
 	 * @param tableId
 	 * @return Will return an empty Optional if no changes have been applied to the table.
 	 */
-	public Optional<Long> getLastTableChangeNumber(long tableId);
+	Optional<Long> getLastTableChangeNumber(long tableId);
 	
 	/**
 	 * Get the last change number applied to the given table and version number combination.
@@ -184,7 +184,7 @@ public interface TableRowTruthDAO {
 	 * @param tableVersion
 	 * @return
 	 */
-	public Optional<Long> getLastTableChangeNumber(long tableId, long tableVersion);
+	Optional<Long> getLastTableChangeNumber(long tableId, long tableVersion);
 
 	/**
 	 * Does the given table have at least one change of the provided type?
@@ -192,6 +192,22 @@ public interface TableRowTruthDAO {
 	 * @param tableId
 	 * @return
 	 */
-	public boolean hasAtLeastOneChangeOfType(String tableId, TableChangeType type);
+	boolean hasAtLeastOneChangeOfType(String tableId, TableChangeType type);
+	
+	/**
+	 * Delete a specific change number from a table.
+	 * @param tableId
+	 * @param changeNumber
+	 */
+	void deleteChangeNumber(String tableId, long changeNumber);
+
+	/**
+	 * Does the given table change etag match any change in the table's history?
+	 * 
+	 * @param tableId
+	 * @param etag
+	 * @return
+	 */
+	boolean isEtagInTablesChangeHistory(String tableId, String etag);
 	
 }

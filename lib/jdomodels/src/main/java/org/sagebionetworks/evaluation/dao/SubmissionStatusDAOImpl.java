@@ -25,7 +25,6 @@ import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
-import org.sagebionetworks.repo.model.evaluation.SubmissionStatusDAO;
 import org.sagebionetworks.repo.model.query.SQLConstants;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
@@ -56,11 +55,6 @@ public class SubmissionStatusDAOImpl implements SubmissionStatusDAO {
 	private static final String SELECT_EVALUATION_FOR_IDS = 
 			"SELECT DISTINCT s."+COL_SUBMISSION_EVAL_ID+" FROM "+TABLE_SUBMISSION+
 			" s WHERE s."+COL_SUBMISSION_ID+" IN (:"+COL_SUBMISSION_ID+")";
-
-	private static final String SELECT_BY_IDS = "SELECT * FROM "+SQLConstants.TABLE_SUBSTATUS+" WHERE "+
-			COL_SUBSTATUS_SUBMISSION_ID+" IN (:"+COL_SUBSTATUS_SUBMISSION_ID+")";
-	
-	private RowMapper<SubmissionStatusDBO> SUBSTATUS_ROW_MAPPER = (new SubmissionStatusDBO()).getTableMapping();
 
 	@Override
 	@WriteTransaction

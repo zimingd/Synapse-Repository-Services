@@ -11,6 +11,8 @@ import org.sagebionetworks.evaluation.model.SubmissionContributor;
 import org.sagebionetworks.evaluation.model.SubmissionStatus;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.UnmodifiableXStream;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Utils;
 import org.sagebionetworks.repo.model.jdo.JDOSecondaryPropertyUtils;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 
@@ -41,6 +43,11 @@ public class SubmissionUtils {
 		} catch (NumberFormatException e) {
 			throw new NumberFormatException("Invalid Evaluation ID: " + dto.getEvaluationId());
 		}
+		try {
+			dbo.setEvalRoundId(dto.getEvaluationRoundId() == null ? null : Long.parseLong(dto.getEvaluationRoundId()));
+		} catch (NumberFormatException e) {
+			throw new NumberFormatException("Invalid Round Evaluation ID: " + dto.getEvaluationId());
+		}
 		dbo.setEntityId(dto.getEntityId() == null ? null : KeyFactory.stringToKey(dto.getEntityId()));
 		dbo.setVersionNumber(dto.getVersionNumber());
 		dbo.setName(dto.getName());
@@ -66,6 +73,7 @@ public class SubmissionUtils {
 		dto.setUserId(dbo.getUserId() == null ? null : dbo.getUserId().toString());
 		dto.setSubmitterAlias(dbo.getSubmitterAlias());
 		dto.setEvaluationId(dbo.getEvalId() == null ? null : dbo.getEvalId().toString());
+		dto.setEvaluationRoundId(dbo.getEvalRoundId() == null ? null : dbo.getEvalRoundId().toString());
 		dto.setEntityId(dbo.getEntityId() == null ? null : KeyFactory.keyToString(dbo.getEntityId()));
 		dto.setVersionNumber(dbo.getVersionNumber());
 		dto.setName(dbo.getName());
@@ -94,10 +102,18 @@ public class SubmissionUtils {
 		dbo.setScore(dto.getScore());
 		dbo.setStatusEnum(dto.getStatus());
 		dbo.setVersion(dto.getStatusVersion());
+		
+		// Serialize the annotations V2, note that this might be null if the annotations are empty
+		String jsonAnnotations = AnnotationsV2Utils.toJSONStringForStorage(dto.getSubmissionAnnotations());
+		
+		dbo.setAnnotations(jsonAnnotations);
+		
 		copyToSerializedField(dto, dbo);
 		
 		return dbo;
 	}
+	
+	
 
 	/**
 	 * Convert a SubmissionStatus data transfer object to a SubmissionDBO database object
@@ -122,6 +138,17 @@ public class SubmissionUtils {
 		if (dto.getStatus() == null)
 			dto.setStatus(dbo.getStatusEnum());
 		dto.setStatusVersion(dbo.getVersion());
+
+		Annotations annotations = AnnotationsV2Utils.fromJSONString(dbo.getAnnotations());
+		
+		if (annotations != null) {
+			// Fill in the id and etag
+			annotations.setId(dto.getId());
+			annotations.setEtag(dto.getEtag());
+		}
+		
+		dto.setSubmissionAnnotations(annotations);		
+		
 		return dto;
 	}	
 	
@@ -140,11 +167,19 @@ public class SubmissionUtils {
 	}	
 	
 	public static void copyToSerializedField(SubmissionStatus dto, SubmissionStatusDBO dbo) throws DatastoreException {
+		// Clear the annotations before serialization since we store them in its own field in the DB
+		Annotations currentAnnotations = dto.getSubmissionAnnotations();
+		
+		dto.setSubmissionAnnotations(null);
+		
 		try {
 			dbo.setSerializedEntity(JDOSecondaryPropertyUtils.compressObject(X_STREAM, dto));
 		} catch (IOException e) {
 			throw new DatastoreException(e);
 		}
+		
+		// Put back the previous annotations
+		dto.setSubmissionAnnotations(currentAnnotations);
 	}
 	
 	public static SubmissionStatus copyFromSerializedField(SubmissionStatusDBO dbo) throws DatastoreException {

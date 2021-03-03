@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xmlns="http://java.sun.com/xml/ns/javaee" xmlns:web="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
-	xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
-	version="2.5">
+		 xmlns="http://java.sun.com/xml/ns/javaee"
+		 xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+		 version="2.5">
 
 	<display-name>Synapse Web Services</display-name>
 
@@ -15,6 +15,12 @@
 		<param-name>contextConfigLocation</param-name>
 		<param-value>/WEB-INF/shared-context.xml</param-value>
 	</context-param>
+
+	<!-- This listener will load other application context file in addition 
+		to springweb-servlet.xml -->
+	<listener>
+		<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+	</listener>
 
 	<!-- This is the filter to redirect http:// to https:// -->
 	<filter>
@@ -32,7 +38,7 @@
 	 See PLFM-3205 & PLFM-3206  -->
 	<filter>
 		<filter-name>unexpectedExceptionFilter</filter-name>
-		<filter-class>org.sagebionetworks.repo.web.filter.UnexpectedExceptionFilter</filter-class>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
 	</filter>
 	<filter-mapping>
 		<filter-name>unexpectedExceptionFilter</filter-name>
@@ -49,12 +55,6 @@
 		<filter-name>requestSizeThrottleFilter</filter-name>
 		<url-pattern>/*</url-pattern>
 	</filter-mapping>
-
-	<!-- This listener will load other application context file in addition 
-		to springweb-servlet.xml -->
-	<listener>
-		<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
-	</listener>
 
 	<!-- Some browsers do not support PUT and DELETE methods, this filter will 
 		examine the form field parameter _method -->
@@ -88,18 +88,56 @@
 			<param-name>targetFilterLifecycle</param-name>
 			<param-value>true</param-value>
 		</init-param>
-		<init-param>
-			<param-name>allow-anonymous</param-name>
-			<param-value>true</param-value>
-		</init-param>
 	</filter>
 
 	<filter-mapping>
 		<filter-name>authFilter</filter-name>
 		<url-pattern>/auth/v1/secretKey</url-pattern>
+		<url-pattern>/auth/v1/personalAccessToken</url-pattern>
+		<url-pattern>/auth/v1/personalAccessToken/*</url-pattern>
 		<url-pattern>/auth/v1/oauth2/alias</url-pattern>
+		<url-pattern>/auth/v1/oauth2/client/*</url-pattern>
+		<url-pattern>/auth/v1/oauth2/consent</url-pattern>
+		<url-pattern>/auth/v1/oauth2/consentcheck</url-pattern>
+		<url-pattern>/auth/v1/oauth2/userinfo</url-pattern>
+		<url-pattern>/auth/v1/oauth2/audit/*</url-pattern>
 		<url-pattern>/repo/v1/*</url-pattern>
 		<url-pattern>/file/v1/*</url-pattern>
+	</filter-mapping>
+	
+	<!-- Filter that authenticate the administrative and migration services using basic auth -->
+	<filter>
+		<filter-name>adminServiceAuthFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
+	</filter>
+	
+	<filter-mapping>
+		<filter-name>adminServiceAuthFilter</filter-name>
+		<url-pattern>/repo/v1/admin/*</url-pattern>
+		<url-pattern>/repo/v1/migration/*</url-pattern>
+		<url-pattern>/repo/v1/testing/*</url-pattern>
+	</filter-mapping>
+
+	<!-- This filter will look for the session token as a cookie, if it finds
+    it, the token will be added to the header of the request -->
+	<filter>
+		<filter-name>simpleCORSFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
+	</filter>
+
+	<filter-mapping>
+		<filter-name>simpleCORSFilter</filter-name>
+		<url-pattern>/*</url-pattern>
 	</filter-mapping>
 
 	<filter>
@@ -110,10 +148,6 @@
 			<param-name>targetFilterLifecycle</param-name>
 			<param-value>true</param-value>
 		</init-param>
-		<init-param>
-			<param-name>allow-anonymous</param-name>
-			<param-value>true</param-value>
-		</init-param>
 	</filter>
 
 	<filter-mapping>
@@ -122,8 +156,38 @@
 	</filter-mapping>
 	
 	<filter>
+		<filter-name>acceptTermsOfUseFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
+	</filter>
+
+	<!-- This applies to all paths that authenticate a Synapse user -->
+	<filter-mapping>
+		<filter-name>acceptTermsOfUseFilter</filter-name>
+		<url-pattern>/auth/v1/secretKey</url-pattern>
+		<url-pattern>/auth/v1/oauth2/alias</url-pattern>
+		<url-pattern>/auth/v1/oauth2/client/*</url-pattern>
+		<url-pattern>/auth/v1/oauth2/consent</url-pattern>
+		<url-pattern>/auth/v1/oauth2/consentcheck</url-pattern>
+		<url-pattern>/auth/v1/oauth2/userinfo</url-pattern>
+		<url-pattern>/auth/v1/oauth2/audit/*</url-pattern>
+		<url-pattern>/repo/v1/*</url-pattern>
+		<url-pattern>/file/v1/*</url-pattern>
+		<url-pattern>/docker/v1/*</url-pattern>
+	</filter-mapping>
+
+	<filter>
 		<filter-name>dockerRegistryAuthFilter</filter-name>
-		<filter-class>org.sagebionetworks.repo.web.filter.DockerRegistryAuthFilter</filter-class>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
 	</filter>
 
 	<filter-mapping>
@@ -179,6 +243,19 @@
 		<url-pattern>/file/v1/*</url-pattern>
 	</filter-mapping>
 	
+	<!-- This is a filter used only for integration testing (See ITUnhandledException) so that we can simulate an exception thrown at the filter level 
+	(before hitting the dispatcher servlet) in order to verify the correct exception handling from the unexpectedExceptionFilter.
+	 -->
+	<filter>
+		<filter-name>throwingExceptionFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+	</filter>
+	
+	<filter-mapping>
+		<filter-name>throwingExceptionFilter</filter-name>
+		<url-pattern>/repo/v1/testing/exception</url-pattern>
+	</filter-mapping>
+	
 	<filter>
 		<filter-name>jsonpCallbackFilter</filter-name>
 		<!-- This filter allows JSONP to be returned for methods that are already 
@@ -206,7 +283,14 @@
 	</filter-mapping>
 
 	<!-- Rather than using multiple DispatcherServlet each with their own Spring 
-		context we are now using a singleton DispatcherServlet. See: PLFM-2530 -->
+		context we are now using a singleton DispatcherServlet. See: PLFM-2530.
+		Note that the context is loaded from the singleton-servlet.xml file and it's
+		a child context of the root application context which is setup above by the 
+		ContextLoaderListener from shared-context.xml.
+		The DispatcherServlet has access to all the beans defined in the root context, 
+		but not the other way around: the root context cannot access beans defined in the 
+		child contexts.
+	-->
 	<servlet>
 		<servlet-name>singleton</servlet-name>
 		<servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
@@ -228,18 +312,6 @@
 		<servlet-name>singleton</servlet-name>
 		<url-pattern>/*</url-pattern>
 	</servlet-mapping>
-
-	<!-- This filter will look for the session token as a cookie, if it finds 
-		it, the token will be added to the header of the request -->
-	<filter>
-		<filter-name>CORSFilter</filter-name>
-		<filter-class>org.sagebionetworks.authutil.SimpleCORSFilter</filter-class>
-	</filter>
-
-	<filter-mapping>
-		<filter-name>CORSFilter</filter-name>
-		<url-pattern>*</url-pattern>
-	</filter-mapping>
 	
 	<filter>
 		<filter-name>HSTSFilter</filter-name>
@@ -252,17 +324,22 @@
 	
 	<filter>
 		<filter-name>cloudMailInAuthFilter</filter-name>
-		<filter-class>org.sagebionetworks.auth.CloudMailInAuthFilter</filter-class>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
 	</filter>
 
 	<filter>
 		<filter-name>cloudMailInAcceptPlainTextFilter</filter-name>
-		<filter-class>org.sagebionetworks.auth.CloudMailInAcceptPlainTextFilter</filter-class>
+		<filter-class>org.sagebionetworks.repo.web.filter.CloudMailInAcceptPlainTextFilter</filter-class>
 	</filter>
 
 	<filter>
 		<filter-name>cloudMailInContentTypeFilter</filter-name>
-		<filter-class>org.sagebionetworks.auth.CloudMailInCharacterEncodingFilter</filter-class>
+		<filter-class>org.sagebionetworks.repo.web.filter.CloudMailInCharacterEncodingFilter</filter-class>
 	</filter>
 
     <!--  Note we tried applying the filter to both /cloudMailInMessage and /cloudMailInAuthorization,
@@ -283,9 +360,24 @@
 		<url-pattern>/repo/v1/cloudMailInMessage/*</url-pattern>
 		<url-pattern>/repo/v1/cloudMailInAuthorization/*</url-pattern>
 	</filter-mapping>
+	
+	<filter>
+		<filter-name>oauthClientAuthFilter</filter-name>
+		<filter-class>org.springframework.web.filter.DelegatingFilterProxy</filter-class>
+		<init-param>
+			<!-- Make sure the init-params are passed through the proxy to the bean -->
+			<param-name>targetFilterLifecycle</param-name>
+			<param-value>true</param-value>
+		</init-param>
+	</filter>
 
-
-
+	<filter-mapping>
+		<filter-name>oauthClientAuthFilter</filter-name>
+		<url-pattern>/auth/v1/oauth2/token</url-pattern>
+		<url-pattern>/auth/v1/oauth2/token/*</url-pattern>
+		<url-pattern>/auth/v1/oauth2/revoke</url-pattern>
+	</filter-mapping>
+	
 	<!-- appends a new sessionId cookie to the response if the user did not provide one in their request -->
 	<filter>
 		<filter-name>sessionIdCookieSetterFilter</filter-name>

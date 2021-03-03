@@ -9,7 +9,6 @@ import org.apache.logging.log4j.Logger;
 import org.sagebionetworks.audit.dao.ObjectRecordDAO;
 import org.sagebionetworks.audit.utils.ObjectRecordBuilderUtils;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
-import org.sagebionetworks.repo.manager.AccessRequirementUtil;
 import org.sagebionetworks.repo.manager.EntityPermissionsManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.trash.EntityInTrashCanException;
@@ -66,7 +65,7 @@ public class NodeObjectRecordWriter implements ObjectRecordWriter {
 
 		record.setIsPublic(permissions.getCanPublicRead());
 
-		List<String> subjectIds = AccessRequirementUtil.getNodeAncestorIds(nodeDao, record.getId(), true);
+		List<Long> subjectIds = nodeDao.getEntityPathIds(record.getId());
 		AccessRequirementStats stats = accessRequirementDao.getAccessRequirementStats(subjectIds, RestrictableObjectType.ENTITY);
 		record.setIsRestricted(stats.getHasToU());
 		record.setIsControlled(stats.getHasACT());

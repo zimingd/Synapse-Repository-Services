@@ -1,7 +1,6 @@
 package org.sagebionetworks.table.worker;
 
 import java.util.Iterator;
-import java.util.Optional;
 
 import org.sagebionetworks.asynchronous.workers.changes.ChangeMessageDrivenRunner;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
@@ -9,7 +8,6 @@ import org.sagebionetworks.repo.manager.table.TableEntityManager;
 import org.sagebionetworks.repo.manager.table.TableIndexConnectionFactory;
 import org.sagebionetworks.repo.manager.table.TableIndexConnectionUnavailableException;
 import org.sagebionetworks.repo.manager.table.TableIndexManager;
-import org.sagebionetworks.repo.manager.table.TableManagerSupport;
 import org.sagebionetworks.repo.manager.table.change.TableChangeMetaData;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
@@ -21,8 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 public class TableIndexWorker implements ChangeMessageDrivenRunner {
 
-	@Autowired
-	TableManagerSupport tableManagerSupport;
 	@Autowired
 	TableEntityManager tableEntityManager;
 	@Autowired
@@ -50,12 +46,8 @@ public class TableIndexWorker implements ChangeMessageDrivenRunner {
 				indexManager.deleteTableIndex(idAndVersion);
 				return;
 			} else {
-				// Build the table's index.
-				Optional<Long> targetChangeNumber = tableManagerSupport.getLastTableChangeNumber(idAndVersion);
-				if(targetChangeNumber.isPresent()) {
-					Iterator<TableChangeMetaData> iterator = tableEntityManager.newTableChangeIterator(tableId);
-					indexManager.buildIndexToChangeNumber(progressCallback, idAndVersion, iterator, targetChangeNumber.get());
-				}
+				Iterator<TableChangeMetaData> iterator = tableEntityManager.newTableChangeIterator(tableId);
+				indexManager.buildIndexToChangeNumber(progressCallback, idAndVersion, iterator);
 			}
 		}
 	}

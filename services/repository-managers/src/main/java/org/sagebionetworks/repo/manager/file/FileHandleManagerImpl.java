@@ -5,9 +5,7 @@ import static org.sagebionetworks.downloadtools.FileUtils.DEFAULT_FILE_CHARSET;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -18,9 +16,9 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.BooleanUtils;
@@ -37,11 +35,13 @@ import org.sagebionetworks.googlecloud.SynapseGoogleCloudStorageClient;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
-import org.sagebionetworks.repo.manager.AuthorizationStatus;
 import org.sagebionetworks.repo.manager.NodeManager;
 import org.sagebionetworks.repo.manager.ProjectSettingsManager;
 import org.sagebionetworks.repo.manager.audit.ObjectRecordQueue;
-import org.sagebionetworks.repo.manager.file.transfer.TransferRequest;
+import org.sagebionetworks.repo.manager.events.EventsCollector;
+import org.sagebionetworks.repo.manager.file.transfer.TransferUtils;
+import org.sagebionetworks.repo.manager.statistics.StatisticsFileEvent;
+import org.sagebionetworks.repo.manager.statistics.StatisticsFileEventUtils;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
@@ -50,21 +50,16 @@ import org.sagebionetworks.repo.model.StorageLocationDAO;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.audit.ObjectRecord;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.dao.FileHandleDao;
-import org.sagebionetworks.repo.model.dao.UploadDaemonStatusDao;
+import org.sagebionetworks.repo.model.dao.FileHandleMetadataType;
 import org.sagebionetworks.repo.model.dbo.dao.DBOStorageLocationDAOImpl;
-import org.sagebionetworks.repo.model.dbo.persistence.DBOFileHandle;
+import org.sagebionetworks.repo.model.file.BaseKeyUploadDestination;
 import org.sagebionetworks.repo.model.file.BatchFileHandleCopyRequest;
 import org.sagebionetworks.repo.model.file.BatchFileHandleCopyResult;
 import org.sagebionetworks.repo.model.file.BatchFileRequest;
 import org.sagebionetworks.repo.model.file.BatchFileResult;
-import org.sagebionetworks.repo.model.file.ChunkRequest;
-import org.sagebionetworks.repo.model.file.ChunkResult;
-import org.sagebionetworks.repo.model.file.ChunkedFileToken;
 import org.sagebionetworks.repo.model.file.CloudProviderFileHandleInterface;
-import org.sagebionetworks.repo.model.file.CompleteAllChunksRequest;
-import org.sagebionetworks.repo.model.file.CompleteChunkedFileRequest;
-import org.sagebionetworks.repo.model.file.CreateChunkedFileTokenRequest;
 import org.sagebionetworks.repo.model.file.ExternalFileHandle;
 import org.sagebionetworks.repo.model.file.ExternalFileHandleInterface;
 import org.sagebionetworks.repo.model.file.ExternalGoogleCloudUploadDestination;
@@ -86,12 +81,12 @@ import org.sagebionetworks.repo.model.file.GoogleCloudFileHandle;
 import org.sagebionetworks.repo.model.file.ProxyFileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.file.S3UploadDestination;
-import org.sagebionetworks.repo.model.file.State;
-import org.sagebionetworks.repo.model.file.UploadDaemonStatus;
+import org.sagebionetworks.repo.model.file.StsUploadDestination;
 import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
 import org.sagebionetworks.repo.model.file.UploadType;
 import org.sagebionetworks.repo.model.jdo.NameValidation;
+import org.sagebionetworks.repo.model.project.BaseKeyStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ExternalGoogleCloudStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ExternalObjectStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ExternalS3StorageLocationSetting;
@@ -100,8 +95,8 @@ import org.sagebionetworks.repo.model.project.ProjectSettingsType;
 import org.sagebionetworks.repo.model.project.ProxyStorageLocationSettings;
 import org.sagebionetworks.repo.model.project.S3StorageLocationSetting;
 import org.sagebionetworks.repo.model.project.StorageLocationSetting;
+import org.sagebionetworks.repo.model.project.StsStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.UploadDestinationListSetting;
-import org.sagebionetworks.repo.model.util.ContentTypeUtils;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ContentDispositionUtils;
@@ -114,11 +109,16 @@ import com.amazonaws.HttpMethod;
 import com.amazonaws.services.s3.model.BucketCrossOriginConfiguration;
 import com.amazonaws.services.s3.model.CORSRule;
 import com.amazonaws.services.s3.model.CORSRule.AllowedMethods;
+import com.amazonaws.services.s3.transfer.TransferManager;
+import com.amazonaws.services.s3.transfer.Upload;
+import com.amazonaws.services.s3.transfer.model.UploadResult;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
 import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.ResponseHeaderOverrides;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.util.BinaryUtils;
+import com.google.cloud.storage.Blob;
 import com.google.common.collect.Lists;
 
 /**
@@ -147,8 +147,6 @@ public class FileHandleManagerImpl implements FileHandleManager {
 
 	static private Log log = LogFactory.getLog(FileHandleManagerImpl.class);
 
-	private static String FILE_TOKEN_TEMPLATE = "%1$s/%2$s/%3$s"; // userid/UUID/filename
-
 	public static final String NOT_SET = "NOT_SET";
 	
 	private static final String DEFAULT_COMPRESSED_FILE_NAME = "compressed.txt.gz";
@@ -168,18 +166,6 @@ public class FileHandleManagerImpl implements FileHandleManager {
 	SynapseGoogleCloudStorageClient googleCloudStorageClient;
 
 	@Autowired
-	UploadDaemonStatusDao uploadDaemonStatusDao;
-
-	@Autowired
-	ExecutorService uploadFileDaemonThreadPoolPrimary;
-
-	@Autowired
-	ExecutorService uploadFileDaemonThreadPoolSecondary;
-
-	@Autowired
-	MultipartManager multipartManager;
-
-	@Autowired
 	ProjectSettingsManager projectSettingsManager;
 	
 	@Autowired
@@ -196,23 +182,12 @@ public class FileHandleManagerImpl implements FileHandleManager {
 
 	@Autowired
 	private IdGenerator idGenerator;
+	
+	@Autowired
+	private EventsCollector statisticsCollector;
 
-	/**
-	 * This is the maximum amount of time the upload workers are allowed to take
-	 * before timing out.
-	 */
-	long multipartUploadDaemonTimeoutMS;
-
-	/**
-	 * This is the maximum amount of time the upload workers are allowed to take
-	 * before timing out. Injected via Spring
-	 * 
-	 * @param multipartUploadDaemonTimeoutMS
-	 */
-	public void setMultipartUploadDaemonTimeoutMS(
-			long multipartUploadDaemonTimeoutMS) {
-		this.multipartUploadDaemonTimeoutMS = multipartUploadDaemonTimeoutMS;
-	}
+	@Autowired
+	private TransferManager transferManager;
 
 	/**
 	 * Used by spring
@@ -231,53 +206,22 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		return userInfo.getId().toString();
 	}
 
-
-	/**
-	 * Build up the S3FileMetadata.
-	 * 
-	 * @param contentType
-	 * @param userId
-	 * @param fileName
-	 * @return
-	 */
-	public static TransferRequest createRequest(String contentType,
-			String userId, String fileName, InputStream inputStream) {
-		// Create a token for this file
-		TransferRequest request = new TransferRequest();
-		request.setContentType(ContentTypeUtils.getContentType(contentType,
-				fileName));
-		request.setS3bucketName(StackConfigurationSingleton.singleton().getS3Bucket());
-		request.setS3key(createNewKey(userId, fileName));
-		request.setFileName(fileName);
-		request.setInputStream(inputStream);
-		return request;
-	}
-
-	/**
-	 * Create a new key
-	 * 
-	 * @param userId
-	 * @param fileName
-	 * @return
-	 */
-	private static String createNewKey(String userId, String fileName) {
-		return String.format(FILE_TOKEN_TEMPLATE, userId, UUID.randomUUID()
-				.toString(), fileName);
-	}
-
 	@Override
 	public FileHandle getRawFileHandle(UserInfo userInfo, String handleId)
 			throws DatastoreException, NotFoundException {
-		if (userInfo == null)
-			throw new IllegalArgumentException("UserInfo cannot be null");
-		if (handleId == null)
-			throw new IllegalArgumentException("FileHandleId cannot be null");
+		ValidateArgument.required(userInfo, "UserInfo");
 		// Get the file handle
-		FileHandle handle = fileHandleDao.get(handleId);
+		FileHandle handle = getRawFileHandleUnchecked(handleId);
 		// Only the user that created this handle is authorized to get it.
 		authorizationManager.canAccessRawFileHandleByCreator(userInfo, handleId,handle.getCreatedBy())
 				.checkAuthorizationOrElseThrow();
 		return handle;
+	}
+
+	@Override
+	public FileHandle getRawFileHandleUnchecked(String handleId) {
+		ValidateArgument.required(handleId, "Handle ID");
+		return fileHandleDao.get(handleId);
 	}
 
 	@WriteTransaction
@@ -292,24 +236,26 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		try {
 			FileHandle handle = fileHandleDao.get(handleId);
 			// Is the user authorized?
-			authorizationManager.canAccessRawFileHandleByCreator(userInfo, handleId, handle.getCreatedBy())
-					.checkAuthorizationOrElseThrow();
-			// If this file has a preview then we want to delete the preview as
-			// well.
+			authorizationManager.canAccessRawFileHandleByCreator(userInfo, handleId, handle.getCreatedBy()).checkAuthorizationOrElseThrow();
+			
+			// If this file has a preview then we want to delete the preview as well.
 			if (handle instanceof CloudProviderFileHandleInterface) {
 				CloudProviderFileHandleInterface hasPreview = (CloudProviderFileHandleInterface) handle;
-				if (hasPreview.getPreviewId() != null
-						&& !handle.getId().equals(hasPreview.getPreviewId())) {
+				if (hasPreview.getPreviewId() != null && !handle.getId().equals(hasPreview.getPreviewId())) {
 					// Delete the preview.
 					deleteFileHandle(userInfo, hasPreview.getPreviewId());
 				}
 			}
+			
+			// Delete the file handle before deleting the actual data since if this fail with a file handle pointing to non-existing data (See PLFM-6517)
+			fileHandleDao.delete(handleId);
+			
 			// Is this an S3 file?
 			if (handle instanceof S3FileHandle) {
 				S3FileHandle s3Handle = (S3FileHandle) handle;
 				// at this point, we need to note that multiple S3FileHandles can point to the same bucket/key. We need
 				// to check if this is the last S3FileHandle to point to this S3 object
-				if (fileHandleDao.getNumberOfReferencesToFile(DBOFileHandle.MetadataType.S3.toString(), s3Handle.getBucketName(), s3Handle.getKey()) <= 1) {
+				if (fileHandleDao.getNumberOfReferencesToFile(FileHandleMetadataType.S3, s3Handle.getBucketName(), s3Handle.getKey()) <= 1) {
 					// Delete the file from S3
 					s3Client.deleteObject(s3Handle.getBucketName(), s3Handle.getKey());
 				}
@@ -317,13 +263,11 @@ public class FileHandleManagerImpl implements FileHandleManager {
 			if (handle instanceof GoogleCloudFileHandle) {
 				GoogleCloudFileHandle googleCloudFileHandle = (GoogleCloudFileHandle) handle;
 				// Make sure no other file handles point to the underlying file before deleting it
-				if (fileHandleDao.getNumberOfReferencesToFile(DBOFileHandle.MetadataType.GOOGLE_CLOUD.toString(), googleCloudFileHandle.getBucketName(), googleCloudFileHandle.getKey()) <= 1) {
+				if (fileHandleDao.getNumberOfReferencesToFile(FileHandleMetadataType.GOOGLE_CLOUD, googleCloudFileHandle.getBucketName(), googleCloudFileHandle.getKey()) <= 1) {
 					// Delete the file from Google Cloud
 					googleCloudStorageClient.deleteObject(googleCloudFileHandle.getBucketName(), googleCloudFileHandle.getKey());
 				}
 			}
-			// Delete the handle from the DB
-			fileHandleDao.delete(handleId);
 		} catch (NotFoundException e) {
 			// there is nothing to do if the handle does not exist.
 			return;
@@ -370,7 +314,14 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		AuthorizationStatus authStatus = authResults.get(0).getStatus();
 		authStatus.checkAuthorizationOrElseThrow();
 		FileHandle fileHandle = fileHandleDao.get(fileHandleId);
-		return getURLForFileHandle(fileHandle);
+		
+		String url = getURLForFileHandle(fileHandle);
+		
+		StatisticsFileEvent downloadEvent = StatisticsFileEventUtils.buildFileDownloadEvent(userInfo.getId(), fileHandleAssociation);
+		
+		statisticsCollector.collectEvent(downloadEvent);
+		
+		return url;
 	}
 
 	/**
@@ -422,7 +373,30 @@ public class FileHandleManagerImpl implements FileHandleManager {
 	}
 
 	private String getUrlForGoogleCloudFileHandle(GoogleCloudFileHandle handle) {
-		return googleCloudStorageClient.createSignedUrl(handle.getBucketName(), handle.getKey(), (int) PRESIGNED_URL_EXPIRE_TIME_MS, com.google.cloud.storage.HttpMethod.GET).toExternalForm();
+		String signedUrl = googleCloudStorageClient.createSignedUrl(handle.getBucketName(), handle.getKey(), (int) PRESIGNED_URL_EXPIRE_TIME_MS, com.google.cloud.storage.HttpMethod.GET).toExternalForm();
+
+		// We have to override content type and content disposition to match the file handle metadata stored in Synapse
+		try {
+			/*
+			 Currently, we cannot override content-type in Google Cloud... In short:
+			  - Google provides this parameter to override the content type, which will only work if the content type is null on Google Cloud
+			  - Google does not allow a null content type (defaults to application/octet-stream)
+
+			  We still attempt to override content type because it does not seem to interfere with the call, and
+			  perhaps one day Google may decide to allow us to override content type with this parameter.
+			 */
+			String contentType = handle.getContentType();
+			if (StringUtils.isNotEmpty(contentType) && !NOT_SET.equals(contentType)) {
+				signedUrl += "&response-content-type=" + URLEncoder.encode(contentType, "UTF-8");
+			}
+			String fileName = handle.getFileName();
+			if (StringUtils.isNotEmpty(fileName) && !NOT_SET.equals(fileName)) {
+				signedUrl += "&response-content-disposition=" + URLEncoder.encode(ContentDispositionUtils.getContentDispositionValue(fileName), "UTF-8");
+			}
+		} catch (UnsupportedEncodingException e) {
+			throw new RuntimeException("Error encoding query string for signed URL", e);
+		}
+		return signedUrl;
 	}
 
 	@Override
@@ -493,7 +467,16 @@ public class FileHandleManagerImpl implements FileHandleManager {
 			fileHandle.setContentType(NOT_SET);
 		}
 		// The URL must be a URL
-		ValidateArgument.validUrl(fileHandle.getExternalURL());
+		ValidateArgument.validExternalUrl(fileHandle.getExternalURL());
+
+		// Can't upload external (non-S3) file handles to STS storage locations.
+		if (fileHandle.getStorageLocationId() != null) {
+			StorageLocationSetting storageLocationSetting = storageLocationDAO.get(fileHandle.getStorageLocationId());
+			if (projectSettingsManager.isStsStorageLocationSetting(storageLocationSetting)) {
+				throw new IllegalArgumentException("Cannot create ExternalFileHandle in an STS-enabled storage location");
+			}
+		}
+
 		// set this user as the creator of the file
 		fileHandle.setCreatedBy(getUserId(userInfo));
 		fileHandle.setId(idGenerator.generateNewId(IdType.FILE_IDS).toString());
@@ -517,6 +500,10 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		}
 		if (fileHandle.getContentType() == null) {
 			fileHandle.setContentType(NOT_SET);
+		}
+
+		if (!MD5ChecksumHelper.isValidMd5Digest(fileHandle.getContentMd5())) {
+			throw new IllegalArgumentException("The content MD5 digest must be a valid hexadecimal string of length 32.");
 		}
 
 		// Lookup the storage location
@@ -600,156 +587,59 @@ public class FileHandleManagerImpl implements FileHandleManager {
 	}
 
 	@Override
-	public ChunkedFileToken createChunkedFileUploadToken(UserInfo userInfo, CreateChunkedFileTokenRequest ccftr) throws DatastoreException,
-			NotFoundException {
-		if (userInfo == null)
-			throw new IllegalArgumentException("UserInfo cannot be null");
-		String userId = getUserId(userInfo);
-		return this.multipartManager.createChunkedFileUploadToken(ccftr, ccftr.getStorageLocationId(), userId);
+	public S3FileHandle uploadLocalFile(LocalFileUploadRequest request) {
+		try {
+			
+			StorageLocationSetting storageLocationSetting = null;
+			 
+			if (request.getStorageLocationId() != null) {
+				storageLocationSetting = storageLocationDAO.get(request.getStorageLocationId());
+			}
+			
+			// If the file name is provide then use it.
+			String fileName = request.getFileName();
+			if(fileName == null) {
+				// use the name of th passed file when the name is null.
+				fileName = request.getFileToUpload().getName();
+			}
+			// We let amazon's TransferManager do most of the heavy lifting
+			String key = MultipartUtils.createNewKey(request.getUserId(), fileName, storageLocationSetting);
+			String md5 = MD5ChecksumHelper.getMD5Checksum(request.getFileToUpload());
+			// Start the fileHandle
+			// We can now create a FileHandle for this upload
+			S3FileHandle handle = new S3FileHandle();
+			handle.setBucketName(MultipartUtils.getBucket(storageLocationSetting));
+			handle.setKey(key);
+			handle.setContentMd5(md5);
+			handle.setContentType(request.getContentType());
+			handle.setCreatedBy(request.getUserId());
+			handle.setCreatedOn(new Date(System.currentTimeMillis()));
+			handle.setEtag(UUID.randomUUID().toString());
+			handle.setFileName(fileName);
+			handle.setStorageLocationId(request.getStorageLocationId());
+
+			PutObjectRequest por = new PutObjectRequest(MultipartUtils.getBucket(storageLocationSetting), key, request.getFileToUpload());
+			ObjectMetadata meta = TransferUtils.prepareObjectMetadata(handle);
+			por.setMetadata(meta);
+			Upload upload = transferManager.upload(por);
+			// Make sure the caller can watch the progress.
+			upload.addProgressListener(request.getListener());
+			// This will throw an exception if the upload fails for any reason.
+			UploadResult results = upload.waitForUploadResult();
+			// get the metadata for this file.
+			meta = this.s3Client.getObjectMetadata(results.getBucketName(), results.getKey());
+			handle.setContentSize(meta.getContentLength());
+
+			handle.setId(idGenerator.generateNewId(IdType.FILE_IDS).toString());
+			// Save the file handle
+			handle = (S3FileHandle) fileHandleDao.createFile(handle);
+			// done
+			return handle;
+		} catch (Exception e) {
+			throw new DatastoreException(e);
+		} 
 	}
-
-	@Deprecated
-	@Override
-	public URL createChunkedFileUploadPartURL(UserInfo userInfo, ChunkRequest cpr) throws DatastoreException, NotFoundException {
-		if (cpr == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest cannot be null");
-		if (cpr.getChunkedFileToken() == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest.chunkedFileToken cannot be null");
-		if (cpr.getChunkNumber() == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest.chunkNumber cannot be null");
-		ChunkedFileToken token = cpr.getChunkedFileToken();
-		// first validate the token
-		validateChunkedFileToken(userInfo, token);
-		return multipartManager.createChunkedFileUploadPartURL(cpr, token.getStorageLocationId());
-	}
-
-	@Override
-	public ChunkResult addChunkToFile(UserInfo userInfo, ChunkRequest cpr) throws DatastoreException, NotFoundException {
-		if (cpr == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest cannot be null");
-		if (cpr.getChunkedFileToken() == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest.chunkedFileToken cannot be null");
-		if (cpr.getChunkNumber() == null)
-			throw new IllegalArgumentException(
-					"ChunkedPartRequest.chunkNumber cannot be null");
-		ChunkedFileToken token = cpr.getChunkedFileToken();
-		int partNumber = cpr.getChunkNumber().intValue();
-		// first validate the token
-		validateChunkedFileToken(userInfo, token);
-
-		// The part number cannot be less than one
-		if (partNumber < 1)
-			throw new IllegalArgumentException(
-					"partNumber cannot be less than one");
-		ChunkResult result = this.multipartManager.copyPart(token, partNumber, token.getStorageLocationId());
-		// Now delete the original file since we now have a copy
-		String partkey = this.multipartManager.getChunkPartKey(token, partNumber);
-		StorageLocationSetting storageLocationSettins = projectSettingsManager.getStorageLocationSetting(token.getStorageLocationId());
-		String bucket = MultipartUtils.getBucket(storageLocationSettins);
-		s3Client.deleteObject(bucket, partkey);
-		return result;
-	}
-
-	@WriteTransaction
-	@Override
-	public S3FileHandle completeChunkFileUpload(UserInfo userInfo, CompleteChunkedFileRequest ccfr) throws DatastoreException,
-			NotFoundException {
-		if (ccfr == null)
-			throw new IllegalArgumentException(
-					"CompleteChunkedFileRequest cannot be null");
-		ChunkedFileToken token = ccfr.getChunkedFileToken();
-		// first validate the token
-		validateChunkedFileToken(userInfo, token);
-		String userId = getUserId(userInfo);
-		// Complete the multi-part
-		return this.multipartManager.completeChunkFileUpload(ccfr, token.getStorageLocationId(), userId);
-	}
-
-	/**
-	 * Validate that the user owns the token
-	 */
-	void validateChunkedFileToken(UserInfo userInfo, ChunkedFileToken token) {
-		if (userInfo == null)
-			throw new IllegalArgumentException("UserInfo cannot be null");
-		if (token == null)
-			throw new IllegalArgumentException(
-					"ChunkedFileToken cannot be null");
-		if (token.getKey() == null)
-			throw new IllegalArgumentException(
-					"ChunkedFileToken.key cannot be null");
-		if (token.getUploadId() == null)
-			throw new IllegalArgumentException(
-					"ChunkedFileToken.uploadId cannot be null");
-		if (token.getFileName() == null)
-			throw new IllegalArgumentException(
-					"ChunkedFileToken.getFileName cannot be null");
-		if (token.getContentType() == null)
-			throw new IllegalArgumentException(
-					"ChunkedFileToken.getFileContentType cannot be null");
-		// The token key must start with the User's id (and the baseKey if any)
-		String userId = getUserId(userInfo);
-		if (!token.getKey().startsWith(userId)
-				&& token.getKey().indexOf(
-						MultipartUtils.FILE_TOKEN_TEMPLATE_SEPARATOR + userId + MultipartUtils.FILE_TOKEN_TEMPLATE_SEPARATOR) == -1)
-			throw new UnauthorizedException("The ChunkedFileToken: " + token
-					+ " does not belong to User: " + userId);
-	}
-
-	@Override
-	public UploadDaemonStatus startUploadDeamon(UserInfo userInfo,
-			CompleteAllChunksRequest cacf) throws DatastoreException,
-			NotFoundException {
-		if (cacf == null)
-			throw new IllegalArgumentException(
-					"CompleteAllChunksRequest cannot be null");
-		validateChunkedFileToken(userInfo, cacf.getChunkedFileToken());
-		String userId = getUserId(userInfo);
-		// Start the daemon
-		UploadDaemonStatus status = new UploadDaemonStatus();
-		status.setPercentComplete(0.0);
-		status.setStartedBy(getUserId(userInfo));
-		status.setRunTimeMS(0l);
-		status.setState(State.PROCESSING);
-		status = uploadDaemonStatusDao.create(status);
-		// Create a worker and add it to the pool.
-		CompleteUploadWorker worker = new CompleteUploadWorker(uploadDaemonStatusDao, uploadFileDaemonThreadPoolSecondary, status, cacf,
-				multipartManager, multipartUploadDaemonTimeoutMS, userId);
-		// Get a new copy of the status so we are not returning the same
-		// instance that we passed to the worker.
-		status = uploadDaemonStatusDao.get(status.getDaemonId());
-		// Add this worker the primary pool
-		uploadFileDaemonThreadPoolPrimary.submit(worker);
-		// Return the status to the caller.
-		return status;
-	}
-
-	@Override
-	public S3FileHandle multipartUploadLocalFile(LocalFileUploadRequest request) {
-		return multipartManager.multipartUploadLocalFile(request);
-	}
-
-	@Override
-	public UploadDaemonStatus getUploadDaemonStatus(UserInfo userInfo,
-			String daemonId) throws DatastoreException, NotFoundException {
-		if (userInfo == null)
-			throw new IllegalArgumentException("UserInfo cannot be null");
-		if (daemonId == null)
-			throw new IllegalArgumentException("DaemonID cannot be null");
-		UploadDaemonStatus status = uploadDaemonStatusDao.get(daemonId);
-		// Only the user that started the daemon can see the status
-		if (!authorizationManager.isUserCreatorOrAdmin(userInfo,
-				status.getStartedBy())) {
-			throw new UnauthorizedException(
-					"Only the user that started the daemon may access the daemon status");
-		}
-		return status;
-	}
-
+	
 	@Override
 	@Deprecated
 	public List<UploadDestination> getUploadDestinations(UserInfo userInfo, String parentId) throws DatastoreException,
@@ -766,18 +656,18 @@ public class FileHandleManagerImpl implements FileHandleManager {
 	@Override
 	public List<UploadDestinationLocation> getUploadDestinationLocations(UserInfo userInfo, String parentId) throws DatastoreException,
 			NotFoundException {
-		UploadDestinationListSetting uploadDestinationsSettings = projectSettingsManager.getProjectSettingForNode(userInfo, parentId,
+		Optional<UploadDestinationListSetting> uploadDestinationsSettings = projectSettingsManager.getProjectSettingForNode(userInfo, parentId,
 				ProjectSettingsType.upload, UploadDestinationListSetting.class);
 
 		// make sure there is always one entry
-		if (uploadDestinationsSettings == null || uploadDestinationsSettings.getLocations() == null
-				|| uploadDestinationsSettings.getLocations().isEmpty()) {
+		if (!uploadDestinationsSettings.isPresent() || uploadDestinationsSettings.get().getLocations() == null
+				|| uploadDestinationsSettings.get().getLocations().isEmpty()) {
 			UploadDestinationLocation uploadDestinationLocation = new UploadDestinationLocation();
 			uploadDestinationLocation.setStorageLocationId(DBOStorageLocationDAOImpl.DEFAULT_STORAGE_LOCATION_ID);
 			uploadDestinationLocation.setUploadType(UploadType.S3);
-			return Collections.<UploadDestinationLocation> singletonList(uploadDestinationLocation);
+			return Collections.singletonList(uploadDestinationLocation);
 		} else {
-			return projectSettingsManager.getUploadDestinationLocations(userInfo, uploadDestinationsSettings.getLocations());
+			return projectSettingsManager.getUploadDestinationLocations(userInfo, uploadDestinationsSettings.get().getLocations());
 		}
 	}
 
@@ -800,13 +690,11 @@ public class FileHandleManagerImpl implements FileHandleManager {
 			ExternalS3StorageLocationSetting externalS3StorageLocationSetting = (ExternalS3StorageLocationSetting) storageLocationSetting;
 			ExternalS3UploadDestination externalS3UploadDestination = new ExternalS3UploadDestination();
 			externalS3UploadDestination.setBucket(externalS3StorageLocationSetting.getBucket());
-			externalS3UploadDestination.setBaseKey(externalS3StorageLocationSetting.getBaseKey());
 			uploadDestination = externalS3UploadDestination;
 		} else if (storageLocationSetting instanceof ExternalGoogleCloudStorageLocationSetting) {
 			ExternalGoogleCloudStorageLocationSetting externalGoogleCloudStorageLocationSetting = (ExternalGoogleCloudStorageLocationSetting) storageLocationSetting;
 			ExternalGoogleCloudUploadDestination externalGoogleCloudUploadDestination = new ExternalGoogleCloudUploadDestination();
 			externalGoogleCloudUploadDestination.setBucket(externalGoogleCloudStorageLocationSetting.getBucket());
-			externalGoogleCloudUploadDestination.setBaseKey(externalGoogleCloudStorageLocationSetting.getBaseKey());
 			uploadDestination = externalGoogleCloudUploadDestination;
 		} else if (storageLocationSetting instanceof ExternalStorageLocationSetting) {
 			String filename = UUID.randomUUID().toString();
@@ -825,6 +713,15 @@ public class FileHandleManagerImpl implements FileHandleManager {
 					+ storageLocationSetting.getClass().getName());
 		}
 
+		if (storageLocationSetting instanceof BaseKeyStorageLocationSetting) {
+			((BaseKeyUploadDestination) uploadDestination).setBaseKey(
+					((BaseKeyStorageLocationSetting) storageLocationSetting).getBaseKey());
+		}
+		if (storageLocationSetting instanceof StsStorageLocationSetting) {
+			((StsUploadDestination) uploadDestination).setStsEnabled(
+					((StsStorageLocationSetting)storageLocationSetting).getStsEnabled());
+		}
+
 		uploadDestination.setStorageLocationId(storageLocationId);
 		uploadDestination.setUploadType(storageLocationSetting.getUploadType());
 		uploadDestination.setBanner(storageLocationSetting.getBanner());
@@ -833,19 +730,19 @@ public class FileHandleManagerImpl implements FileHandleManager {
 
 	@Override
 	public UploadDestination getDefaultUploadDestination(UserInfo userInfo, String parentId) throws DatastoreException, NotFoundException {
-		UploadDestinationListSetting uploadDestinationsSettings = 
+		Optional<UploadDestinationListSetting> uploadDestinationsSettings =
 				projectSettingsManager.getProjectSettingForNode(userInfo, parentId,
 				ProjectSettingsType.upload, UploadDestinationListSetting.class);
 
 		// make sure there is always one entry
 		Long storageLocationId;
-		if (uploadDestinationsSettings == null ||
-				uploadDestinationsSettings.getLocations() == null ||
-				uploadDestinationsSettings.getLocations().isEmpty() ||
-				uploadDestinationsSettings.getLocations().get(0) == null) {
+		if (!uploadDestinationsSettings.isPresent() ||
+				uploadDestinationsSettings.get().getLocations() == null ||
+				uploadDestinationsSettings.get().getLocations().isEmpty() ||
+				uploadDestinationsSettings.get().getLocations().get(0) == null) {
 			storageLocationId = DBOStorageLocationDAOImpl.DEFAULT_STORAGE_LOCATION_ID;
 		} else {
-			storageLocationId = uploadDestinationsSettings.getLocations().get(0);
+			storageLocationId = uploadDestinationsSettings.get().getLocations().get(0);
 		}
 		return getUploadDestination(userInfo, parentId, storageLocationId);
 	}
@@ -936,7 +833,7 @@ public class FileHandleManagerImpl implements FileHandleManager {
 				Date modifiedOn, byte[] fileContents, String fileName, ContentType contentType, String contentEncoding) throws UnsupportedEncodingException, IOException {
 		// Create the compress string
 		ByteArrayInputStream in = new ByteArrayInputStream(fileContents);
-		String md5 = MD5ChecksumHelper.getMD5ChecksumForByteArray(fileContents);
+		String md5 = MD5ChecksumHelper.getMD5Checksum(fileContents);
 		String hexMd5 = BinaryUtils.toBase64(BinaryUtils.fromHex(md5));
 		// Upload the file to S3
 		if (fileName==null) fileName=DEFAULT_COMPRESSED_FILE_NAME;
@@ -1004,6 +901,11 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		if (fileHandle.getContentType() == null) {
 			fileHandle.setContentType(NOT_SET);
 		}
+
+		if (!MD5ChecksumHelper.isValidMd5Digest(fileHandle.getContentMd5())) {
+			throw new IllegalArgumentException("The content MD5 digest must be a valid hexadecimal string of length 32.");
+		}
+
 		// Lookup the storage location
 		StorageLocationSetting sls = storageLocationDAO.get(fileHandle.getStorageLocationId());
 		ExternalS3StorageLocationSetting esls = null;
@@ -1014,23 +916,35 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		if(!fileHandle.getBucketName().equals(esls.getBucket())){
 			throw new IllegalArgumentException("The bucket for ExternalS3StorageLocationSetting.id="+fileHandle.getStorageLocationId()+" does not match the provided bucket: "+fileHandle.getBucketName());
 		}
-		
+
+		// For backwards compatibility, only check base key if stsEnabled is true.
+		if (Boolean.TRUE.equals(esls.getStsEnabled())) {
+			String baseKey = esls.getBaseKey();
+			if (baseKey != null && !fileHandle.getKey().startsWith(baseKey)) {
+				throw new IllegalArgumentException("The baseKey for ExternalS3StorageLocationSetting.id=" +
+						fileHandle.getStorageLocationId() + " does not match the provided key: " +
+						fileHandle.getKey());
+			}
+		}
+
 		/*
 		 *  The creation of the ExternalS3StorageLocationSetting already validates that the user has
 		 *  permission to update the bucket. So the creator of the storage location is
 		 *  the only one that can create an S3FileHandle using that storage location Id. 
 		 */
 		if(!esls.getCreatedBy().equals(userInfo.getId())){
-			throw new UnauthorizedException("Only the creator of ExternalS3StorageLocationSetting.id="+fileHandle.getStorageLocationId()+" can create an external S3FileHandle with storagaeLocationId = "+fileHandle.getStorageLocationId());
+			throw new UnauthorizedException("Only the creator of ExternalS3StorageLocationSetting.id="+fileHandle.getStorageLocationId()+" can create an external S3FileHandle with storageLocationId = "+fileHandle.getStorageLocationId());
 		}
+		ObjectMetadata summary;
 		try {
-			ObjectMetadata summary = s3Client.getObjectMetadata(fileHandle.getBucketName(), fileHandle.getKey());
-			if (fileHandle.getContentSize() == null) {
-				fileHandle.setContentSize(summary.getContentLength());
-			}
+			summary = s3Client.getObjectMetadata(fileHandle.getBucketName(), fileHandle.getKey());
 		} catch (Exception e) {
 			throw new IllegalArgumentException("Unable to access the file at bucket: "+fileHandle.getBucketName()+" key: "+fileHandle.getKey()+".", e);
-		} 
+		}
+		if (fileHandle.getContentSize() == null) {
+			fileHandle.setContentSize(summary.getContentLength());
+		}
+
 		// set this user as the creator of the file
 		fileHandle.setCreatedBy(getUserId(userInfo));
 		fileHandle.setCreatedOn(new Date());
@@ -1039,6 +953,74 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		// Save the file metadata to the DB.
 		return (S3FileHandle) fileHandleDao.createFile(fileHandle);
 	}
+
+	@Override
+	public GoogleCloudFileHandle createExternalGoogleCloudFileHandle(UserInfo userInfo,
+												   GoogleCloudFileHandle fileHandle) {
+		ValidateArgument.required(userInfo, "userInfo");
+		ValidateArgument.required(fileHandle, "fileHandle");
+		ValidateArgument.required(fileHandle.getStorageLocationId(), "FileHandle.storageLocationId");
+		ValidateArgument.requiredNotEmpty(fileHandle.getBucketName(), "FileHandle.bucket");
+		ValidateArgument.requiredNotEmpty(fileHandle.getKey(), "FileHandle.key");
+		ValidateArgument.requiredNotEmpty(fileHandle.getContentMd5(),"FileHandle.contentMd5");
+		if (fileHandle.getFileName() == null) {
+			fileHandle.setFileName(NOT_SET);
+		}
+		if (fileHandle.getContentType() == null) {
+			fileHandle.setContentType(NOT_SET);
+		}
+
+		if (!MD5ChecksumHelper.isValidMd5Digest(fileHandle.getContentMd5())) {
+			throw new IllegalArgumentException("The content MD5 digest must be a valid hexadecimal string of length 32.");
+		}
+
+		// Lookup the storage location
+		StorageLocationSetting sls = storageLocationDAO.get(fileHandle.getStorageLocationId());
+		ExternalGoogleCloudStorageLocationSetting esls = null;
+		if(!(sls instanceof ExternalGoogleCloudStorageLocationSetting)){
+			throw new IllegalArgumentException("StorageLocationSetting.id="+fileHandle.getStorageLocationId()+" was not of the expected type: "+ExternalGoogleCloudStorageLocationSetting.class.getName());
+		}
+		esls = (ExternalGoogleCloudStorageLocationSetting) sls;
+		if(!fileHandle.getBucketName().equals(esls.getBucket())){
+			throw new IllegalArgumentException("The bucket for ExternalGoogleCloudStorageLocationSetting.id="+fileHandle.getStorageLocationId()+" does not match the provided bucket: "+fileHandle.getBucketName());
+		}
+
+		/*
+		 *  The creation of the ExternalGoogleCloudStorageLocationSetting already validates that the user has
+		 *  permission to update the bucket. So the creator of the storage location is
+		 *  the only one that can create an GoogleCloudFileHandle using that storage location Id.
+		 */
+		if(!esls.getCreatedBy().equals(userInfo.getId())){
+			throw new UnauthorizedException("Only the creator of ExternalGoogleCloudStorageLocationSetting.id="+fileHandle.getStorageLocationId()+" can create an external GoogleCloudFileHandle with storageLocationId = "+fileHandle.getStorageLocationId());
+		}
+		Blob summary;
+		try {
+			summary = googleCloudStorageClient.getObject(fileHandle.getBucketName(), fileHandle.getKey());
+		} catch (Exception e) {
+			throw new IllegalArgumentException("Unable to access the file at bucket: "+fileHandle.getBucketName()+" key: "+fileHandle.getKey()+".", e);
+		}
+
+		/*
+		 * In PLFM-6092 we found that BlobInfo.getSize() may return null (unclear if it's a Google Cloud bug
+		 *  or edge case e.g. folders have no size). In these cases, require the user to supply a content size.
+		 */
+		if (fileHandle.getContentSize() == null) {
+			if (summary.getSize() != null) {
+				fileHandle.setContentSize(summary.getSize());
+			} else {
+				throw new IllegalArgumentException("Unable to get the size of the file at bucket: "+fileHandle.getBucketName()+" key: "+fileHandle.getKey()+". Please specify a content size.");
+			}
+		}
+
+		// set this user as the creator of the file
+		fileHandle.setCreatedBy(getUserId(userInfo));
+		fileHandle.setCreatedOn(new Date());
+		fileHandle.setEtag(UUID.randomUUID().toString());
+		fileHandle.setId(idGenerator.generateNewId(IdType.FILE_IDS).toString());
+		// Save the file metadata to the DB.
+		return (GoogleCloudFileHandle) fileHandleDao.createFile(fileHandle);
+	}
+
 
 	@Override
 	public ProxyFileHandle createExternalFileHandle(UserInfo userInfo, ProxyFileHandle proxyFileHandle) {
@@ -1054,6 +1036,11 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		if(!(sls instanceof ProxyStorageLocationSettings)){
 			throw new IllegalArgumentException("ProxyFileHandle.storageLocationId must refer to a valid ProxyStorageLocationSettings.");
 		}
+
+		if (!MD5ChecksumHelper.isValidMd5Digest(proxyFileHandle.getContentMd5())) {
+			throw new IllegalArgumentException("The content MD5 digest must be a valid hexadecimal string of length 32.");
+		}
+
 		ProxyStorageLocationSettings proxyLocation = (ProxyStorageLocationSettings) sls;
 		// If the user is not the creator of the location they must have 'create' on the benefactor.
 		if (!userInfo.getId().equals(proxyLocation.getCreatedBy())) {
@@ -1153,6 +1140,8 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		Set<String> fileHandleIdsToFetch = new HashSet<String>();
 		Map<String, FileHandleAssociation> idToFileHandleAssociation = new HashMap<String, FileHandleAssociation>(request.getRequestedFiles().size());
 		List<ObjectRecord> downloadRecords = new LinkedList<ObjectRecord>();
+		List<StatisticsFileEvent> downloadEvents = new LinkedList<>();
+		
 		for(FileHandleAssociationAuthorizationStatus fhas: authResults){
 			FileResult result = new FileResult();
 			idToFileHandleAssociation.put(fhas.getAssociation().getFileHandleId(), fhas.getAssociation());
@@ -1197,8 +1186,13 @@ public class FileHandleManagerImpl implements FileHandleManager {
 						}
 						if(request.getIncludePreSignedURLs()) {
 							String url = getURLForFileHandle(handle);
+							
 							fr.setPreSignedURL(url);
 							FileHandleAssociation association = idToFileHandleAssociation.get(fr.getFileHandleId());
+							
+							StatisticsFileEvent downloadEvent = StatisticsFileEventUtils.buildFileDownloadEvent(userInfo.getId(), association);
+							downloadEvents.add(downloadEvent);
+							
 							ObjectRecord record = createObjectRecord(userId, association, now);
 							downloadRecords.add(record);
 						}
@@ -1220,6 +1214,9 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		if(!downloadRecords.isEmpty()){
 			// Push the records to queue
 			objectRecordQueue.pushObjectRecordBatch(new ObjectRecordBatch(downloadRecords, FILE_DOWNLOAD_RECORD_TYPE));
+		}
+		if (!downloadEvents.isEmpty()) {
+			statisticsCollector.collectEvents(downloadEvents);
 		}
 		BatchFileResult batch = new BatchFileResult();
 		batch.setRequestedFiles(requestedFiles);
@@ -1305,5 +1302,13 @@ public class FileHandleManagerImpl implements FileHandleManager {
 		}
 
 		return result;
+	}
+	
+	@Override
+	public boolean isMatchingMD5(String sourceFileHandleId, String targetFileHandleId) {
+		ValidateArgument.required(sourceFileHandleId, "The sourceFileHandleId");
+		ValidateArgument.required(targetFileHandleId, "The targetFileHandleId");
+		
+		return fileHandleDao.isMatchingMD5(sourceFileHandleId, targetFileHandleId);
 	}
 }

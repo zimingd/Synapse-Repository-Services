@@ -1,18 +1,15 @@
 package org.sagebionetworks.repo.model.jdo;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.util.Arrays;
 import java.util.Random;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.sagebionetworks.repo.model.dbo.persistence.DBONode;
 import org.sagebionetworks.repo.model.dbo.persistence.DBORevision;
 
@@ -34,8 +31,6 @@ public class JDORevisionUtilsTest {
 		byte[] blob = new byte[size];
 		rand.nextBytes(blob);
 
-		byte[] userAnnotations = new byte[size];
-		rand.nextBytes(userAnnotations);
 		byte[] entityPropertyAnnotations = new byte[size];
 		rand.nextBytes(entityPropertyAnnotations);
 
@@ -44,29 +39,28 @@ public class JDORevisionUtilsTest {
 		DBORevision original = new DBORevision();
 		original.setOwner(owner.getId());
 		original.setRevisionNumber(2L);
-		original.setAnnotations(blob);
-		original.setUserAnnotationsV1(userAnnotations);
+		original.setUserAnnotationsJSON("{}");
 		original.setEntityPropertyAnnotations(entityPropertyAnnotations);
 		original.setLabel("0.3.9");
 		original.setModifiedBy(Long.parseLong(createdById));
 		original.setModifiedOn(3123L);
 		original.setFileHandleId(999999L);
+		
+		Long newRevisionNumber = original.getRevisionNumber() + 1;
 		// Now make a copy
-		DBORevision copy = JDORevisionUtils.makeCopyForNewVersion(original);
+		DBORevision copy = JDORevisionUtils.makeCopyForNewVersion(original, newRevisionNumber);
+		
 		assertNotNull(copy);
 		// The copy should not equal the original since it will have an incremented version number.
 		assertNotEquals(original, copy);
-		// Make sure the version number is incremented
-		assertEquals(new Long(original.getRevisionNumber()+1), copy.getRevisionNumber());
+		// Make sure the version number is set correctly
+		assertEquals(newRevisionNumber, copy.getRevisionNumber());
 		// We do not copy over the label or the comment
 		assertNull(copy.getLabel());
 		assertNull(copy.getComment());
 		// We do make a copy of the annotations blob
 		// but it should be a copy and not the original
-		assertNotSame(original.getAnnotations(), copy.getAnnotations());
-		assertArrayEquals(original.getAnnotations(), copy.getAnnotations());
-		assertNotSame(original.getUserAnnotationsV1(), copy.getUserAnnotationsV1());
-		assertArrayEquals(original.getUserAnnotationsV1(), copy.getUserAnnotationsV1());
+		assertEquals(original.getUserAnnotationsJSON(), copy.getUserAnnotationsJSON());
 		assertNotSame(original.getEntityPropertyAnnotations(), copy.getEntityPropertyAnnotations());
 		assertArrayEquals(original.getEntityPropertyAnnotations(), copy.getEntityPropertyAnnotations());
 		// the file handle should be copied.

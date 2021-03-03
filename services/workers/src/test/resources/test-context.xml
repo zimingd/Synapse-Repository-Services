@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:util="http://www.springframework.org/schema/util"
 	xsi:schemaLocation="
-		                   http://www.springframework.org/schema/beans
-		                   http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
-                           http://www.springframework.org/schema/context
-                           http://www.springframework.org/schema/context/spring-context-3.0.xsd">
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+		http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd">
 
 	<context:annotation-config />
 
@@ -19,6 +20,21 @@
 	<!-- We don't want to send emails during testing, so we stub out Amazon SES -->
 	<bean id="amazonSESClient" class="org.sagebionetworks.repo.manager.StubAmazonSimpleEmailServiceClient" />
 	
+	<!-- We don't want to contact prod during the worker testing -->
+	<bean id="prodDetector" class="org.sagebionetworks.repo.manager.testing.StubProdDetector">
+		<constructor-arg value="false" />
+	</bean>
+	
 	<bean id="asynchronousJobWorkerHelper" class="org.sagebionetworks.AsynchronousJobWorkerHelperImpl"/>
+	
+	<!--  During integration tests we do not want to scan partitions -->
+	<bean id="athenaPartitionScannerWorker" class="org.sagebionetworks.athena.workers.AthenaPartitionScannerWorkerStub" />
+	
+	<!-- During the integration tests we do not want to run the status watcher worker -->
+	<bean id="statisticsMonthlyStatusWatcherWorker" class="org.sagebionetworks.statistics.workers.StatisticsMonthlyStatusWatcherWorkerStub"></bean>
 
+	<bean id="testHelper" class="org.sagebionetworks.worker.TestHelper"/>
+	
+	<bean id="dataAccessTestHelper" class="org.sagebionetworks.dataaccess.workers.DataAccessTestHelper"/>
+	
 </beans>

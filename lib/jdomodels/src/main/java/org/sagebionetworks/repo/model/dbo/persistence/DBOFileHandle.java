@@ -21,17 +21,22 @@ import static org.sagebionetworks.repo.model.query.jdo.SqlConstants.TABLE_FILES;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.Base64;
 import java.util.List;
 
+import org.apache.commons.codec.binary.Hex;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.ObservableEntity;
 import org.sagebionetworks.repo.model.backup.FileHandleBackup;
+import org.sagebionetworks.repo.model.dao.FileHandleMetadataType;
 import org.sagebionetworks.repo.model.dbo.FieldColumn;
 import org.sagebionetworks.repo.model.dbo.FileMetadataUtils;
 import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.TableMapping;
 import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
 import org.sagebionetworks.repo.model.migration.MigrationType;
+import org.sagebionetworks.util.TemporaryCode;
+import org.sagebionetworks.utils.MD5ChecksumHelper;
 
 /**
  * The DBO object for file metadata.
@@ -40,19 +45,6 @@ import org.sagebionetworks.repo.model.migration.MigrationType;
  *
  */
 public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, FileHandleBackup>, ObservableEntity {
-	
-	/**
-	 * The type of metadata represented.
-	 * @author John
-	 *
-	 */
-	public enum MetadataType {
-		S3,
-		GOOGLE_CLOUD,
-		EXTERNAL,
-		PROXY,
-		EXTERNAL_OBJ_STORE
-	}
 
 	private static FieldColumn[] FIELDS = new FieldColumn[] {
 		new FieldColumn("id", COL_FILES_ID, true).withIsBackupId(true),
@@ -77,7 +69,7 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 	private Long previewId;
 	private Long createdBy;
 	private Timestamp createdOn;
-	private MetadataType metadataType;
+	private FileHandleMetadataType metadataType;
 	private String contentType;
 	private Long contentSize;
 	private String contentMD5;
@@ -104,7 +96,7 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 				}
 				results.setCreatedBy(rs.getLong(COL_FILES_CREATED_BY));
 				results.setCreatedOn(rs.getTimestamp(COL_FILES_CREATED_ON));
-				results.setMetadataType(MetadataType.valueOf(rs.getString(COL_FILES_METADATA_TYPE)));
+				results.setMetadataType(FileHandleMetadataType.valueOf(rs.getString(COL_FILES_METADATA_TYPE)));
 				results.setContentType(rs.getString(COL_FILES_CONTENT_TYPE));
 				results.setContentSize(rs.getLong(COL_FILES_CONTENT_SIZE));
 				if(rs.wasNull()){
@@ -156,7 +148,8 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 		return new MigratableTableTranslation<DBOFileHandle, FileHandleBackup>() {
 			@Override
 			public DBOFileHandle createDatabaseObjectFromBackup(FileHandleBackup backup) {
-				return FileMetadataUtils.createDBOFromBackup(backup);
+				DBOFileHandle dboFileHandle =  FileMetadataUtils.createDBOFromBackup(backup);
+				return dboFileHandle;
 			}
 			
 			@Override
@@ -165,6 +158,7 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 			}
 		};
 	}
+
 
 	@Override
 	public Class<? extends FileHandleBackup> getBackupClass() {
@@ -186,7 +180,7 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 		return id.toString();
 	}
 
-	public MetadataType getMetadataTypeEnum() {
+	public FileHandleMetadataType getMetadataTypeEnum() {
 		return metadataType;
 	}
 
@@ -239,7 +233,7 @@ public class DBOFileHandle implements MigratableDatabaseObject<DBOFileHandle, Fi
 		return metadataType.name();
 	}
 
-	public void setMetadataType(MetadataType metadataType) {
+	public void setMetadataType(FileHandleMetadataType metadataType) {
 		this.metadataType = metadataType;
 	}
 

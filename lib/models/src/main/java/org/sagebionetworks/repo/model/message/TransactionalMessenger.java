@@ -27,23 +27,10 @@ public interface TransactionalMessenger {
 	 * @Deprecated Use: {@link TransactionalMessenger#sendMessageAfterCommit(MessageToSend)}
 	 * @param objectId
 	 * @param objectType
-	 * @param etag
 	 * @param changeType
 	 */
-	@Deprecated
-	public void sendMessageAfterCommit(String objectId, ObjectType objectType, String etag, ChangeType changeType);
-	
-	/**
-	 * Send a change message after the current thread's transaction commits.
-	 * @Deprecated Use: {@link TransactionalMessenger#sendMessageAfterCommit(MessageToSend)}
-	 * @param objectId
-	 * @param objectType
-	 * @param etag
-	 * @param changeType
-	 * @param userId
-	 */
-	@Deprecated
-	public void sendMessageAfterCommit(String objectId, ObjectType objectType, String etag, ChangeType changeType, Long userId);
+	public void sendMessageAfterCommit(String objectId, ObjectType objectType, ChangeType changeType);
+
 	
 	/**
 	 * Send a message after a commit.

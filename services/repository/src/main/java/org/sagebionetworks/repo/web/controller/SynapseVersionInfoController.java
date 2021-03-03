@@ -7,7 +7,9 @@ import java.util.Properties;
 import javax.servlet.http.HttpServletRequest;
 
 import org.apache.commons.io.IOUtils;
+import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.repo.model.versionInfo.SynapseVersionInfo;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -26,6 +28,7 @@ public class SynapseVersionInfoController {
 	
 	private static class Holder {
 		private static String versionInfo = "";
+		private static String stackInstance = "";
 		
 		static {
 			InputStream s = SynapseVersionInfoController.class.getResourceAsStream("/version-info.properties");
@@ -38,24 +41,27 @@ public class SynapseVersionInfoController {
 				IOUtils.closeQuietly(s);
 			}
 			versionInfo = prop.getProperty("org.sagebionetworks.repository.version");
+			stackInstance = StackConfigurationSingleton.singleton().getStackInstance();
 		}
 		
 		private static String getVersionInfo() {
 			return versionInfo;
 		}
+		
+		public static String getStackInstance() {
+			return stackInstance;
+		}
 				
 	}
 	
+	@RequiredScope({})
 	@ResponseStatus(HttpStatus.OK)
-	@RequestMapping(
-			value=UrlHelpers.VERSIONINFO,
-			method=RequestMethod.GET
-			)
-	public 
-	@ResponseBody
+	@RequestMapping(value=UrlHelpers.VERSIONINFO, method=RequestMethod.GET)
+	public @ResponseBody
 	SynapseVersionInfo getVersionInfo(HttpServletRequest request) throws RuntimeException {
 		SynapseVersionInfo vInfo = new SynapseVersionInfo();
 		vInfo.setVersion(Holder.getVersionInfo());
+		vInfo.setStackInstance(Holder.getStackInstance());
 		return vInfo;
 	}
 	

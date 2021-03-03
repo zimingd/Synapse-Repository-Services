@@ -36,6 +36,11 @@ public class ServiceConstants {
 	public static final String NORMALIZE_DATA = "normalizeData";
 	
 	/**
+	 * Request parameter used to indicate that only active Evaluation queues are to be returned
+	 */
+	public static final String ACTIVE_ONLY_PARAM = "activeOnly";
+	
+	/**
 	 * Default value for offset parameter used RequestParam annotations which
 	 * require a static string
 	 */
@@ -217,9 +222,6 @@ public class ServiceConstants {
 	
 	public static final String EVALUATION_IDS_PARAM = "evaluationIds";
 	
-	// default EntityBundle mask for serialization in Submission objects.
-	public static final int DEFAULT_ENTITYBUNDLE_MASK_FOR_SUBMISSIONS = EntityBundle.ENTITY + EntityBundle.ANNOTATIONS + EntityBundle.FILE_HANDLES;
-
 	public static final String DYNAMO_HASH_KEY_NAME_PARAM = "hashKeyName";
 	public static final String DYNAMO_RANGE_KEY_NAME_PARAM = "rangeKeyName";
 

@@ -1,30 +1,33 @@
 package org.sagebionetworks;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpStatus;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.sagebionetworks.client.ClientUtils;
 import org.sagebionetworks.client.SynapseAdminClient;
 import org.sagebionetworks.client.SynapseAdminClientImpl;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.reflection.model.PaginatedResults;
+import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.EntityChildrenRequest;
 import org.sagebionetworks.repo.model.EntityChildrenResponse;
 import org.sagebionetworks.repo.model.EntityType;
@@ -38,6 +41,7 @@ import org.sagebionetworks.repo.model.docker.RegistryEventAction;
 import org.sagebionetworks.repo.model.docker.RegistryEventActor;
 import org.sagebionetworks.repo.model.docker.RegistryEventRequest;
 import org.sagebionetworks.repo.model.docker.RegistryEventTarget;
+import org.sagebionetworks.repo.model.oauth.OAuthClient;
 import org.sagebionetworks.schema.adapter.org.json.EntityFactory;
 import org.sagebionetworks.simpleHttpClient.SimpleHttpClient;
 import org.sagebionetworks.simpleHttpClient.SimpleHttpClientImpl;
@@ -64,13 +68,17 @@ public class ITDocker {
 
 	private String projectId;
 	
-	StackConfiguration config;
+	private static StackConfiguration config;
 
 	private static SimpleHttpClient simpleClient;
+	
+	private String synapseDockerAuthorizationUrl;
+	private OAuthClient oauthClient;
+	private String oauthClientSecret;
 
-	@BeforeClass
+	@BeforeAll
 	public static void beforeClass() throws Exception {
-		StackConfiguration config = StackConfigurationSingleton.singleton();
+		config = StackConfigurationSingleton.singleton();
 		// Create 2 users
 		adminSynapse = new SynapseAdminClientImpl();
 		SynapseClientHelper.setEndpoints(adminSynapse);
@@ -88,21 +96,37 @@ public class ITDocker {
 		simpleClient = new SimpleHttpClientImpl();
 	}
 
-	@Before
+	@BeforeEach
 	public void before() throws Exception {
-		config = StackConfigurationSingleton.singleton();
 		Project project = new Project();
 		project = synapseOne.createEntity(project);
 		projectId = project.getId();
+		
+		// create the OAuth client
+		oauthClient = new OAuthClient();
+		oauthClient.setClient_name(UUID.randomUUID().toString());
+		oauthClient.setRedirect_uris(Collections.singletonList("https://foo.bar.com"));
+		oauthClient = synapseOne.createOAuthClient(oauthClient);
+		// Sets the verified status of the client (only admins and ACT can do this)
+		oauthClient = adminSynapse.updateOAuthClientVerifiedStatus(oauthClient.getClient_id(), oauthClient.getEtag(), true);
+		oauthClientSecret = synapseOne.createOAuthClientSecret(oauthClient.getClient_id()).getClient_secret();
+
+		String service = "docker.synapse.org";
+		String repoPath = projectId+"/reponame";
+		String scope = TYPE+":"+repoPath+":"+ACCESS_TYPES_STRING;
+		synapseDockerAuthorizationUrl = config.getDockerServiceEndpoint() + DOCKER_AUTHORIZATION;
+		synapseDockerAuthorizationUrl += "?" + SERVICE_PARAM + "=" + URLEncoder.encode(service, "UTF-8");
+		synapseDockerAuthorizationUrl += "&" + SCOPE_PARAM + "=" + URLEncoder.encode(scope, "UTF-8");
+
 	}
 	
-	@After
+	@AfterEach
 	public void after() throws Exception {
-		if (projectId!=null) synapseOne.deleteAndPurgeEntityById(projectId);
+		if (projectId!=null) synapseOne.deleteEntityById(projectId);
 		projectId=null;
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void afterClass() throws Exception {
 		try {
 			adminSynapse.deleteUser(userToDelete);
@@ -110,28 +134,43 @@ public class ITDocker {
 		}
 	}
 	
-	private static String createBasicAuthorizationHeader(String username, String password) {
-		return "Basic "+ (new String(Base64.
-				encodeBase64((username + ":" + password).getBytes())));
-	}
-
 	@Test
 	public void testDockerClientAuthorization() throws Exception {
 		Map<String, String> requestHeaders = new HashMap<String, String>();
 		// Note, without this header  we get a 415 response code
 		requestHeaders.put("Content-Type", "application/json"); 
 		requestHeaders.put(
-				"Authorization",
-				createBasicAuthorizationHeader(username, password));
-		String service = "docker.synapse.org";
-		String repoPath = projectId+"/reponame";
-		String scope = TYPE+":"+repoPath+":"+ACCESS_TYPES_STRING;
-		String urlString = config.getDockerServiceEndpoint() + DOCKER_AUTHORIZATION;
-		urlString += "?" + SERVICE_PARAM + "=" + URLEncoder.encode(service, "UTF-8");
-		urlString += "&" + SCOPE_PARAM + "=" + URLEncoder.encode(scope, "UTF-8");
+				AuthorizationConstants.AUTHORIZATION_HEADER_NAME,
+				ClientUtils.createBasicAuthorizationHeader(username, password));
 		
 		SimpleHttpRequest request = new SimpleHttpRequest();
-		request.setUri(urlString);
+		request.setUri(synapseDockerAuthorizationUrl);
+		request.setHeaders(requestHeaders);
+		SimpleHttpResponse response = simpleClient.get(request);
+		assertNotNull(response.getContent());
+		assertEquals(HttpStatus.SC_OK, response.getStatusCode());
+	}
+
+	@Test
+	public void testDockerClientAuthorizationWithAccessToken() throws Exception {
+		String accessToken = OAuthHelper.getAccessToken(
+				synapseOne, 
+				synapseOne, 
+				oauthClient.getClient_id(), 
+				oauthClientSecret, 
+				oauthClient.getRedirect_uris().get(0),
+				"authorize"
+			);
+		Map<String, String> requestHeaders = new HashMap<String, String>();
+		// Note, without this header  we get a 415 response code
+		requestHeaders.put("Content-Type", "application/json"); 
+		requestHeaders.put(
+				AuthorizationConstants.AUTHORIZATION_HEADER_NAME,
+				ClientUtils.createBasicAuthorizationHeader(username, accessToken));
+		
+		SimpleHttpRequest request = new SimpleHttpRequest();
+		request.setUri(synapseDockerAuthorizationUrl);
+		request.setHeaders(requestHeaders);
 		SimpleHttpResponse response = simpleClient.get(request);
 		assertNotNull(response.getContent());
 		assertEquals(HttpStatus.SC_OK, response.getStatusCode());
@@ -207,8 +246,8 @@ public class ITDocker {
 		// Note, without this header  we get a 415 response code
 		requestHeaders.put("Content-Type", "application/json"); 
 		requestHeaders.put(
-				"Authorization",
-				createBasicAuthorizationHeader(registryUserName, registryPassword));
+				AuthorizationConstants.AUTHORIZATION_HEADER_NAME,
+				ClientUtils.createBasicAuthorizationHeader(registryUserName, registryPassword));
 		String host = "docker.synapse.org";
 		String repositorySuffix = "reponame";
 		String repositoryPath = projectId+"/"+repositorySuffix;
@@ -239,8 +278,8 @@ public class ITDocker {
 		// Note, without this header  we get a 415 response code
 		requestHeaders.put("Content-Type", "application/json"); 
 		requestHeaders.put(
-				"Authorization",
-				createBasicAuthorizationHeader("wrong user name", "wrong password"));
+				AuthorizationConstants.AUTHORIZATION_HEADER_NAME,
+				ClientUtils.createBasicAuthorizationHeader("wrong user name", "wrong password"));
 		DockerRegistryEventList registryEvents = new DockerRegistryEventList();
 		URL url = new URL(config.getDockerRegistryListenerEndpoint() + 
 				DOCKER_REGISTRY_EVENTS);
@@ -257,6 +296,29 @@ public class ITDocker {
 		assertNotNull(childResponse);
 		assertNotNull(childResponse.getPage());
 		assertEquals(0, childResponse.getPage().size());
+	}
+	
+	// Test for PLFM-6189 and PLFM-6188
+	@Test
+	public void testSendRegistryEventsInvalidEncodedCredentials() throws Exception {
+		Map<String, String> requestHeaders = new HashMap<String, String>();
+		// Note, without this header  we get a 415 response code
+		requestHeaders.put("Content-Type", "application/json"); 
+		requestHeaders.put(
+				AuthorizationConstants.AUTHORIZATION_HEADER_NAME,
+				ClientUtils.createBasicAuthorizationHeader("wrong user name", "wrong password") + "_wrong");
+		
+		DockerRegistryEventList registryEvents = new DockerRegistryEventList();
+		
+		URL url = new URL(config.getDockerRegistryListenerEndpoint() + 
+				DOCKER_REGISTRY_EVENTS);
+		
+		SimpleHttpRequest request = new SimpleHttpRequest();
+		request.setUri(url.toString());
+		request.setHeaders(requestHeaders);
+		String body = EntityFactory.createJSONStringForEntity(registryEvents);
+		SimpleHttpResponse response = simpleClient.post(request, body);
+		assertEquals(HttpStatus.SC_UNAUTHORIZED, response.getStatusCode());
 	}
 
 

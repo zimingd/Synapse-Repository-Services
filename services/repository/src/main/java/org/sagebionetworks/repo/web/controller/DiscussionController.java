@@ -1,5 +1,9 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 
@@ -25,6 +29,7 @@ import org.sagebionetworks.repo.model.discussion.UpdateReplyMessage;
 import org.sagebionetworks.repo.model.discussion.UpdateThreadMessage;
 import org.sagebionetworks.repo.model.discussion.UpdateThreadTitle;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -70,6 +75,7 @@ public class DiscussionController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.PROJECT_PROJECT_ID_FORUM, method = RequestMethod.GET)
 	public @ResponseBody Forum getForumByProjectId(
@@ -89,6 +95,7 @@ public class DiscussionController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.FORUM_FORUM_ID, method = RequestMethod.GET)
 	public @ResponseBody Forum getForumByProject(
@@ -111,6 +118,7 @@ public class DiscussionController {
 	 * @param forumId - The forum ID to which the returning threads belong
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.FORUM_FORUM_ID_THREADS, method = RequestMethod.GET)
 	public @ResponseBody PaginatedResults<DiscussionThreadBundle> getThreadsForForum(
@@ -134,6 +142,7 @@ public class DiscussionController {
 	 * @return
 	 * @throws UnsupportedEncodingException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.THREAD, method = RequestMethod.POST)
 	public @ResponseBody DiscussionThreadBundle createThread(
@@ -151,6 +160,7 @@ public class DiscussionController {
 	 * @param threadId - The ID of the thread being requested
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID, method = RequestMethod.GET)
 	public @ResponseBody DiscussionThreadBundle getThread(
@@ -169,6 +179,7 @@ public class DiscussionController {
 	 * @param title - The new title
 	 * @return
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_TITLE, method = RequestMethod.PUT)
 	public @ResponseBody DiscussionThreadBundle updateThreadTitle(
@@ -189,6 +200,7 @@ public class DiscussionController {
 	 * @return
 	 * @throws UnsupportedEncodingException 
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_MESSAGE, method = RequestMethod.PUT)
 	public @ResponseBody DiscussionThreadBundle updateThreadMessage(
@@ -206,6 +218,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param threadId - the ID of the thread being marked as deleted
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID, method = RequestMethod.DELETE)
 	public void markThreadAsDeleted(
@@ -222,6 +235,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param threadId - the ID of the thread that was marked as deleted
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_RESTORE, method = RequestMethod.PUT)
 	public void restoreDeletedThread(
@@ -238,6 +252,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param threadId - the ID of the thread being marked as pinned
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_PIN, method = RequestMethod.PUT)
 	public void pinThread(
@@ -254,6 +269,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param threadId - the ID of the thread being unpinned
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_UNPIN, method = RequestMethod.PUT)
 	public void unpinThread(
@@ -275,6 +291,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param threadId - DiscussionThreadBundle.messageKey
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.THREAD_URL, method = RequestMethod.GET)
 	public @ResponseBody MessageURL getThreadUrl(
@@ -293,6 +310,7 @@ public class DiscussionController {
 	 * @return
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.REPLY, method = RequestMethod.POST)
 	public @ResponseBody DiscussionReplyBundle createReply(
@@ -310,6 +328,7 @@ public class DiscussionController {
 	 * @param replyId - The ID of the reply being requested
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.REPLY_REPLY_ID, method = RequestMethod.GET)
 	public @ResponseBody DiscussionReplyBundle getReply(
@@ -329,6 +348,7 @@ public class DiscussionController {
 	 * @return
 	 * @throws UnsupportedEncodingException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.REPLY_REPLY_ID_MESSAGE, method = RequestMethod.PUT)
 	public @ResponseBody DiscussionReplyBundle updateReplyMessage(
@@ -346,6 +366,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param replyId - the ID of the reply being marked as deleted
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.REPLY_REPLY_ID, method = RequestMethod.DELETE)
 	public void markReplyAsDeleted(
@@ -368,6 +389,7 @@ public class DiscussionController {
 	 * @param threadId - The thread ID to which the returning replies belong
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_REPLIES, method = RequestMethod.GET)
 	public @ResponseBody PaginatedResults<DiscussionReplyBundle> getRepliesForThread(
@@ -394,6 +416,7 @@ public class DiscussionController {
 	 * @param userId - the ID of the user who is making the request
 	 * @param messageKey - DiscussionReplyBundle.messageKey
 	 */
+	@RequiredScope({download})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.REPLY_URL, method = RequestMethod.GET)
 	public @ResponseBody MessageURL getReplyUrl(
@@ -412,6 +435,7 @@ public class DiscussionController {
 	 * @param forumId - The forum ID to which the returning threads belong
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.FORUM_FORUM_ID_THREAD_COUNT, method = RequestMethod.GET)
 	public @ResponseBody ThreadCount getThreadCountForForum(
@@ -431,6 +455,7 @@ public class DiscussionController {
 	 * @param threadId - The thread ID to which the returning replies belong
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.THREAD_THREAD_ID_REPLY_COUNT, method = RequestMethod.GET)
 	public @ResponseBody ReplyCount getReplyCountForThread(
@@ -454,6 +479,7 @@ public class DiscussionController {
 	 * @param id - The request entityId
 	 * @return the threads that user has read permission to.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_ID_THREADS, method = RequestMethod.GET)
 	public @ResponseBody PaginatedResults<DiscussionThreadBundle> getThreadsForEntity(
@@ -468,7 +494,7 @@ public class DiscussionController {
 
 	/**
 	 * This API is used to get list of entity and count pairs, with count is the
-	 * number of threads that belongs to projects user can view and references
+	 * number of threads that belong to projects user can view and references
 	 * the given entity.
 	 * <br/>
 	 * Target users: anyone who has READ permission to the project.
@@ -477,6 +503,7 @@ public class DiscussionController {
 	 * @param entityIds - The requested list. Limit size 20.
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_THREAD_COUNTS, method = RequestMethod.POST)
 	public @ResponseBody EntityThreadCounts getThreadCounts(
@@ -496,6 +523,7 @@ public class DiscussionController {
 	 * @param forumId - The forum ID to which the returning mederators belong
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.FORUM_FORUM_ID_MODERATORS, method = RequestMethod.GET)
 	public @ResponseBody PaginatedIds getForumModerators(

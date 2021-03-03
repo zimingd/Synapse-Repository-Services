@@ -1,11 +1,7 @@
 package org.sagebionetworks.table.query.util;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.sagebionetworks.repo.model.table.SortDirection;
 import org.sagebionetworks.repo.model.table.SortItem;
 import org.sagebionetworks.repo.model.table.TableConstants;
@@ -50,8 +46,11 @@ import org.sagebionetworks.table.query.model.ValueExpression;
 import org.sagebionetworks.table.query.model.WhereClause;
 import org.sagebionetworks.util.ValidateArgument;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Utilities for creating SQL elements
@@ -751,10 +750,40 @@ public class SqlElementUntils {
 	 * @return
 	 */
 	public static String wrapInDoubleQuotes(String toWrap){
-		StringBuilder builder = new StringBuilder();
-		builder.append("\"");
-		builder.append(toWrap);
-		builder.append("\"");
-		return builder.toString();
+		return "\"" + toWrap.replaceAll("\"", "\"\"") + "\"";
+	}
+
+	/**
+	 * Appends a WHERE clause to the String Builder if necessary
+	 * @param builder StringBuilder to append to
+	 * @param searchConditionString SearchCondition string to append. pass null if none to append.
+	 * @param originalWhereClause the WHERE clause that was in the original query. pass null if not exist.
+	 */
+	public static void appendCombinedWhereClauseToStringBuilder(StringBuilder builder, String searchConditionString,
+																WhereClause originalWhereClause) {
+		ValidateArgument.required(builder, "builder");
+
+		if(searchConditionString != null || originalWhereClause != null){
+			builder.append(" WHERE ");
+			if(originalWhereClause != null){
+				if(searchConditionString != null){
+					builder.append("(");
+				}
+				builder.append(originalWhereClause.getSearchCondition().toSql());
+				if(searchConditionString != null){
+					builder.append(")");
+				}
+			}
+			if(searchConditionString != null){
+				if(originalWhereClause != null){
+					builder.append(" AND ");
+					builder.append("(");
+				}
+				builder.append(searchConditionString);
+				if(originalWhereClause != null){
+					builder.append(")");
+				}
+			}
+		}
 	}
 }

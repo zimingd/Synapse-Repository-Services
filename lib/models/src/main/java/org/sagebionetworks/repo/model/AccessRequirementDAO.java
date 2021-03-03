@@ -1,6 +1,5 @@
 package org.sagebionetworks.repo.model;
 
-import java.util.Collection;
 import java.util.List;
 
 import org.sagebionetworks.repo.web.NotFoundException;
@@ -28,14 +27,6 @@ public interface AccessRequirementDAO {
 	public AccessRequirement get(String id) throws DatastoreException, NotFoundException;
 	
 	/**
-	 * 
-	 * @param subject the subject of the access restriction
-	 * @return the AccessRequirement objects related to this node
-	 * @throws DatastoreException 
-	 */
-	public List<AccessRequirement> getAllAccessRequirementsForSubject(List<String> subjectIds, RestrictableObjectType type) throws DatastoreException;
-	
-	/**
 	 * Updates the 'shallow' properties of an object.
 	 *
 	 * @param dto
@@ -55,17 +46,6 @@ public interface AccessRequirementDAO {
 	public void delete(String id) throws DatastoreException, NotFoundException;
 
 	/**
-	 * 
-	 * @param subject the subject of the access restriction
-	 * @param principalIds the principalIds (user and groups) to which a user belongs
-	 * @param accessType
-	 * @return the AccessRequirement IDs for the given node and given access type which are unmet for ANY of the given principals
-	 * @throws DatastoreException
-	 */
-	List<Long> getAllUnmetAccessRequirements(List<String> subjectIds, RestrictableObjectType type, Collection<Long> principalIds,
-			Collection<ACCESS_TYPE> accessTypes) throws DatastoreException;
-
-	/**
 	 * Retrieve a page of AccessRequirements.
 	 * 
 	 * @param subject the subject of the access restriction
@@ -75,7 +55,7 @@ public interface AccessRequirementDAO {
 	 * @throws DatastoreException 
 	 */
 	public List<AccessRequirement> getAccessRequirementsForSubject(
-			List<String> subjectIds, RestrictableObjectType type, long limit,
+			List<Long> subjectIds, RestrictableObjectType type, long limit,
 			long offset) throws DatastoreException;
 
 	/**
@@ -94,7 +74,7 @@ public interface AccessRequirementDAO {
 	 * if type is TEAM, subjectIds should contain the teamID
 	 * @return
 	 */
-	public AccessRequirementStats getAccessRequirementStats(List<String> subjectIds, RestrictableObjectType type);
+	public AccessRequirementStats getAccessRequirementStats(List<Long> subjectIds, RestrictableObjectType type);
 
 	/**
 	 * Retrieving the subjects under a given access requirement
@@ -121,7 +101,7 @@ public interface AccessRequirementDAO {
 	 * @param type
 	 * @return
 	 */
-	public List<String> getAccessRequirementDiff(List<String> sourceSubjects, List<String> destSubjects,
+	public List<String> getAccessRequirementDiff(List<Long> sourceSubjects, List<Long> destSubjects,
 			RestrictableObjectType type);
 
 	/**
@@ -141,4 +121,8 @@ public interface AccessRequirementDAO {
 	 * @return
 	 */
 	public List<RestrictableObjectDescriptor> getSubjects(long accessRequirementId, long limit, long offset);
+	
+	// For testing
+	
+	void clear();
 }

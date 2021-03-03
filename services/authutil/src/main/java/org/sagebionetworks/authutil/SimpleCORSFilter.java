@@ -1,7 +1,6 @@
 package org.sagebionetworks.authutil;
 
 import java.io.IOException;
-import java.util.Enumeration;
 
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
@@ -31,7 +30,9 @@ public class SimpleCORSFilter implements Filter {
 	public static final String ACCESS_CONTROL_REQUEST_METHOD = "Access-Control-Request-Method";
 	public static final String ALL_ORIGINS = "*";
 	public static final String METHODS = "POST, GET, PUT, DELETE";
-	public static final String HEADERS = "Origin, X-Requested-With, Content-Type, Accept, " + AuthorizationConstants.SESSION_TOKEN_PARAM;
+	public static final String HEADERS = "Origin, X-Requested-With, Content-Type, Accept, " + 
+			AuthorizationConstants.SESSION_TOKEN_PARAM +
+		", "+AuthorizationConstants.AUTHORIZATION_HEADER_NAME;
 	public static final String MAX_AGE = "600";
 	public static final String ACCESS_CONTROL_ALLOW_CREDENTIALS = "Access-Control-Allow-Credentials";
 	public static final String ACCESS_CONTROL_ALLOW_METHODS = "Access-Control-Allow-Methods";
@@ -62,25 +63,9 @@ public class SimpleCORSFilter implements Filter {
 			response.addHeader(ACCESS_CONTROL_ALLOW_METHODS, METHODS);
 			// header indicates that the actual request can include user credentials (send cookies from another domain).
 			response.addHeader(ACCESS_CONTROL_ALLOW_CREDENTIALS, Boolean.TRUE.toString());
-			// We do not pass along the pre-flight requests, we just return with the header.
-			log.info("Pre-flight request headers: ");
-			logHeaders(request);
 		} else {
 			// pass along all non-pre-flight requests.
 			chain.doFilter(request, response);
-		}
-	}
-
-	/**
-	 * Write the headers to the log
-	 * @param request
-	 */
-	private void logHeaders(HttpServletRequest request) {
-		Enumeration headers = request.getHeaderNames();
-		while(headers.hasMoreElements()){
-			String key = (String) headers.nextElement();
-			String value = request.getHeader(key);
-			log.info("\t "+key+" = "+value);
 		}
 	}
 

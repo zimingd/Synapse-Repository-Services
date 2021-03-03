@@ -1,21 +1,21 @@
 package org.sagebionetworks.repo.web;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
 
-import java.io.File;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.sagebionetworks.aws.SynapseS3Client;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.sagebionetworks.aws.SynapseS3ClientImpl;
 import org.sagebionetworks.downloadtools.FileUtils;
 import org.sagebionetworks.repo.manager.UserManager;
-import org.sagebionetworks.repo.manager.file.FileHandleManager;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.UserInfo;
@@ -23,25 +23,22 @@ import org.sagebionetworks.repo.model.dao.FileHandleDao;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.v2.wiki.V2WikiPage;
 import org.sagebionetworks.repo.model.wiki.WikiPage;
-import org.sagebionetworks.repo.web.controller.AbstractAutowiredControllerTestBase;
-import org.sagebionetworks.util.FileProvider;
 import org.sagebionetworks.utils.ContentTypeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import com.amazonaws.services.s3.model.S3Object;
 
-public class WikiModelTranslationHelperTest extends AbstractAutowiredControllerTestBase {
-	@Autowired
-	private FileHandleManager fileHandleManager;
+@ExtendWith(SpringExtension.class)
+@ContextConfiguration(locations = { "classpath:test-context.xml" })
+public class WikiModelTranslationHelperTest {
 	
 	@Autowired
 	private FileHandleDao fileMetadataDao;	
 	
 	@Autowired
-	private SynapseS3Client s3Client;
-	
-	@Autowired
-	private FileProvider tempFileProvider;
+	private SynapseS3ClientImpl s3Client;
 	
 	@Autowired
 	private UserManager userManager;
@@ -55,14 +52,14 @@ public class WikiModelTranslationHelperTest extends AbstractAutowiredControllerT
 	private String markdownAsString = "Markdown string contents with a link: \n[example](http://url.com/).";
 	private V2WikiPage v2Wiki;
 	
-	@Before
+	@BeforeEach
 	public void before() throws Exception{
 		// get user IDs
 		adminUserInfo = userManager.getUserInfo(BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId());
 		ownerId = adminUserInfo.getId().toString();
 	}
 	
-	@After
+	@AfterEach
 	public void after() throws DatastoreException, NotFoundException {
 		if(v2Wiki != null) {
 			String markdownHandleId = v2Wiki.getMarkdownFileHandleId();
@@ -102,16 +99,14 @@ public class WikiModelTranslationHelperTest extends AbstractAutowiredControllerT
 		assertNotNull(markdownHandleId);
 	
 		S3FileHandle markdownHandle = (S3FileHandle) fileMetadataDao.get(markdownHandleId);
-		File markdownTemp = tempFileProvider.createTempFile(wiki.getId()+ "_markdown", ".tmp");
 		// Retrieve uploaded markdown
 		S3Object s3Object = s3Client.getObject(markdownHandle.getBucketName(), markdownHandle.getKey());
-		Charset charset = ContentTypeUtil.getCharsetFromS3Object(s3Object);
-		InputStream in = s3Object.getObjectContent();
+		String contentType = s3Object.getObjectMetadata().getContentType();
+		Charset charset = ContentTypeUtil.getCharsetFromContentTypeString(contentType);
 		String markdownString = null;
-		try{
+		
+		try (InputStream in = s3Object.getObjectContent()) {
 			markdownString = FileUtils.readStreamAsString(in, charset, /*gunzip*/true);
-		}finally{
-			in.close();
 		}
 		// Make sure uploaded markdown is accurate
 		assertEquals(markdownAsString, markdownString);
@@ -139,17 +134,15 @@ public class WikiModelTranslationHelperTest extends AbstractAutowiredControllerT
 		String markdownHandleId = v2Wiki.getMarkdownFileHandleId();
 		assertNotNull(markdownHandleId);
 		S3FileHandle markdownHandle = (S3FileHandle) fileMetadataDao.get(markdownHandleId);
-		tempFileProvider.createTempFile(wiki.getId()+ "_markdown", ".tmp");
 		// Retrieve uploaded markdown
 		S3Object s3Object = s3Client.getObject(markdownHandle.getBucketName(), markdownHandle.getKey());
-		Charset charset = ContentTypeUtil.getCharsetFromS3Object(s3Object);
-		InputStream in = s3Object.getObjectContent();
+		String contentType = s3Object.getObjectMetadata().getContentType();
+		Charset charset = ContentTypeUtil.getCharsetFromContentTypeString(contentType);
 		String markdownString = null;
-		try{
+		try (InputStream in = s3Object.getObjectContent()) {
 			markdownString = FileUtils.readStreamAsString(in, charset, /*gunzip*/true);
-		}finally{
-			in.close();
 		}
+		
 		assertEquals("", markdownString);
 	}
 }

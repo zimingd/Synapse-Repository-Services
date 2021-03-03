@@ -34,6 +34,7 @@ import com.google.common.collect.Maps;
 
 import au.com.bytecode.opencsv.CSVReader;
 import au.com.bytecode.opencsv.CSVWriter;
+import org.sagebionetworks.table.query.util.ColumnTypeListMappings;
 
 /**
  * Utilities for working with Tables and Row data.
@@ -69,15 +70,19 @@ public class TableModelTestUtils {
 			cm.setColumnType(type);
 			cm.setName("i" + i);
 			cm.setId("" + i);
-			if (type == ColumnType.STRING || type == ColumnType.LINK) {
+			if (type == ColumnType.STRING || type == ColumnType.LINK || type == ColumnType.STRING_LIST) {
 				cm.setMaximumSize(47L);
 			}
-			if(type == ColumnType.STRING){
+			if(type == ColumnType.STRING || type == ColumnType.STRING_LIST){
 				cm.setFacetType(FacetType.enumeration);
 			}
 			
 			if(type == ColumnType.INTEGER){
 				cm.setFacetType(FacetType.range);
+			}
+
+			if (ColumnTypeListMappings.isList(type)){
+				cm.setMaximumListLength(45L);
 			}
 			
 			if (hasDefaults) {
@@ -95,6 +100,8 @@ public class TableModelTestUtils {
 				case USERID:
 				case FILEHANDLEID:
 				case ENTITYID:
+				case SUBMISSIONID:
+				case EVALUATIONID:
 				case LARGETEXT:
 					defaultValue = null;
 					break;
@@ -106,6 +113,18 @@ public class TableModelTestUtils {
 					break;
 				case LINK:
 					defaultValue = "defaultLink";
+					break;
+				case BOOLEAN_LIST:
+					defaultValue = "[true]";
+					break;
+				case DATE_LIST:
+				case INTEGER_LIST:
+				case ENTITYID_LIST:
+				case USERID_LIST:
+					defaultValue = "[12345]";
+					break;
+				case STRING_LIST:
+					defaultValue = "[\"defaultString\"]";
 					break;
 				default:
 					throw new IllegalStateException("huh? missing enum");
@@ -338,38 +357,51 @@ public class TableModelTestUtils {
 		if (cm.getColumnType() == null)
 			throw new IllegalArgumentException("ColumnType cannot be null");
 		switch (cm.getColumnType()) {
-		case STRING:
-			return (isUpdate ? "updatestring" : "string") + i;
-		case USERID:
-		case INTEGER:
-			return "" + (i + 3000);
-		case DATE:
-			if (!isExpected && useDateStrings && i % 2 == 0) {
-				return gmtDateFormatter.format(new Date(i + 4000 + (isUpdate ? 10000 : 0)));
-			} else {
-				return "" + (i + 4000 + (isUpdate ? 10000 : 0));
-			}
-		case FILEHANDLEID:
-			if(fileHandleIds != null){
-				int index = i % fileHandleIds.size();
-				return fileHandleIds.get(index);
-			}else{
-				return "" + (i + 5000 + (isUpdate ? 10000 : 0));
-			}
-		case ENTITYID:
-			return "syn" + (i + 6000 + (isUpdate ? 10000 : 0));
-		case BOOLEAN:
-			if (i % 2 > 0 ^ isUpdate) {
-				return Boolean.TRUE.toString();
-			} else {
-				return Boolean.FALSE.toString();
-			}
-		case DOUBLE:
-			return "" + (i * 3.41 + 3.12 + (isUpdate ? 10000 : 0));
-		case LINK:
-			return (isUpdate ? "updatelink" : "link") + (8000 + i);
-		case LARGETEXT:
-			return (isUpdate ? "updateLargeText" : "largeText") + (4000 + i);	
+			case STRING:
+				return (isUpdate ? "updatestring" : "string") + i;
+			case USERID:
+			case INTEGER:
+			case SUBMISSIONID:
+			case EVALUATIONID:
+				return "" + (i + 3000);
+			case DATE:
+				if (!isExpected && useDateStrings && i % 2 == 0) {
+					return gmtDateFormatter.format(new Date(i + 4000 + (isUpdate ? 10000 : 0)));
+				} else {
+					return "" + (i + 4000 + (isUpdate ? 10000 : 0));
+				}
+			case FILEHANDLEID:
+				if (fileHandleIds != null) {
+					int index = i % fileHandleIds.size();
+					return fileHandleIds.get(index);
+				} else {
+					return "" + (i + 5000 + (isUpdate ? 10000 : 0));
+				}
+			case ENTITYID:
+				return "syn" + (i + 6000 + (isUpdate ? 10000 : 0));
+			case BOOLEAN:
+				if (i % 2 > 0 ^ isUpdate) {
+					return Boolean.TRUE.toString();
+				} else {
+					return Boolean.FALSE.toString();
+				}
+			case DOUBLE:
+				return "" + (i * 3.41 + 3.12 + (isUpdate ? 10000 : 0));
+			case LINK:
+				return (isUpdate ? "updatelink" : "link") + (8000 + i);
+			case LARGETEXT:
+				return (isUpdate ? "updateLargeText" : "largeText") + (4000 + i);
+			case STRING_LIST:
+				return "[\""+(isUpdate ? "updatestring" : "string") + i+"\", \"" +(isUpdate ? "otherupdatestring" : "otherstring") + i+"\"]";
+			case INTEGER_LIST:
+			case USERID_LIST:
+				return "[" + (i + 3000) + "]";
+			case BOOLEAN_LIST:
+				return "[" + ((i % 2 > 0 ^ isUpdate) ? "true" : "false") + "]";
+			case DATE_LIST:
+				return "[" + (i + 4000 + (isUpdate ? 10000 : 0)) + "]";
+			case ENTITYID_LIST:
+				return "[\"syn" + (i + 6000 + (isUpdate ? 10000 : 0)) + "\"]";
 		}
 		throw new IllegalArgumentException("Unknown ColumnType: " + cm.getColumnType());
 	}
@@ -489,8 +521,11 @@ public class TableModelTestUtils {
 		}
 		cm.setName(name);
 		cm.setColumnType(type);
-		if (type == ColumnType.STRING) {
+		if (type == ColumnType.STRING || type == ColumnType.STRING_LIST) {
 			cm.setMaximumSize(50L);
+		}
+		if(ColumnTypeListMappings.isList(type)){
+			cm.setMaximumListLength(24L);
 		}
 		return cm;
 	}

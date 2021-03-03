@@ -1,11 +1,12 @@
 package org.sagebionetworks.report.worker;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
 import org.junit.After;
 import org.junit.Before;
@@ -28,7 +29,8 @@ import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.report.DownloadStorageReportRequest;
 import org.sagebionetworks.repo.model.report.DownloadStorageReportResponse;
 import org.sagebionetworks.repo.model.report.StorageReportType;
-import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.model.table.ObjectDataDTO;
+import org.sagebionetworks.repo.model.table.ViewObjectType;
 import org.sagebionetworks.table.cluster.ConnectionFactory;
 import org.sagebionetworks.table.cluster.TableIndexDAO;
 import org.sagebionetworks.utils.ContentTypeUtil;
@@ -142,10 +144,13 @@ public class StorageReportCSVDownloadWorkerIntegrationTest {
 		// Verify that the CSV can be downloaded via the filehandle, and the contents are as expected
 		// (A CSV with project ID, project name, size, ordered descending)
 		String csvContents = fileHandleManager.downloadFileToString(response.getResultsFileHandleId());
-		String expectedContents = "\"projectId\",\"projectName\",\"sizeInBytes\"\n" +
-				"\"" + project2Id + "\",\"" + project2.getName() + "\",\"8\"\n" +
-				"\"" + project1Id + "\",\"" + project1.getName() + "\",\"4\"\n";
-		assertEquals(expectedContents, csvContents);
+		List<String> expectedContentLines = Arrays.asList("\"projectId\",\"projectName\",\"sizeInBytes\"",
+				"\"" + project2Id + "\",\"" + project2.getName() + "\",\"8\"",
+				"\"" + project1Id + "\",\"" + project1.getName() + "\",\"4\"");
+		// Sometimes other tests don't clean up after themselves and there may be additional entities present in the report
+		// Instead of exact comparision, split the csv lines
+		// and make sure all expected lines for entities that were created in this test exist.
+		assertTrue(Arrays.asList(csvContents.split("\n")).containsAll(expectedContentLines));
 	}
 
 
@@ -183,11 +188,11 @@ public class StorageReportCSVDownloadWorkerIntegrationTest {
 	 * @return
 	 * @throws InterruptedException
 	 */
-	private EntityDTO waitForEntityReplication(String entityId) throws InterruptedException{
+	private ObjectDataDTO waitForEntityReplication(String entityId) throws InterruptedException{
 		Entity entity = entityManager.getEntity(adminUserInfo, entityId);
 		TableIndexDAO indexDao = tableConnectionFactory.getFirstConnection();
 		while(true){
-			EntityDTO dto = indexDao.getEntityData(KeyFactory.stringToKey(entityId));
+			ObjectDataDTO dto = indexDao.getObjectData(ViewObjectType.ENTITY, KeyFactory.stringToKey(entityId));
 			if(dto == null || !dto.getEtag().equals(entity.getEtag())){
 				System.out.println("Waiting for entity replication. id: "+entityId+" etag: "+entity.getEtag());
 				Thread.sleep(1000);

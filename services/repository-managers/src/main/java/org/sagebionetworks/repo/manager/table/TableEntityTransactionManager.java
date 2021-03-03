@@ -23,11 +23,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 public class TableEntityTransactionManager implements TableTransactionManager {
 	
-	/**
-	 * See: PLFM-5456
-	 */
-	private static final int EXCLUSIVE_LOCK_TIMEOUT_SECONDS = 5*60;
-	
 	@Autowired
 	TableManagerSupport tableManagerSupport;
 	@Autowired
@@ -53,20 +48,14 @@ public class TableEntityTransactionManager implements TableTransactionManager {
 		// Validate the user has permission to edit the table before locking.
 		tableManagerSupport.validateTableWriteAccess(userInfo, idAndVersion);
 		try {
-			return tableManagerSupport.tryRunWithTableExclusiveLock(progressCallback, idAndVersion, EXCLUSIVE_LOCK_TIMEOUT_SECONDS, new ProgressingCallable<TableUpdateTransactionResponse>() {
+			return tableManagerSupport.tryRunWithTableExclusiveLock(progressCallback, idAndVersion, new ProgressingCallable<TableUpdateTransactionResponse>() {
 
 				@Override
 				public TableUpdateTransactionResponse call(ProgressCallback callback) throws Exception {
 					return updateTableWithTransactionWithExclusiveLock(callback, userInfo, request);
 				}
 			});
-		}catch (TableUnavailableException e) {
-			throw e;
-		}catch (LockUnavilableException e) {
-			throw e;
-		}catch (RecoverableMessageException e) {
-			throw e;
-		}catch (RuntimeException e) {
+		} catch (TableUnavailableException | RecoverableMessageException | RuntimeException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new RuntimeException(e);
@@ -118,12 +107,12 @@ public class TableEntityTransactionManager implements TableTransactionManager {
 			String tableId = request.getEntityId();
 			IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
 			TableIndexManager indexManager = tableIndexConnectionFactory.connectToTableIndex(idAndVersion);
-			indexManager.createTemporaryTableCopy(idAndVersion, callback);
+			indexManager.createTemporaryTableCopy(idAndVersion);
 			try{
 				// validate while the temp table exists.
 				validateEachUpdateRequest(callback, userInfo, request, indexManager);
 			}finally{
-				indexManager.deleteTemporaryTableCopy(idAndVersion, callback);
+				indexManager.deleteTemporaryTableCopy(idAndVersion);
 			}
 		}else{
 			// we do not need a temporary copy to validate this request.
@@ -183,9 +172,11 @@ public class TableEntityTransactionManager implements TableTransactionManager {
 		List<TableUpdateResponse> results = new LinkedList<TableUpdateResponse>();
 		TableUpdateTransactionResponse response = new TableUpdateTransactionResponse();
 		response.setResults(results);
-		for(TableUpdateRequest change: request.getChanges()){
-			TableUpdateResponse changeResponse = tableEntityManager.updateTable(callback, userInfo, change, transactionId);
-			results.add(changeResponse);
+		if(request.getChanges() != null) {
+			for(TableUpdateRequest change: request.getChanges()){
+				TableUpdateResponse changeResponse = tableEntityManager.updateTable(callback, userInfo, change, transactionId);
+				results.add(changeResponse);
+			}
 		}
 		if (request.getCreateSnapshot() != null
 				&& Boolean.TRUE.equals(request.getCreateSnapshot())) {

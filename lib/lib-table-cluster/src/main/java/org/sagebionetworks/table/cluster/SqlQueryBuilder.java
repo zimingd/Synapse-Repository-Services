@@ -1,14 +1,15 @@
 package org.sagebionetworks.table.cluster;
 
-import java.util.List;
-
 import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.FacetColumnRequest;
+import org.sagebionetworks.repo.model.table.QueryFilter;
 import org.sagebionetworks.repo.model.table.SortItem;
 import org.sagebionetworks.table.query.ParseException;
 import org.sagebionetworks.table.query.TableQueryParser;
 import org.sagebionetworks.table.query.model.QuerySpecification;
+
+import java.util.List;
 
 public class SqlQueryBuilder {
 
@@ -18,57 +19,43 @@ public class SqlQueryBuilder {
 	Long overrideLimit;
 	Long maxBytesPerPage;
 	List<SortItem> sortList;
-	Boolean isConsistent;
 	Boolean includeEntityEtag;
 	Boolean includeRowIdAndRowVersion;
 	EntityType tableType;
 	List<FacetColumnRequest> selectedFacets;
+	List<QueryFilter> additionalFilters;
+	Long userId;
 	
 	/**
 	 * Start with the SQL.
 	 * @param sql
 	 * @throws ParseException 
 	 */
-	public SqlQueryBuilder(String sql) throws ParseException{
+	public SqlQueryBuilder(String sql, Long userId) throws ParseException{
 		model = new TableQueryParser(sql).querySpecification();
+		this.userId = userId;
 	}
 	
-	public SqlQueryBuilder(String sql, List<ColumnModel> tableSchema) throws ParseException{
+	public SqlQueryBuilder(String sql, List<ColumnModel> tableSchema, Long userId) throws ParseException{
 		this.model = new TableQueryParser(sql).querySpecification();
 		this.tableSchema = tableSchema;
+		this.userId = userId;
 	}
 	
-	public SqlQueryBuilder(QuerySpecification model){
+	public SqlQueryBuilder(QuerySpecification model, Long userId){
 		this.model = model;
+		this.userId = userId;
 	}
 	
 	public SqlQueryBuilder(QuerySpecification model,
 			List<ColumnModel> tableSchema, Long overideOffset,
-			Long overideLimit, Long maxBytesPerPage) {
+			Long overideLimit, Long maxBytesPerPage, Long userId) {
 		this.model = model;
 		this.tableSchema = tableSchema;
 		this.overrideOffset = overideOffset;
 		this.overrideLimit = overideLimit;
 		this.maxBytesPerPage = maxBytesPerPage;
-	}
-	
-	/**
-	 * This constructor will be removed after facets are refactored.
-	 * @param modifiedQuery
-	 * @param sqlQuery
-	 */
-	@Deprecated
-	public SqlQueryBuilder(QuerySpecification modifiedQuery, SqlQuery sqlQuery) {
-		this.model = modifiedQuery;
-		this.tableSchema = sqlQuery.tableSchema;
-		this.maxBytesPerPage = sqlQuery.maxBytesPerPage;
-		this.isConsistent = sqlQuery.isConsistent;
-		this.includeEntityEtag = sqlQuery.includeEntityEtag;
-		this.includeRowIdAndRowVersion = sqlQuery.includesRowIdAndVersion;
-		this.tableType = sqlQuery.tableType;
-		this.selectedFacets = sqlQuery.getSelectedFacets();
-		this.overrideLimit = sqlQuery.overrideLimit;
-		this.overrideOffset = sqlQuery.overrideOffset;
+		this.userId = userId;
 	}
 
 	public SqlQueryBuilder tableSchema(List<ColumnModel> tableSchema) {
@@ -96,11 +83,6 @@ public class SqlQueryBuilder {
 		return this;
 	}
 	
-	public SqlQueryBuilder isConsistent(Boolean isConsistent) {
-		this.isConsistent = isConsistent;
-		return this;
-	}
-	
 	public SqlQueryBuilder includeEntityEtag(Boolean includeEntityEtag) {
 		this.includeEntityEtag = includeEntityEtag;
 		return this;
@@ -121,8 +103,14 @@ public class SqlQueryBuilder {
 		return this;
 	}
 
+	public SqlQueryBuilder additionalFilters(List<QueryFilter> filters){
+		this.additionalFilters = filters;
+		return this;
+	}
+
 	public SqlQuery build(){
-		return new SqlQuery(model, tableSchema, overrideOffset, overrideLimit, maxBytesPerPage, sortList, isConsistent, includeEntityEtag, includeRowIdAndRowVersion, tableType, selectedFacets);
+		return new SqlQuery(model, tableSchema, overrideOffset, overrideLimit, maxBytesPerPage, sortList,
+				includeEntityEtag, tableType, selectedFacets, additionalFilters, userId);
 	}
 
 

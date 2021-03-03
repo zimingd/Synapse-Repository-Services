@@ -16,7 +16,7 @@
         },
         "columnType": {
             "type": "string",
-            "description": "The column type determines the type of data that can be stored in a column.",
+            "description": "The column type determines the type of data that can be stored in a column. Switching between types (using <a href=\"${POST.entity.id.table.transaction.async.start}\">a transaction</a> with <a href=\"${org.sagebionetworks.repo.model.table.TableUpdateTransactionRequest}\">TableUpdateTransactionRequest</a> in the \"changes\" list) is generally allowed except for switching to \"_LIST\" suffixed types. In such cases, a new column must be created and data must be copied over manually",
             "name": "ColumnType",
             "id": "org.sagebionetworks.repo.model.table.ColumnType",
             "enum": [
@@ -49,6 +49,14 @@
                     "description": "The ENTITYID type represents a reference to a Synapse Entity.  Values will include the 'syn' prefix, such as 'syn123'.  Each ENTITYID column counts as 44 bytes towards the total width of a table."
                 },
                 {
+                    "name": "SUBMISSIONID",
+                    "description": "The SUBMISSIONID type represents a reference to an evaluation submission. The value should be the ID of the referenced submission.  Each SUBMISSIONID column counts as 20 bytes towards the total width of a table."
+                },
+                {
+                    "name": "EVALUATIONID",
+                    "description": "The EVALUATIONID type represents a reference to an evaluation. The value should be the ID of the referenced evaluation.  Each EVALUATIONID column counts as 20 bytes towards the total width of a table."
+                },
+                {
                     "name": "LINK",
                     "description": "The LINK data type represents any URL with 1,000 characters or less.  Each LINK column counts as maxSize*4 (4 bytes per character) towards the total width of a table."
                 },
@@ -59,12 +67,40 @@
                 {
                     "name": "USERID",
                     "description": "The USERID data type represents a reference to a Synapse User.  The value should be the ID of the referenced User.  Each USERID column counts as 20 bytes towards the total width of a table."
+                },
+                {
+                    "name": "STRING_LIST",
+                    "description": "Multiple values of STRING"
+                },
+                {
+                    "name": "INTEGER_LIST",
+                    "description": "Multiple values of INTEGER."
+                },
+                {
+                    "name": "BOOLEAN_LIST",
+                    "description": "Multiple values of BOOLEAN."
+                },
+                {
+                    "name": "DATE_LIST",
+                    "description": "Multiple values of DATE."
+                },
+                {
+                    "name": "ENTITYID_LIST",
+                    "description": "Multiple values of ENTITYID."
+                },
+                {
+                    "name": "USERID_LIST",
+                    "description": "Multiple values of USERID."
                 }
             ]
         },
         "maximumSize": {
             "type": "integer",
-            "description": "A parameter for columnTypes with a maximum size.  For example, ColumnType.STRINGs have a default maximum size of 50 characters, but can be set to a maximumSize of 1 to 1000 characters."
+            "description": "A parameter for columnTypes with a maximum size.  For example, ColumnType.STRINGs have a default maximum size of 50 characters, but can be set to a maximumSize of 1 to 1000 characters. For columnType of STRING_LIST, this limits the size of individual string elements in the list"
+        },
+        "maximumListLength": {
+            "type": "integer",
+            "description": "Required if using a columnType with a \"_LIST\" suffix. Describes the maximum number of values that will appear in that list. Value range 1-100 inclusive. Default 100"
         },
         "enumValues": {
             "description": "Columns of type STRING can be constrained to an enumeration values set on this list. The maximum number of entries for an enum is 100",
@@ -72,7 +108,6 @@
             "items": {"type": "string"}
         },
         "facetType": {
-            "description": "Set to one of the enumerated values to indicate this column should be treated as a facet. \"Enumeration\" will return the most frequently seen values and their counts; selecting these values will cause the table results to be filtered. \"Range\" will allow the table to be filtered by a chosen lower and upper bound; these bounds are inclusive.",
             "$ref": "org.sagebionetworks.repo.model.table.FacetType"
         }
     }

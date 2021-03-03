@@ -46,10 +46,6 @@
 			<scope>test</scope>
 		</dependency>
 
-		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-java-sdk</artifactId>
-		</dependency>
 		<!-- Spring Framework dependencies -->
 		<dependency>
 			<groupId>org.springframework</groupId>
@@ -118,4 +114,9 @@
 		</dependency>
 
 	</dependencies>
+
+	<properties>
+		<jacoco.branch.minumum>0.50</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.50</jacoco.line.minumum>
+	</properties>
 </project>

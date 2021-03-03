@@ -13,6 +13,8 @@
 	<packaging>jar</packaging>
 
 	<properties>
+		<jacoco.branch.minumum>0.80</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.80</jacoco.line.minumum>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
 
@@ -34,8 +36,8 @@
 			<artifactId>simple-http-client</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>org.json</groupId>
-			<artifactId>json</artifactId>
+			<groupId>org.sagebionetworks</groupId>
+			<artifactId>schema-to-pojo-org-json</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>xerces</groupId>

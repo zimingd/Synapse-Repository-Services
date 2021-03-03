@@ -1,5 +1,8 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.RestrictionInformationRequest;
@@ -10,11 +13,14 @@ import org.sagebionetworks.repo.model.dataaccess.OpenSubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.RequestInterface;
 import org.sagebionetworks.repo.model.dataaccess.ResearchProject;
 import org.sagebionetworks.repo.model.dataaccess.Submission;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPage;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPageRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPageRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionStateChangeRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionStatus;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -53,6 +59,7 @@ public class DataAccessController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.RESEARCH_PROJECT, method = RequestMethod.POST)
 	public @ResponseBody ResearchProject createOrUpdate(
@@ -71,6 +78,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_ID_RESEARCH_PROJECT, method = RequestMethod.GET)
 	public @ResponseBody ResearchProject getUserOwnResearchProjectForUpdate(
@@ -87,6 +95,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DATA_ACCESS_REQUEST, method = RequestMethod.POST)
 	public @ResponseBody RequestInterface createOrUpdate(
@@ -107,6 +116,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_ID_DATA_ACCESS_REQUEST_FOR_UPDATE, method = RequestMethod.GET)
 	public @ResponseBody RequestInterface getRequestForUpdate(
@@ -123,6 +133,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DATA_ACCESS_REQUEST_ID_SUBMISSION, method = RequestMethod.POST)
 	public @ResponseBody SubmissionStatus submit(
@@ -141,6 +152,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DATA_ACCESS_SUBMISSION_ID_CANCEL, method = RequestMethod.PUT)
 	public @ResponseBody SubmissionStatus cancel(
@@ -158,6 +170,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DATA_ACCESS_SUBMISSION_ID, method = RequestMethod.PUT)
 	public @ResponseBody Submission updateState(
@@ -175,12 +188,30 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_ID_LIST_SUBMISSION, method = RequestMethod.POST)
 	public @ResponseBody SubmissionPage listSubmissions(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody SubmissionPageRequest SubmissionPageRequest) throws NotFoundException {
-		return serviceProvider.getDataAccessService().listSubmissions(userId, SubmissionPageRequest);
+			@RequestBody SubmissionPageRequest submissionPageRequest) throws NotFoundException {
+		return serviceProvider.getDataAccessService().listSubmissions(userId, submissionPageRequest);
+	}
+
+	/**
+	 * Return the research project info for approved data access submissions, 
+	 * ordered by submission modified-on date, ascending
+	 * 
+	 * @param userId
+	 * @param researchProjectPageRequest
+	 * @return in order of modifiedOn, ascending
+	 * @throws NotFoundException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.OK)
+	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_ID_LIST_APPROVED_SUBMISISON_INFO, method = RequestMethod.POST)
+	public @ResponseBody SubmissionInfoPage listInfoForApprovedSubmissions(
+			@RequestBody SubmissionInfoPageRequest submissionInfoPageRequest) throws NotFoundException {
+		return serviceProvider.getDataAccessService().listInfoForApprovedSubmissions(submissionInfoPageRequest);
 	}
 
 	/**
@@ -191,6 +222,7 @@ public class DataAccessController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ACCESS_REQUIREMENT_ID_STATUS, method = RequestMethod.GET)
 	public @ResponseBody AccessRequirementStatus getAccessRequirementStatus(
@@ -202,16 +234,16 @@ public class DataAccessController {
 	/**
 	 * Retrieve restriction information on a restrictable object
 	 * 
-	 * @param userId
 	 * @param request
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.RESTRICTION_INFORMATION, method = RequestMethod.POST)
 	public @ResponseBody RestrictionInformationResponse getRestrictionInformation(
-			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestBody RestrictionInformationRequest request) throws NotFoundException {
+		@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+		@RequestBody RestrictionInformationRequest request) throws NotFoundException {
 		return serviceProvider.getDataAccessService().getRestrictionInformation(userId, request);
 	}
 
@@ -223,11 +255,12 @@ public class DataAccessController {
 	 * @param nextPageToken
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DATA_ACCESS_SUBMISSION_OPEN_SUBMISSIONS, method = RequestMethod.GET)
 	public @ResponseBody OpenSubmissionPage getOpenSubmissions(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			@RequestParam(value = "nextPageToken", required = false) String nextPageToken) {
+			@RequestParam(value = UrlHelpers.NEXT_PAGE_TOKEN_PARAM, required = false) String nextPageToken) {
 		return serviceProvider.getDataAccessService().getOpenSubmissions(userId, nextPageToken);
 	}
 }

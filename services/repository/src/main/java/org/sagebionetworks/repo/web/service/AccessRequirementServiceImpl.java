@@ -3,8 +3,8 @@ package org.sagebionetworks.repo.web.service;
 import java.util.List;
 
 import org.sagebionetworks.reflection.model.PaginatedResults;
-import org.sagebionetworks.repo.manager.AccessRequirementManager;
 import org.sagebionetworks.repo.manager.UserManager;
+import org.sagebionetworks.repo.manager.dataaccess.AccessRequirementManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessRequirement;
 import org.sagebionetworks.repo.model.DatastoreException;
@@ -24,8 +24,6 @@ public class AccessRequirementServiceImpl implements AccessRequirementService {
 	AccessRequirementManager accessRequirementManager;	
 	@Autowired
 	UserManager userManager;
-	@Autowired
-	ObjectTypeSerializer objectTypeSerializer;
 
 	@WriteTransaction
 	@Override
@@ -52,20 +50,6 @@ public class AccessRequirementServiceImpl implements AccessRequirementService {
 			String entityId) throws Exception {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return accessRequirementManager.createLockAccessRequirement(userInfo, entityId);
-	}
-	
-	@Override
-	public PaginatedResults<AccessRequirement> getUnfulfilledAccessRequirements(
-			Long userId, RestrictableObjectDescriptor subjectId, ACCESS_TYPE accessType) 
-			throws DatastoreException, UnauthorizedException, 
-			NotFoundException {
-		UserInfo userInfo = userManager.getUserInfo(userId);
-	
-		List<AccessRequirement> results = 
-			accessRequirementManager.getAllUnmetAccessRequirements(userInfo, subjectId, accessType);
-
-		// This services is not actually paginated so PaginatedResults is being misused.
-		return PaginatedResults.createMisusedPaginatedResults(results);
 	}
 	
 	@Override

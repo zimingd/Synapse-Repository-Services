@@ -4,9 +4,10 @@ import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.evaluation.model.SubmissionContributor;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.ObjectType;
-import org.sagebionetworks.repo.model.TrashedEntity;
 import org.sagebionetworks.repo.model.asynch.AsynchronousJobStatus;
 import org.sagebionetworks.repo.model.auth.NewIntegrationTestUser;
+import org.sagebionetworks.repo.model.feature.Feature;
+import org.sagebionetworks.repo.model.feature.FeatureStatus;
 import org.sagebionetworks.repo.model.message.ChangeMessages;
 import org.sagebionetworks.repo.model.message.FireMessagesResult;
 import org.sagebionetworks.repo.model.message.PublishResults;
@@ -19,6 +20,7 @@ import org.sagebionetworks.repo.model.migration.MigrationTypeCount;
 import org.sagebionetworks.repo.model.migration.MigrationTypeCounts;
 import org.sagebionetworks.repo.model.migration.MigrationTypeList;
 import org.sagebionetworks.repo.model.migration.MigrationTypeNames;
+import org.sagebionetworks.repo.model.oauth.OAuthClient;
 import org.sagebionetworks.repo.model.quiz.PassingRecord;
 import org.sagebionetworks.repo.model.quiz.QuizResponse;
 import org.sagebionetworks.repo.model.status.StackStatus;
@@ -139,25 +141,6 @@ public interface SynapseAdminClient extends SynapseClient {
 	 * Clears the Synapse DOI table. Note this does not clear the DOIs registered outside Synapse.
 	 */
 	public void clearDoi() throws SynapseException;
-
-	/**
-	 * Gets everything in the trash can.
-	 */
-	public PaginatedResults<TrashedEntity> viewTrash(long offset, long limit)
-			throws SynapseException;
-
-	/**
-	 * Purges everything in the trash can. All the entities in the trash will be permanently deleted.
-	 */
-	public void purgeTrash() throws SynapseException;
-	
-	/**
-	 * Purges trash without children trash items in the trash can.
-	 * @param numDaysInTrash number of days the trash items must have been in the trash can
-	 * @param limit number of trash items to delete
-	 * @throws SynapseException
-	 */
-	public void purgeTrashLeaves(long numDaysInTrash, long limit) throws SynapseException;
 	
 	/**
 	 * List change messages.
@@ -257,9 +240,59 @@ public interface SynapseAdminClient extends SynapseClient {
 	 */
 	public PaginatedResults<PassingRecord> getCertifiedUserPassingRecords(long offset, long limit, String principalId) throws SynapseException;
 
+	
+	/**
+	 * Delete the Test Response indicated by the given id
+	 * 
+	 * Must be a Synapse admin to make this request
+	 * 
+	 * @param id
+	 * @throws SynapseException 
+	 */
+	public void deleteCertifiedUserTestResponse(String id) throws SynapseException;
+
+	
 	/**
 	 * Deletes a message.  Used for test cleanup only.  Admin only.
 	 */
 	public void deleteMessage(String messageId) throws SynapseException;
+	
+	/**
+	 * Updates the verified status of the oauth client with the given id, only administrator or members of the ACT team can perform this action
+	 * 
+	 * @param clientId The id of the oauth client
+	 * @param status The verified value to be set 
+	 * @param etag The etag of the client
+	 * @return The updated client
+	 * 
+	 * @throws SynapseException
+	 */
+	OAuthClient updateOAuthClientVerifiedStatus(String clientId, String etag, boolean status) throws SynapseException;
+
+	/**
+	 * Removes all user information to comply with data removal requests.
+	 * @param principalId
+	 * @throws SynapseException
+	 */
+	void redactUserInformation(String principalId) throws SynapseException;
+	
+	/**
+	 * Returns the status of a feature
+	 * 
+	 * @param feature The feature name
+	 * @return The status of the feature
+	 * @throws SynapseException
+	 */
+	FeatureStatus getFeatureStatus(Feature feature) throws SynapseException;
+	
+	/**
+	 * Sets the status of a feature
+	 * 
+	 * @param feature The feature name
+	 * @param status The status of the feature
+	 * @return The status of the feature
+	 * @throws SynapseException
+	 */
+	FeatureStatus setFeatureStatus(Feature feature, FeatureStatus status) throws SynapseException;
 
 }

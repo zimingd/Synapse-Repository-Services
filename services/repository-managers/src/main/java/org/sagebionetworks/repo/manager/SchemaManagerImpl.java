@@ -14,6 +14,7 @@ import org.sagebionetworks.repo.model.SchemaCache;
 import org.sagebionetworks.repo.model.registry.EntityRegistry;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.schema.ObjectSchema;
+import org.sagebionetworks.schema.ObjectSchemaImpl;
 import org.sagebionetworks.schema.adapter.JSONEntity;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.sagebionetworks.schema.adapter.org.json.EntityFactory;
@@ -70,11 +71,13 @@ public class SchemaManagerImpl implements SchemaManager {
 		resourceId = resourceId.replaceAll("\\.", "/");
 		String fileName = "schema/" + resourceId + ".json";
 		InputStream stream = ServerSideOnlyFactory.class.getClassLoader().getResourceAsStream(fileName);
-		if (stream == null) throw new NotFoundException("JSON Schema cannot be found for: "+ fileName);
+		if (stream == null) {
+			throw new NotFoundException("JSON Schema cannot be found for: "+ fileName);
+		}
 		String json;
 		try {
 			json = readStringFromStream(stream);
-			return EntityFactory.createEntityFromJSONString(json, ObjectSchema.class);
+			return EntityFactory.createEntityFromJSONString(json, ObjectSchemaImpl.class);
 		} catch (IOException e) {
 			throw new DatastoreException(e);
 		} catch (JSONObjectAdapterException e) {

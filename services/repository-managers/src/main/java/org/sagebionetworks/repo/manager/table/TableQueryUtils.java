@@ -1,11 +1,9 @@
 package org.sagebionetworks.repo.manager.table;
 
-import java.io.StringWriter;
-import java.util.List;
-
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.UnmodifiableXStream;
 import org.sagebionetworks.repo.model.asynch.CacheableRequestBody;
+import org.sagebionetworks.repo.model.dbo.dao.table.TableExceptionTranslator;
 import org.sagebionetworks.repo.model.table.DownloadFromTableRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnRequest;
 import org.sagebionetworks.repo.model.table.Query;
@@ -14,7 +12,11 @@ import org.sagebionetworks.repo.model.table.QueryNextPageToken;
 import org.sagebionetworks.repo.model.table.SortItem;
 import org.sagebionetworks.table.query.ParseException;
 import org.sagebionetworks.table.query.TableQueryParser;
+import org.sagebionetworks.table.query.TokenMgrError;
 import org.sagebionetworks.util.ValidateArgument;
+
+import java.io.StringWriter;
+import java.util.List;
 
 public class TableQueryUtils {
 
@@ -45,16 +47,14 @@ public class TableQueryUtils {
 	 * @param sql
 	 * @param nextOffset
 	 * @param limit
-	 * @param isConsistent
 	 * @return
 	 */
-	public static QueryNextPageToken createNextPageToken(String sql, List<SortItem> sortList, Long nextOffset, Long limit, boolean isConsistent, List<FacetColumnRequest> selectedFacets) {
+	public static QueryNextPageToken createNextPageToken(String sql, List<SortItem> sortList, Long nextOffset, Long limit, List<FacetColumnRequest> selectedFacets) {
 		Query query = new Query();
 		query.setSql(sql);
 		query.setSort(sortList);
 		query.setOffset(nextOffset);
 		query.setLimit(limit);
-		query.setIsConsistent(isConsistent);
 		query.setSelectedFacets(selectedFacets);
 
 		StringWriter writer = new StringWriter(sql.length() + 50);
@@ -128,8 +128,11 @@ public class TableQueryUtils {
 		ValidateArgument.required(sql, "SQL string");
 		try {
 			return new TableQueryParser(sql).querySpecification().getTableExpression().getFromClause().getTableReference().getTableName();
-		} catch (ParseException e) {
-			throw new IllegalArgumentException(e);
+		} catch (TokenMgrError e) {
+			throw new IllegalArgumentException("The provided SQL query could not be parsed.",e);
+		}catch (ParseException e) {
+			throw new IllegalArgumentException(e.getMessage() + TableExceptionTranslator.UNQUOTED_KEYWORDS_ERROR_MESSAGE, e);
+
 		}
 	}
 }

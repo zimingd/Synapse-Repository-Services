@@ -1,15 +1,15 @@
 package org.sagebionetworks.table.cluster;
 
-import static org.sagebionetworks.table.cluster.utils.ColumnConstants.*;
+import static org.sagebionetworks.repo.model.table.ColumnConstants.*;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.text.StringEscapeUtils;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.ValueParser;
 import org.sagebionetworks.repo.model.table.parser.BooleanParser;
 import org.sagebionetworks.repo.model.table.parser.DateToLongParser;
 import org.sagebionetworks.repo.model.table.parser.DoubleParser;
 import org.sagebionetworks.repo.model.table.parser.EntityIdParser;
+import org.sagebionetworks.repo.model.table.parser.ListStringParser;
 import org.sagebionetworks.repo.model.table.parser.LongParser;
 import org.sagebionetworks.repo.model.table.parser.StringParser;
 
@@ -19,17 +19,29 @@ import org.sagebionetworks.repo.model.table.parser.StringParser;
  */
 public enum ColumnTypeInfo {
 	
-	INTEGER		(ColumnType.INTEGER, 		MySqlColumnType.BIGINT,		new LongParser(),			20L),
-	FILEHANDLEID(ColumnType.FILEHANDLEID,	MySqlColumnType.BIGINT, 	new LongParser(),			20L),
-	DATE		(ColumnType.DATE,			MySqlColumnType.BIGINT,		new DateToLongParser(),		20L),
-	ENTITYID	(ColumnType.ENTITYID,		MySqlColumnType.BIGINT,		new EntityIdParser(),		20L),
-	LINK		(ColumnType.LINK,			MySqlColumnType.VARCHAR,	new StringParser(),			null),
-	STRING		(ColumnType.STRING,			MySqlColumnType.VARCHAR,	new StringParser(),			null),
-	DOUBLE		(ColumnType.DOUBLE,			MySqlColumnType.DOUBLE,		new DoubleParser(),			null),
-	BOOLEAN		(ColumnType.BOOLEAN,		MySqlColumnType.BOOLEAN,	new BooleanParser(),		null),
-	LARGETEXT	(ColumnType.LARGETEXT,		MySqlColumnType.MEDIUMTEXT,	new StringParser(),			null),
-	USERID		(ColumnType.USERID,			MySqlColumnType.BIGINT, 	new LongParser(),			20L);
-	
+	INTEGER		(ColumnType.INTEGER, 		MySqlColumnType.BIGINT,		new LongParser(),								20L),
+	FILEHANDLEID(ColumnType.FILEHANDLEID,	MySqlColumnType.BIGINT, 	new LongParser(),								20L),
+	DATE		(ColumnType.DATE,			MySqlColumnType.BIGINT,		new DateToLongParser(),							20L),
+	ENTITYID	(ColumnType.ENTITYID,		MySqlColumnType.BIGINT,		new EntityIdParser(),							20L),
+	SUBMISSIONID(ColumnType.SUBMISSIONID,	MySqlColumnType.BIGINT,		new LongParser(),								20L),
+	EVALUATIONID(ColumnType.EVALUATIONID,	MySqlColumnType.BIGINT,		new LongParser(),								20L),
+	LINK		(ColumnType.LINK,			MySqlColumnType.VARCHAR,	new StringParser(),								null),
+	STRING		(ColumnType.STRING,			MySqlColumnType.VARCHAR,	new StringParser(),								null),
+	DOUBLE		(ColumnType.DOUBLE,			MySqlColumnType.DOUBLE,		new DoubleParser(),								null),
+	BOOLEAN		(ColumnType.BOOLEAN,		MySqlColumnType.BOOLEAN,	new BooleanParser(),							null),
+	LARGETEXT	(ColumnType.LARGETEXT,		MySqlColumnType.MEDIUMTEXT,	new StringParser(),								null),
+	USERID		(ColumnType.USERID,			MySqlColumnType.BIGINT, 	new LongParser(),								20L),
+	STRING_LIST	(ColumnType.STRING_LIST,	MySqlColumnType.JSON,		new ListStringParser(new StringParser(),false),		null),
+	INTEGER_LIST(ColumnType.INTEGER_LIST,	MySqlColumnType.JSON,		new ListStringParser(new LongParser(),false),			null),
+	BOOLEAN_LIST(ColumnType.BOOLEAN_LIST,	MySqlColumnType.JSON,		new ListStringParser(new BooleanParser(),false),			null),
+	DATE_LIST	(ColumnType.DATE_LIST,		MySqlColumnType.JSON,		new ListStringParser(new DateToLongParser(),false),			null),
+	// Entity id lists need to be re-parsed to prepend "syn" to its elements
+	ENTITYID_LIST(ColumnType.ENTITYID_LIST, MySqlColumnType.JSON,       new ListStringParser(new EntityIdParser(),true), null),
+	USERID_LIST (ColumnType.USERID_LIST,    MySqlColumnType.JSON,       new ListStringParser(new LongParser(),false), null)
+	;
+
+
+
 	private ColumnType type;
 	private MySqlColumnType mySqlType;
 	private Long maxSize;
@@ -41,19 +53,17 @@ public enum ColumnTypeInfo {
 		this.maxSize = maxSize;
 		this.parser = parser;
 	}
-	
 
 	/**
 	 * Get the SQL to define a column of this type in MySQL.
 	 * @param inputSize
 	 * @param defaultValue
 	 * @param useDepricatedUtf8ThreeBytes Should only be set to true for the few old
-	 * tables that are too large to build with the correct 4 byte UTF-8.
 	 * @return
 	 */
 	public String toSql(Long inputSize, String defaultValue, boolean useDepricatedUtf8ThreeBytes){
 		StringBuilder builder = new StringBuilder();
-		builder.append(mySqlType.name());
+			builder.append(mySqlType.name());
 		Long size = maxSize;
 		if(inputSize == null && requiresInputMaxSize()){
 			throw new IllegalArgumentException("Size must be provided for type: "+type);
@@ -146,26 +156,35 @@ public enum ColumnTypeInfo {
 	 * Append the a default value for this type to the passed builder.
 	 * 
 	 * @param builder
-	 * @param defalutValue
+	 * @param defaultValue
 	 */
 	public void appendDefaultValue(StringBuilder builder, String defaultValue){
 		builder.append("DEFAULT ");
-		if(defaultValue == null){
+		// escape single quotes
+		// NOTE: This originally used StringEscapeUtils.escapeSql() which only ever escaped single quotes and has been removed in later versions.
+		// https://commons.apache.org/proper/commons-lang/javadocs/api-2.6/org/apache/commons/lang/StringEscapeUtils.html#escapeSql(java.lang.String)
+		// https://stackoverflow.com/questions/32096614/migrating-stringescapeutils-escapesql-from-commons-lang
+		if(defaultValue != null){
+			defaultValue = StringUtils.replace(defaultValue, "'", "''");
+		}
+		// Validate the default can be applied.
+		Object objectValue = parseValueForDatabaseWrite(defaultValue);
+
+		if(objectValue == null){
 			builder.append("NULL");
 		}else{
-			// escape single quotes
-			// NOTE: This originally used StringEscapeUtils.escapeSql() which only ever escaped single quotes and has been removed in later versions.
-			// https://commons.apache.org/proper/commons-lang/javadocs/api-2.6/org/apache/commons/lang/StringEscapeUtils.html#escapeSql(java.lang.String)
-			// https://stackoverflow.com/questions/32096614/migrating-stringescapeutils-escapesql-from-commons-lang
-			defaultValue = StringUtils.replace(defaultValue, "'", "''");
-			// Validate the default can be applied.
-			Object objectValue = parseValueForDatabaseWrite(defaultValue);
-			if(isStringType()){
+			if(mySqlType == MySqlColumnType.JSON){
+				builder.append("(");
+			}
+			if(isStringType() || mySqlType == MySqlColumnType.JSON){
 				builder.append("'");
 			}
 			builder.append(objectValue.toString());
-			if(isStringType()){
+			if(isStringType() || mySqlType == MySqlColumnType.JSON){
 				builder.append("'");
+			}
+			if(mySqlType == MySqlColumnType.JSON){
+				builder.append(")");
 			}
 		}
 	}

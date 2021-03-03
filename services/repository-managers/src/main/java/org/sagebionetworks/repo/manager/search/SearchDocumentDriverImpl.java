@@ -19,16 +19,20 @@ import org.joda.time.DateTime;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AccessControlListDAO;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.DatastoreException;
 import org.sagebionetworks.repo.model.EntityHeader;
 import org.sagebionetworks.repo.model.EntityPath;
+import org.sagebionetworks.repo.model.IdAndAlias;
 import org.sagebionetworks.repo.model.Node;
 import org.sagebionetworks.repo.model.NodeDAO;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.ResourceAccess;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Utils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValue;
 import org.sagebionetworks.repo.model.dao.WikiPageKey;
 import org.sagebionetworks.repo.model.dao.WikiPageKeyHelper;
+import org.sagebionetworks.repo.model.entity.NameIdType;
 import org.sagebionetworks.repo.model.search.Document;
 import org.sagebionetworks.repo.model.search.DocumentFields;
 import org.sagebionetworks.repo.model.search.DocumentTypeNames;
@@ -99,7 +103,8 @@ public class SearchDocumentDriverImpl implements SearchDocumentDriver {
 		AccessControlList benefactorACL = aclDAO.get(benefactorId,
 				ObjectType.ENTITY);
 		Long revId = node.getVersionNumber();
-		Annotations annos = nodeDao.getUserAnnotationsV1ForVersion(node.getId(),
+
+		Annotations annos = nodeDao.getUserAnnotationsForVersion(node.getId(),
 				revId);
 		// Get the wikipage text
 		String wikiPagesText = getAllWikiPageText(node.getId());
@@ -114,11 +119,17 @@ public class SearchDocumentDriverImpl implements SearchDocumentDriver {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@Override
 	public EntityPath getEntityPath(String nodeId) throws NotFoundException {
-		List<EntityHeader> pathHeaders = nodeDao.getEntityPath(nodeId);
+		List<EntityHeader> pathHeaders = NameIdType.toEntityHeader(nodeDao.getEntityPath(nodeId));
 		EntityPath entityPath = new EntityPath();
 		entityPath.setPath(pathHeaders);
 		return entityPath;
+	}
+	
+	@Override
+	public List<IdAndAlias> getAliases(List<String> nodeIds) {
+		return nodeDao.getAliasByNodeId(nodeIds);
 	}
 
 
@@ -225,11 +236,8 @@ public class SearchDocumentDriverImpl implements SearchDocumentDriver {
 	 */
 	Map<String, String> getFirsAnnotationValues(Annotations anno){
 		Map<String, String> firstAnnotationValues = new HashMap<>();
-		for(String key: anno.keySet()){
-			Object value = anno.getSingleValue(key);
-			if( value != null && !(value instanceof byte[])) {
-				firstAnnotationValues.putIfAbsent(key.toLowerCase(), value.toString());
-			}
+		for(Map.Entry<String, AnnotationsValue> entry: anno.getAnnotations().entrySet()){
+			firstAnnotationValues.putIfAbsent(entry.getKey().toLowerCase(), AnnotationsV2Utils.getSingleValue(entry.getValue()));
 		}
 		return firstAnnotationValues;
 	}

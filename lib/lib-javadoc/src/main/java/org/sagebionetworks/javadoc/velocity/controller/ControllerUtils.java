@@ -1,5 +1,6 @@
 package org.sagebionetworks.javadoc.velocity.controller;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -10,9 +11,11 @@ import org.jsoup.Jsoup;
 import org.sagebionetworks.javadoc.velocity.schema.SchemaUtils;
 import org.sagebionetworks.javadoc.web.services.FilterUtils;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,17 +24,20 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import com.google.common.collect.Lists;
 import com.sun.javadoc.AnnotationDesc;
 import com.sun.javadoc.AnnotationDesc.ElementValuePair;
+import com.sun.javadoc.AnnotationValue;
 import com.sun.javadoc.ClassDoc;
+import com.sun.javadoc.FieldDoc;
 import com.sun.javadoc.MethodDoc;
 import com.sun.javadoc.ParamTag;
 import com.sun.javadoc.Parameter;
 import com.sun.javadoc.Type;
 
 public class ControllerUtils {
-
+	
 	public static String REQUEST_MAPPING_VALUE = RequestMapping.class.getName()+".value";
 	public static String REQUEST_MAPPING_METHOD = RequestMapping.class.getName()+".method";
 	public static String REQUEST_PARAMETER_VALUE = RequestParam.class.getName()+".value";
+	public static String REQUEST_HEADER_VALUE = RequestHeader.class.getName()+".value";
 	public static String REQUEST_PARAMETER_REQUIRED = RequestParam.class.getName()+".required";
 	
 	public static String CONTROLLER_INFO_DISPLAY_NAME = ControllerInfo.class.getName()+".displayName";
@@ -68,22 +74,22 @@ public class ControllerUtils {
 		return model;
 	}
 
-	public static MethodModel translateMethod(MethodDoc methodDoc){
+	public static MethodModel translateMethod(MethodDoc methodDoc) {
 		MethodModel methodModel = new MethodModel();
-		//Process the method annotations.
-        processMethodAnnotations(methodDoc, methodModel);
-        // Now process the parameters
-        processParameterAnnotations(methodDoc, methodModel);
+		// Process the method annotations.
+		processMethodAnnotations(methodDoc, methodModel);
+		// Now process the parameters
+		processParameterAnnotations(methodDoc, methodModel);
 		methodModel.setDescription(methodDoc.commentText());
 		String truncated = createTruncatedText(MAX_SHORT_DESCRIPTION_LENGTH, methodModel.getDescription());
 		methodModel.setShortDescription(truncated);
-		// Create the Link to this method
-		String niceUrl = methodModel.getUrl().replaceAll("\\{", "");
-		niceUrl = niceUrl.replaceAll("\\}", "");
-		niceUrl = niceUrl.replaceAll("/", ".");
-		String fullName = methodModel.getHttpType()+niceUrl;
+		// remove regular expressions
+		String urlDisplay = methodModel.getUrl().replaceAll("\\:[^\\}]+", "").replace("*", "");
+		methodModel.setUrl(urlDisplay);
+		String fullNameSuffix = urlDisplay.replaceAll("[\\{\\}]", "").replaceAll("/", ".");
+		String fullName = methodModel.getHttpType() + fullNameSuffix;
 		methodModel.setFullMethodName(fullName);
-		Link methodLink = new Link("${"+fullName+"}", methodModel.getHttpType()+" "+methodModel.getUrl());
+		Link methodLink = new Link("${" + fullName + "}", methodModel.getHttpType() + " " + urlDisplay);
 		methodModel.setMethodLink(methodLink);
 		return methodModel;
 	}
@@ -153,7 +159,7 @@ public class ControllerUtils {
         					methodModel.addPathVariable(paramModel);
         					paramMap.put(param.name(), paramModel);
         				}else if(RequestParam.class.getName().equals(qualifiedName)){
-        					// if this is the userId parameter then we do now show it,
+        					// if this is the userId parameter then we do not show it,
         					// rather it means this method requires authentication.
         					if(AuthorizationConstants.USER_ID_PARAM.equals(annotationMap.get(REQUEST_PARAMETER_VALUE))){
         						methodModel.setIsAuthenticationRequired(true);
@@ -169,6 +175,12 @@ public class ControllerUtils {
             					paramModel.setIsOptional(!(isRequired(annotationMap)));
             					methodModel.addParameter(paramModel);
             					paramMap.put(param.name(), paramModel);
+        					}
+        				} else if (RequestHeader.class.getName().equals(qualifiedName)) {
+        					// if this is the authorization header we do not show it,
+        					// rather it means that this method requires authentication
+        					if (AuthorizationConstants.SYNAPSE_AUTHORIZATION_HEADER_NAME.equals(annotationMap.get(REQUEST_HEADER_VALUE))) {
+        						methodModel.setIsAuthenticationRequired(true);
         					}
         				}
         			}
@@ -192,17 +204,35 @@ public class ControllerUtils {
 			MethodModel methodModel) {
 		AnnotationDesc[] annos = methodDoc.annotations();
         if(annos != null){
-        	for(AnnotationDesc ad: annos){
+        	for (AnnotationDesc ad: annos) {
         		String qualifiedName = ad.annotationType().qualifiedName();
         		System.out.println(qualifiedName);
-        		if(RequestMapping.class.getName().equals(qualifiedName)){
+        	if (RequestMapping.class.getName().equals(qualifiedName)){
         			extractRequestMapping(methodModel, ad);
-        		}else if(ResponseBody.class.getName().equals(qualifiedName)){
+        		} else if (ResponseBody.class.getName().equals(qualifiedName)) {
 					extractResponseLink(methodDoc, methodModel);
+        		} else if (RequiredScope.class.getName().equals(qualifiedName)) {
+        			extractRequiredScope(methodModel, ad);
         		}
         	}
         }
 	}
+	
+	private static void extractRequiredScope(MethodModel methodModel, AnnotationDesc ad) {
+		List<String> requiredScopes = new ArrayList<String>();
+		for (ElementValuePair evp : ad.elementValues()) {
+			for (AnnotationValue av : (AnnotationValue[])evp.value().value()) {
+				FieldDoc fieldDoc = (FieldDoc)av.value();
+				String name = fieldDoc.name();
+				requiredScopes.add(name);
+			}
+		}
+		if (requiredScopes.isEmpty()) {
+			methodModel.setRequiredScopes(null);
+		} else {
+			methodModel.setRequiredScopes(requiredScopes.toArray(new String[] {}));
+		}
+	}	
 
 	private static void extractResponseLink(MethodDoc methodDoc, MethodModel methodModel) {
 		// this means there is a response body for this method.

@@ -1,55 +1,61 @@
 package org.sagebionetworks.repo.manager;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
-import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mockito;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.sagebionetworks.repo.manager.dataaccess.AccessRequirementManager;
+import org.sagebionetworks.repo.manager.dataaccess.AccessRequirementManagerImpl;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
-import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessRequirement;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.AuthorizationConstants.BOOTSTRAP_PRINCIPAL;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
-import org.sagebionetworks.repo.model.EntityType;
 import org.sagebionetworks.repo.model.FileEntity;
 import org.sagebionetworks.repo.model.Folder;
 import org.sagebionetworks.repo.model.InvalidModelException;
-import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.Project;
 import org.sagebionetworks.repo.model.RestrictableObjectDescriptor;
 import org.sagebionetworks.repo.model.RestrictableObjectType;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2TestUtils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2Utils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValue;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValueType;
 import org.sagebionetworks.repo.model.auth.NewUser;
 import org.sagebionetworks.repo.model.file.ExternalFileHandle;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.provenance.Activity;
 import org.sagebionetworks.repo.model.table.EntityView;
+import org.sagebionetworks.repo.model.table.SubmissionView;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.schema.FORMAT;
+import org.sagebionetworks.schema.adapter.org.json.JsonDateUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import com.google.common.collect.Lists;
 
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @ContextConfiguration(locations = { "classpath:test-context.xml" })
 public class EntityManagerImplAutowireTest {
 	
@@ -67,9 +73,6 @@ public class EntityManagerImplAutowireTest {
 	
 	@Autowired
 	private AccessRequirementManager accessRequirementManager;
-	
-	// We use a mock auth DAO for this test.
-	private AuthorizationManager mockAuth;
 
 	private List<String> toDelete;
 	private List<String> activitiesToDelete;
@@ -81,7 +84,7 @@ public class EntityManagerImplAutowireTest {
 	
 	private AccessRequirement arToDelete;
 	
-	@Before
+	@BeforeEach
 	public void before() throws Exception{
 		adminUserInfo = userManager.getUserInfo(BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId());
 		NewUser nu = new NewUser();
@@ -95,13 +98,9 @@ public class EntityManagerImplAutowireTest {
 		toDelete = new ArrayList<String>();
 		activitiesToDelete = new ArrayList<String>();
 		fileHandlesToDelete = new ArrayList<String>();
-		mockAuth = Mockito.mock(AuthorizationManager.class);
-		when(mockAuth.canAccess((UserInfo)any(), anyString(), any(ObjectType.class), any(ACCESS_TYPE.class))).thenReturn(AuthorizationStatus.authorized());
-		when(mockAuth.canCreate((UserInfo)any(), (String)any(), (EntityType)any())).thenReturn(AuthorizationStatus.authorized());
-
 	}
 	
-	@After
+	@AfterEach
 	public void after() throws Exception {
 		if(entityManager != null && toDelete != null){
 			for(String id: toDelete){
@@ -180,7 +179,7 @@ public class EntityManagerImplAutowireTest {
 		assertNotNull(id);
 		toDelete.add(id);
 		// Get another copy
-		Folder entity = entityManager.getEntityWithAnnotations(adminUserInfo, id, Folder.class);
+		Folder entity = entityManager.getEntity(adminUserInfo, id, Folder.class);
 		assertNotNull(entity);
 		Folder fetched = entityManager.getEntity(adminUserInfo, id, Folder.class);
 		assertNotNull(fetched);
@@ -191,13 +190,15 @@ public class EntityManagerImplAutowireTest {
 		// Now get the Annotations
 		Annotations annos = entityManager.getAnnotations(adminUserInfo, id);
 		assertNotNull(annos);
-		annos.addAnnotation("someNewTestAnnotation", "someStringValue");
+		AnnotationsV2TestUtils.putAnnotations(annos, "someNewTestAnnotation", "someStringValue", AnnotationsValueType.STRING);
 		// Update
 		entityManager.updateAnnotations(adminUserInfo,id, annos);
 		// Now make sure it changed
 		annos = entityManager.getAnnotations(adminUserInfo, id);
 		assertNotNull(annos);
-		assertEquals("someStringValue", annos.getSingleValue("someNewTestAnnotation"));
+		AnnotationsValue annoValue = annos.getAnnotations().get("someNewTestAnnotation");
+		assertEquals("someStringValue", AnnotationsV2Utils.getSingleValue(annoValue));
+		assertEquals(AnnotationsValueType.STRING, annoValue.getType());
 		// Now update the dataset
 		fetched = entityManager.getEntity(adminUserInfo, id, Folder.class);
 		fetched.setName("myNewName");
@@ -206,46 +207,7 @@ public class EntityManagerImplAutowireTest {
 		assertNotNull(fetched);
 		assertEquals("myNewName", fetched.getName());
 	}
-	
-	@Test
-	public void testAggregateUpdate() throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException{
-		Folder ds = createDataset();
-		String parentId = entityManager.createEntity(adminUserInfo, ds, null);
-		assertNotNull(parentId);
-		toDelete.add(parentId);
-		List<Folder> layerList = new ArrayList<Folder>();
-		int layers = 3;
-		for(int i=0; i<layers; i++){
-			Folder layer = createLayerForTest(i);
-			layerList.add(layer);
-		}
-		List<String> childrenIds = entityManager.aggregateEntityUpdate(adminUserInfo, parentId, layerList);
-		assertNotNull(childrenIds);
-		assertEquals(layers, childrenIds.size());
-		
-		List<Folder> children = new LinkedList<Folder>();
-		for(String childId: childrenIds){
-			children.add(entityManager.getEntity(adminUserInfo, childId, Folder.class));
-		}
-		assertEquals(layers, children.size());
-		Folder toUpdate = children.get(0);
-		String udpatedId = toUpdate.getId();
-		assertNotNull(udpatedId);
-		toUpdate.setName("updatedName");
-		// Do it again
-		entityManager.aggregateEntityUpdate(adminUserInfo, parentId, children);
-		children = new LinkedList<Folder>();
-		for(String childId: childrenIds){
-			children.add(entityManager.getEntity(adminUserInfo, childId, Folder.class));
-		}
-		assertNotNull(children);
-		assertEquals(layers, children.size());
-		// find the one with the updated name
-		Folder updatedLayer = entityManager.getEntity(adminUserInfo, udpatedId, Folder.class);
-		assertNotNull(updatedLayer);
-		assertEquals("updatedName", updatedLayer.getName());
-	}
-	
+
 	@Test
 	public void testPLFM_1283() throws DatastoreException, InvalidModelException, UnauthorizedException, NotFoundException{
 		Folder study = new Folder();
@@ -254,7 +216,7 @@ public class EntityManagerImplAutowireTest {
 		assertNotNull(id);
 		toDelete.add(id);
 		try{
-			entityManager.getEntityWithAnnotations(adminUserInfo, id, Project.class);
+			entityManager.getEntity(adminUserInfo, id, Project.class);
 			fail("The requested entity type does not match the actaul entity type so this should fail.");
 		}catch(IllegalArgumentException e){
 			// This is expected.
@@ -264,14 +226,6 @@ public class EntityManagerImplAutowireTest {
 			assertTrue(e.getMessage().indexOf(Project.class.getName()) > 0);
 		}
 		
-	}
-
-	private Folder createLayerForTest(int i){
-		Folder layer = new Folder();
-		layer.setName("layerName"+i);
-		layer.setDescription("layerDesc"+i);
-		layer.setCreatedOn(new Date(1001));
-		return layer;
 	}
 
 	@Test
@@ -414,4 +368,120 @@ public class EntityManagerImplAutowireTest {
 		// should not create a new version.
 		assertFalse(wasNewVersionCreated);
 	}
+	
+	/**
+	 * Test for PLFM-6362
+	 */
+	@Test
+	public void testUpdateEntityNewVersionSubmissionView() {
+		// update a table with newVersion=true;
+		SubmissionView view = new SubmissionView();
+		view.setName("Table");
+		String id = entityManager.createEntity(userInfo, view, null);
+		view = entityManager.getEntity(adminUserInfo, id, SubmissionView.class);
+		toDelete.add(id);
+		boolean newVersion = true;
+		String activityId = null;
+		// call under test
+		boolean wasNewVersionCreated = entityManager.updateEntity(adminUserInfo, view, newVersion, activityId);
+		// should not create a new version.
+		assertFalse(wasNewVersionCreated);
+	}
+	
+	@Test
+	public void testGetEntityJson() {
+		Project project = new Project();
+		project.setName("some kind of test project");
+		String pid = entityManager.createEntity(userInfo, project, null);
+		toDelete.add(pid);
+		project = entityManager.getEntity(userInfo, pid, Project.class);
+		Annotations annotations = entityManager.getAnnotations(userInfo, pid);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "singleString", "one", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "listOfDoubles", Arrays.asList("1.2", "2.3"),
+				AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "parentId", "overrideMe!", AnnotationsValueType.STRING);
+		entityManager.updateAnnotations(userInfo, pid, annotations);
+		project = entityManager.getEntity(userInfo, pid, Project.class);
+
+		// Call under test
+		JSONObject result = entityManager.getEntityJson(pid);
+		assertNotNull(result);
+		assertEquals(project.getId(), result.getString("id"));
+		assertEquals(project.getEtag(), result.getString("etag"));
+		assertEquals(project.getName(), result.getString("name"));
+		assertEquals(JsonDateUtils.convertDateToString(FORMAT.DATE_TIME, project.getCreatedOn()),
+				result.getString("createdOn"));
+		assertEquals(JsonDateUtils.convertDateToString(FORMAT.DATE_TIME, project.getModifiedOn()),
+				result.getString("modifiedOn"));
+		assertEquals(project.getModifiedBy(), result.getString("modifiedBy"));
+		assertEquals(project.getCreatedBy(), result.getString("createdBy"));
+		assertEquals(Project.class.getName(), result.getString("concreteType"));
+		// the 'parentId' annotation value should not override the real parentId.
+		assertEquals(project.getParentId(), result.getString("parentId"));
+		
+		// the annotations:
+		assertEquals("one", result.getString("singleString"));
+		JSONArray doubleArray = result.getJSONArray("listOfDoubles");
+		assertNotNull(doubleArray);
+		assertEquals(2, doubleArray.length());
+		assertEquals(new Double(1.2), doubleArray.getDouble(0));
+		assertEquals(new Double(2.3), doubleArray.getDouble(1));
+	}
+	
+	@Test
+	public void testUpdateEntityJson() {
+		Project project = new Project();
+		project.setName("some kind of test project");
+		String pid = entityManager.createEntity(userInfo, project, null);
+		toDelete.add(pid);
+		project = entityManager.getEntity(userInfo, pid, Project.class);
+		Annotations annotations = entityManager.getAnnotations(userInfo, pid);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "singleString", "one", AnnotationsValueType.STRING);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "listOfDoubles", Arrays.asList("1.2", "2.3"),
+				AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annotations, "parentId", "overrideMe!", AnnotationsValueType.STRING);
+		entityManager.updateAnnotations(userInfo, pid, annotations);
+		project = entityManager.getEntity(userInfo, pid, Project.class);
+
+		JSONObject toUpdate = entityManager.getEntityJson(pid);
+		toUpdate.put("singleString", "two");
+		JSONArray doubleArray = new JSONArray();
+		doubleArray.put(new Double(4.5));
+		doubleArray.put(new Double(6.7));
+		toUpdate.put("listOfDoubles", doubleArray);
+		toUpdate.put("parentId", "ignoreMe");
+		
+		// Call under test
+		JSONObject result = entityManager.updateEntityJson(userInfo, pid, toUpdate);
+		
+		assertNotNull(result);
+		assertEquals(project.getId(), result.getString("id"));
+		// the etag must change
+		assertNotEquals(project.getEtag(), result.getString("etag"));
+		assertEquals(project.getName(), result.getString("name"));
+		// the 'parentId' annotation value should not override the real parentId.
+		assertEquals(project.getParentId(), result.getString("parentId"));
+		
+		// the annotations:
+		assertEquals("two", result.getString("singleString"));
+		doubleArray = result.getJSONArray("listOfDoubles");
+		assertNotNull(doubleArray);
+		assertEquals(2, doubleArray.length());
+		assertEquals(new Double(4.5), doubleArray.getDouble(0));
+		assertEquals(new Double(6.7), doubleArray.getDouble(1));
+		
+		Annotations afterAnnotations = entityManager.getAnnotations(adminUserInfo, pid);
+		assertNotNull(afterAnnotations);
+		assertEquals(project.getId(), afterAnnotations.getId());
+		Map<String, AnnotationsValue> map = afterAnnotations.getAnnotations();
+		assertNotNull(map);
+		assertEquals(2, map.size());
+		AnnotationsValue value = map.get("singleString");
+		assertEquals(AnnotationsValueType.STRING, value.getType());
+		assertEquals( Arrays.asList("two"), value.getValue());
+		value = map.get("listOfDoubles");
+		assertEquals(AnnotationsValueType.DOUBLE, value.getType());
+		assertEquals( Arrays.asList("4.5","6.7"), value.getValue());
+	}
+	
 }

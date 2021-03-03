@@ -1,13 +1,12 @@
 package org.sagebionetworks.repo.manager.table;
 
-import static org.junit.Assert.assertEquals;
 
-import java.util.List;
-
-import org.junit.Before;
-import org.junit.Test;
+import com.google.common.collect.Lists;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.sagebionetworks.repo.model.asynch.CacheableRequestBody;
+import org.sagebionetworks.repo.model.dbo.dao.table.TableExceptionTranslator;
 import org.sagebionetworks.repo.model.table.DownloadFromTableRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnRangeRequest;
 import org.sagebionetworks.repo.model.table.FacetColumnRequest;
@@ -17,17 +16,20 @@ import org.sagebionetworks.repo.model.table.QueryNextPageToken;
 import org.sagebionetworks.repo.model.table.SortDirection;
 import org.sagebionetworks.repo.model.table.SortItem;
 
-import com.google.common.collect.Lists;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class TableQueryUtilsTest {
-	
+
 	String tableId;
 	String sql;
 	DownloadFromTableRequest downloadRequest;
 	QueryBundleRequest queryRequest;
 	QueryNextPageToken nextPageToken;
 	
-	@Before
+	@BeforeEach
 	public void before(){
 		
 		tableId = "syn123";
@@ -41,7 +43,7 @@ public class TableQueryUtilsTest {
 		queryRequest = new QueryBundleRequest();
 		queryRequest.setQuery(query);
 		
-		nextPageToken = TableQueryUtils.createNextPageToken("select * from syn123", null, null, null, true, null);
+		nextPageToken = TableQueryUtils.createNextPageToken("select * from syn123", null, null, null, null);
 	}
 
 	@Test
@@ -57,13 +59,11 @@ public class TableQueryUtilsTest {
 		
 		Long nextOffset = 10L;
 		Long limit = 21L;
-		boolean isConsistent = true;
-		QueryNextPageToken token = TableQueryUtils.createNextPageToken(sql, sortList, nextOffset, limit, isConsistent, selectedFacets);
+		QueryNextPageToken token = TableQueryUtils.createNextPageToken(sql, sortList, nextOffset, limit, selectedFacets);
 		Query query = TableQueryUtils.createQueryFromNextPageToken(token);
 		assertEquals(sql, query.getSql());
 		assertEquals(nextOffset, query.getOffset());
 		assertEquals(limit, query.getLimit());
-		assertEquals(isConsistent, query.getIsConsistent());
 		assertEquals(sortList, query.getSort());
 		assertEquals(selectedFacets, query.getSelectedFacets());
 	}
@@ -74,10 +74,12 @@ public class TableQueryUtilsTest {
 		assertEquals(tableId, resultTableId);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testExtractTableIdFromSqlNull(){
 		String sql = null;
-		TableQueryUtils.extractTableIdFromSql(sql);
+		assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.extractTableIdFromSql(sql);
+		});
 	}
 	
 	@Test
@@ -86,10 +88,12 @@ public class TableQueryUtilsTest {
 		assertEquals(tableId, resultTableId);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetTableIdDownloadFromTableRequestNull(){
 		DownloadFromTableRequest request = null;
-		TableQueryUtils.getTableId(request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.getTableId(request);
+		});
 	}
 	
 	@Test
@@ -98,10 +102,12 @@ public class TableQueryUtilsTest {
 		assertEquals(tableId, resultTableId);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetTableIdQueryBundleRequestNull(){
 		QueryBundleRequest request = null;
-		TableQueryUtils.getTableId(request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.getTableId(request);
+		});
 	}
 	
 	@Test
@@ -110,16 +116,20 @@ public class TableQueryUtilsTest {
 		assertEquals(tableId, requestTableId);
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetTableIdQueryNextPageTokenNull(){
 		QueryNextPageToken request = null;
-		TableQueryUtils.getTableId(request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.getTableId(request);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetTableIdFromRequestBodydUnknownType(){
 		CacheableRequestBody unknownType = Mockito.mock(CacheableRequestBody.class);
-		TableQueryUtils.getTableIdFromRequestBody(unknownType);
+		assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.getTableIdFromRequestBody(unknownType);
+		});
 	}
 	
 	@Test
@@ -138,5 +148,43 @@ public class TableQueryUtilsTest {
 	public void testGetTableIdFromRequestBodyQueryNextPageToken(){
 		String requestTableId = TableQueryUtils.getTableIdFromRequestBody(nextPageToken);
 		assertEquals(tableId, requestTableId);
+	}
+	
+	/**
+	 * For PLFM-6027, a user's query contained an unknown character ("\u2018") resulting in a 
+	 * org.sagebionetworks.table.query.TokenMgrError exception.  Since this exception was
+	 * not mapped in the controllers, we returned a 500.
+	 * 
+	 * We expanded the parser to ignore characters in this range.
+	 */
+	@Test
+	public void testPLFM_6027() {
+		char unknownChar = 0x2018;
+		String sql = "select * from syn123 "+unknownChar;
+		String result = TableQueryUtils.extractTableIdFromSql(sql);
+		assertEquals("syn123", result);
+	}
+
+	@Test
+	/**
+	 * PLFM-6392 Add a more informative message to the user for cases where keywords
+	 * must be escaped.
+	 */
+	public void testExtractTableIdFromSqlWithParserException() {
+		String sql = "select year from syn123 where year = 1";
+		IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, ()->{
+			TableQueryUtils.extractTableIdFromSql(sql);
+		});
+		assertEquals("Encountered \" <date_time_field> \"year \"\" at line 1, column 31.\n" +
+				"Was expecting one of:\n" +
+				"    \"\\\"\" ...\n" +
+				"    \"`\" ...\n" +
+				"    \"NOT\" ...\n" +
+				"    \"ISNAN\" ...\n" +
+				"    \"ISINFINITY\" ...\n" +
+				"    <entity_id> ...\n" +
+				"    <regular_identifier> ...\n" +
+				"    \"(\" ...\n" +
+				"    " + TableExceptionTranslator.UNQUOTED_KEYWORDS_ERROR_MESSAGE, exception.getMessage());
 	}
 }

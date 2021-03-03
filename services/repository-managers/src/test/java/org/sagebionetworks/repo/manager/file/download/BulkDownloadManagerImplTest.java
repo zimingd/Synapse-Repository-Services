@@ -1,9 +1,10 @@
 package org.sagebionetworks.repo.manager.file.download;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyListOf;
 import static org.mockito.Mockito.never;
@@ -16,14 +17,14 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
 import org.sagebionetworks.repo.manager.EntityManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
@@ -37,6 +38,7 @@ import org.sagebionetworks.repo.model.NodeDAO;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.dbo.file.download.BulkDownloadDAO;
+import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.file.BatchFileRequest;
 import org.sagebionetworks.repo.model.file.BatchFileResult;
 import org.sagebionetworks.repo.model.file.DownloadList;
@@ -64,7 +66,7 @@ import org.sagebionetworks.workers.util.semaphore.LockUnavilableException;
 
 import com.google.common.collect.Lists;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class BulkDownloadManagerImplTest {
 
 	@Mock
@@ -81,6 +83,9 @@ public class BulkDownloadManagerImplTest {
 
 	@Mock
 	FileHandleManager mockFileHandlerManager;
+	
+	@Mock
+	ProgressCallback mockProgressCallback;
 
 	@InjectMocks
 	BulkDownloadManagerImpl manager;
@@ -111,6 +116,7 @@ public class BulkDownloadManagerImplTest {
 	EntityChildrenResponse pageTwo;
 
 	String tableId;
+	IdAndVersion tableIdAndVersion;
 	RowSet rowset;
 	QueryResultBundle queryResult;
 	Query query;
@@ -119,8 +125,14 @@ public class BulkDownloadManagerImplTest {
 	String zipFileName;
 	
 	DownloadOrder downloadOrder;
+	DownloadList addedFiles;
+	List<FileHandleAssociation> associations;
+	BatchFileResult batchFileResult;
+	S3FileHandle s3FileHandle;
+	FileResult authorizedS3;
+	DownloadList downloadList;
 
-	@Before
+	@BeforeEach
 	public void before() throws Exception {
 		userInfo = new UserInfo(false, 123L);
 		folderId = "syn123";
@@ -145,21 +157,13 @@ public class BulkDownloadManagerImplTest {
 		pageTwo.setNextPageToken(null);
 		pageTwo.setPage(headers.subList(2, 4));
 
-		when(mockEntityManager.getChildren(any(UserInfo.class), any(EntityChildrenRequest.class))).thenReturn(pageOne,
-				pageTwo);
-		DownloadList addedFiles = new DownloadList();
+		addedFiles = new DownloadList();
 		addedFiles.setFilesToDownload(new LinkedList<>());
-		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class)))
-				.thenReturn(addedFiles);
-		when(mockBulkDownloadDao.clearDownloadList(any(String.class))).thenReturn(addedFiles);
-
-		when(mockBulkDownloadDao.getUsersDownloadList(any(String.class))).thenReturn(addedFiles);
 		
-		List<FileHandleAssociation> associations = createResultsOfSize(4);
-		when(mockNodeDao.getFileHandleAssociationsForCurrentVersion(anyListOf(String.class)))
-				.thenReturn(associations.subList(0, 2), associations.subList(2, 4));
+		associations = createResultsOfSize(4);
 
 		tableId = "syn123";
+		tableIdAndVersion = IdAndVersion.parse(tableId);
 		rowset = new RowSet();
 		rowset.setRows(createRows(2));
 		rowset.setTableId(tableId);
@@ -167,44 +171,39 @@ public class BulkDownloadManagerImplTest {
 		qr.setQueryResults(rowset);
 		queryResult = new QueryResultBundle();
 		queryResult.setQueryResult(qr);
-		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),
-				any(QueryBundleRequest.class))).thenReturn(queryResult);
 
 		query = new Query();
 		query.setSql("select * from " + tableId);
-
-		when(mockEntityManager.getEntityType(userInfo, tableId)).thenReturn(EntityType.entityview);
-		
+	
 		fullList = createResultsOfSize(1);
-		DownloadList downloadList = new DownloadList();
+		downloadList = new DownloadList();
 		downloadList.setFilesToDownload(fullList);
-		when(mockBulkDownloadDao.getUsersDownloadListForUpdate(any(String.class))).thenReturn(downloadList);
 		
 		// authorized S3FileHandle
-		S3FileHandle s3FileHandle = new S3FileHandle();
+		s3FileHandle = new S3FileHandle();
 		s3FileHandle.setContentSize(100L);
 		s3FileHandle.setId(fullList.get(0).getFileHandleId());
-		FileResult authorizedS3 = new FileResult();
+		authorizedS3 = new FileResult();
 		authorizedS3.setFailureCode(null);
 		authorizedS3.setFileHandle(s3FileHandle);
 
-		BatchFileResult batchFileResult = new BatchFileResult();
+		batchFileResult = new BatchFileResult();
 		batchFileResult.setRequestedFiles(Lists.newArrayList(authorizedS3));
-		when(mockFileHandlerManager.getFileHandleAndUrlBatch(any(UserInfo.class), any(BatchFileRequest.class)))
-				.thenReturn(batchFileResult);
 
 		zipFileName = "theZip.zip";
-		
-		when(mockBulkDownloadDao.createDownloadOrder(any(DownloadOrder.class))).thenReturn(new DownloadOrder());
 		
 		downloadOrder = new DownloadOrder();
 		downloadOrder.setCreatedBy(userInfo.getId().toString());
 		downloadOrder.setOrderId("123");
-		when(mockBulkDownloadDao.getDownloadOrder(any(String.class))).thenReturn(downloadOrder);
 	}
 
 	@Test
 	public void testAddFilesFromFolder() {
+		when(mockEntityManager.getChildren(any(UserInfo.class), any(EntityChildrenRequest.class))).thenReturn(pageOne,	pageTwo);
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
+		when(mockBulkDownloadDao.getUsersDownloadList(any(String.class))).thenReturn(addedFiles);
+		when(mockNodeDao.getFileHandleAssociationsForCurrentVersion(anyListOf(String.class))).thenReturn(associations.subList(0, 2), associations.subList(2, 4));
+		
 		// call under test
 		DownloadList list = manager.addFilesFromFolder(userInfo, folderId);
 		assertNotNull(list);
@@ -261,6 +260,10 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAddFilesFromFolderNoChildren() {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
+		when(mockBulkDownloadDao.getUsersDownloadList(any(String.class))).thenReturn(addedFiles);
+		when(mockNodeDao.getFileHandleAssociationsForCurrentVersion(anyListOf(String.class))).thenReturn(associations.subList(0, 2), associations.subList(2, 4));
+		
 		// setup no children.
 		EntityChildrenResponse noResutls = new EntityChildrenResponse();
 		noResutls.setNextPageToken(null);
@@ -279,6 +282,9 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAddFilesFromFolderOverLimit() {
+		when(mockEntityManager.getChildren(any(UserInfo.class), any(EntityChildrenRequest.class))).thenReturn(pageOne,	pageTwo);
+		when(mockNodeDao.getFileHandleAssociationsForCurrentVersion(anyListOf(String.class))).thenReturn(associations.subList(0, 2), associations.subList(2, 4));
+		
 		// setup over limit
 		DownloadList usersList = new DownloadList();
 		usersList.setFilesToDownload(createResultsOfSize(BulkDownloadManagerImpl.MAX_FILES_PER_DOWNLOAD_LIST + 1));
@@ -293,22 +299,27 @@ public class BulkDownloadManagerImplTest {
 		}
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFilesFromFolderNullUser() {
 		userInfo = null;
-		// call under test
-		manager.addFilesFromFolder(userInfo, folderId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFilesFromFolder(userInfo, folderId);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFilesFromFolderNullFolder() {
 		folderId = null;
-		// call under test
-		manager.addFilesFromFolder(userInfo, folderId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFilesFromFolder(userInfo, folderId);
+		});
 	}
 
 	@Test
 	public void testAttemptToAddFilesToUsersDownloadList() {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
 		List<FileHandleAssociation> toAdd = createResultsOfSize(2);
 		// call under test
 		manager.attemptToAddFilesToUsersDownloadList(userInfo, toAdd);
@@ -317,6 +328,7 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAttemptToAddFilesToUsersDownloadListEmpty() {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
 		List<FileHandleAssociation> toAdd = new LinkedList<>();
 		// call under test
 		manager.attemptToAddFilesToUsersDownloadList(userInfo, toAdd);
@@ -325,12 +337,20 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAddFilesFromQuery() throws Exception {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
+		when(mockNodeDao.getFileHandleIdForVersion("0", 24L)).thenReturn("89");
+		when(mockNodeDao.getFileHandleIdForVersion("1", 25L)).thenReturn("90");
+		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),any(QueryBundleRequest.class))).thenReturn(queryResult);
+		when(mockEntityManager.getEntityType(userInfo, tableIdAndVersion.getId().toString())).thenReturn(EntityType.entityview);
+		
 		// call under test
-		DownloadList result = manager.addFilesFromQuery(userInfo, query);
+		DownloadList result = manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
 		assertNotNull(result);
 		verify(mockTableQueryManager).queryBundle(any(ProgressCallback.class), any(UserInfo.class),
 				queryBundleCaptor.capture());
-		verify(mockNodeDao).getFileHandleAssociationsForCurrentVersion(idsCaptor.capture());
+		verify(mockNodeDao, times(2)).getFileHandleIdForVersion(any(), any());
+		verify(mockNodeDao).getFileHandleIdForVersion("0", 24L);
+		verify(mockNodeDao).getFileHandleIdForVersion("1", 25L);
 		verify(mockBulkDownloadDao).addFilesToDownloadList(any(String.class), associationCaptor.capture());
 
 		// validate query request
@@ -341,9 +361,7 @@ public class BulkDownloadManagerImplTest {
 		assertEquals(new Long(BulkDownloadManagerImpl.MAX_FILES_PER_DOWNLOAD_LIST + 1),
 				queryRequest.getQuery().getLimit());
 		assertEquals(query, queryRequest.getQuery());
-		// validate get file handles
-		List<String> entityIds = idsCaptor.getValue();
-		assertEquals(Lists.newArrayList("0", "1"), entityIds);
+
 		// validate add
 		List<FileHandleAssociation> associations = associationCaptor.getValue();
 		assertNotNull(associations);
@@ -351,16 +369,67 @@ public class BulkDownloadManagerImplTest {
 		FileHandleAssociation association = associations.get(0);
 		assertEquals("0", association.getAssociateObjectId());
 		assertEquals(FileHandleAssociateType.FileEntity, association.getAssociateObjectType());
-		assertEquals("000", association.getFileHandleId());
+		assertEquals("89", association.getFileHandleId());
+		
+		association = associations.get(1);
+		assertEquals("1", association.getAssociateObjectId());
+		assertEquals(FileHandleAssociateType.FileEntity, association.getAssociateObjectType());
+		assertEquals("90", association.getFileHandleId());
+	}
+	
+	@Test
+	public void testAddFilesFromQueryWithSnapshot() throws Exception {
+		// dot version number indicates a query from a snapshot.
+		tableIdAndVersion = IdAndVersion.parse(tableId+".12");
+		query.setSql("select * from "+tableIdAndVersion.toString());
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), any())).thenReturn(addedFiles);
+		when(mockNodeDao.getFileHandleIdForVersion("0", 24L)).thenReturn("89");
+		when(mockNodeDao.getFileHandleIdForVersion("1", 25L)).thenReturn("90");
+		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),any(QueryBundleRequest.class))).thenReturn(queryResult);
+		when(mockEntityManager.getEntityType(userInfo, tableIdAndVersion.getId().toString())).thenReturn(EntityType.entityview);
+		
+		// call under test
+		DownloadList result = manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		assertNotNull(result);
+		verify(mockTableQueryManager).queryBundle(any(ProgressCallback.class), any(UserInfo.class),
+				queryBundleCaptor.capture());
+		verify(mockNodeDao, times(2)).getFileHandleIdForVersion(any(), any());
+		verify(mockNodeDao).getFileHandleIdForVersion("0", 24L);
+		verify(mockNodeDao).getFileHandleIdForVersion("1", 25L);
+		verify(mockBulkDownloadDao).addFilesToDownloadList(any(String.class), associationCaptor.capture());
+
+		// validate query request
+		QueryBundleRequest queryRequest = queryBundleCaptor.getValue();
+		assertNotNull(queryRequest);
+		assertEquals(new Long(BulkDownloadManagerImpl.QUERY_ONLY_PART_MASK), queryRequest.getPartMask());
+		assertNotNull(queryRequest.getQuery());
+		assertEquals(new Long(BulkDownloadManagerImpl.MAX_FILES_PER_DOWNLOAD_LIST + 1),
+				queryRequest.getQuery().getLimit());
+		assertEquals(query, queryRequest.getQuery());
+
+		// validate add
+		List<FileHandleAssociation> associations = associationCaptor.getValue();
+		assertNotNull(associations);
+		assertEquals(2, associations.size());
+		FileHandleAssociation association = associations.get(0);
+		assertEquals("0", association.getAssociateObjectId());
+		assertEquals(FileHandleAssociateType.FileEntity, association.getAssociateObjectType());
+		assertEquals("89", association.getFileHandleId());
+		
+		association = associations.get(1);
+		assertEquals("1", association.getAssociateObjectId());
+		assertEquals(FileHandleAssociateType.FileEntity, association.getAssociateObjectType());
+		assertEquals("90", association.getFileHandleId());
 	}
 
 	@Test
 	public void testAddFilesFromQueryNotAview() throws Exception {
+		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),any(QueryBundleRequest.class))).thenReturn(queryResult);
 		// case where the table is not a view
-		when(mockEntityManager.getEntityType(userInfo, tableId)).thenReturn(EntityType.table);
+		when(mockEntityManager.getEntityType(userInfo, tableIdAndVersion.getId().toString())).thenReturn(EntityType.table);
 		try {
 			// call under test
-			manager.addFilesFromQuery(userInfo, query);
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
 			fail();
 		} catch (IllegalArgumentException e) {
 			assertEquals(BulkDownloadManagerImpl.FILES_CAN_ONLY_BE_ADDED_FROM_A_FILE_VIEW_QUERY, e.getMessage());
@@ -374,60 +443,76 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAddFilesFromQueryTooManyRows() throws Exception {
+		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),any(QueryBundleRequest.class))).thenReturn(queryResult);
+		when(mockEntityManager.getEntityType(userInfo, tableIdAndVersion.getId().toString())).thenReturn(EntityType.entityview);
+		
 		// setup query result with more than the max number of rows.
 		rowset.setRows(createRows(BulkDownloadManagerImpl.MAX_FILES_PER_DOWNLOAD_LIST + 1));
 		try {
 			// call under test
-			manager.addFilesFromQuery(userInfo, query);
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
 			fail();
 		} catch (IllegalArgumentException e) {
 			assertEquals(BulkDownloadManagerImpl.EXCEEDED_MAX_NUMBER_ROWS, e.getMessage());
 		}
 	}
 
-	@Test(expected = RecoverableMessageException.class)
+	@Test
 	public void testAddFilesFromQueryLockUnavilableException() throws Exception {
 		LockUnavilableException exception = new LockUnavilableException();
 		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),
 				any(QueryBundleRequest.class))).thenThrow(exception);
-		// call under test
-		manager.addFilesFromQuery(userInfo, query);
+		assertThrows(RecoverableMessageException.class, ()->{
+			// call under test
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		});
 	}
 
-	@Test(expected = RecoverableMessageException.class)
+	@Test
 	public void testAddFilesFromQueryTableUnavailableException() throws Exception {
 		TableUnavailableException exception = new TableUnavailableException(null);
 		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),
 				any(QueryBundleRequest.class))).thenThrow(exception);
-		// call under test
-		manager.addFilesFromQuery(userInfo, query);
+
+		assertThrows(RecoverableMessageException.class, ()->{
+			// call under test
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFilesFromQueryParseException() throws Exception {
 		ParseException exception = new ParseException();
 		when(mockTableQueryManager.queryBundle(any(ProgressCallback.class), any(UserInfo.class),
 				any(QueryBundleRequest.class))).thenThrow(exception);
-		// call under test
-		manager.addFilesFromQuery(userInfo, query);
+
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFilesFromQueryNullUser() throws Exception {
 		userInfo = null;
-		// call under test
-		manager.addFilesFromQuery(userInfo, query);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFilesFromQueryNullQuery() throws Exception {
 		query = null;
-		// call under test
-		manager.addFilesFromQuery(userInfo, query);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFilesFromQuery(mockProgressCallback, userInfo, query);
+		});
 	}
 
 	@Test
 	public void testAddFileHandleAssociations() {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
 		List<FileHandleAssociation> toAdd = createResultsOfSize(10);
 		// call under test
 		manager.addFileHandleAssociations(userInfo, toAdd);
@@ -436,25 +521,31 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testAddFileHandleAssociationsEmpty() {
+		when(mockBulkDownloadDao.addFilesToDownloadList(any(String.class), anyListOf(FileHandleAssociation.class))).thenReturn(addedFiles);
 		List<FileHandleAssociation> toAdd = new LinkedList<>();
 		// call under test
 		manager.addFileHandleAssociations(userInfo, toAdd);
 		verify(mockBulkDownloadDao).addFilesToDownloadList(userInfo.getId().toString(), toAdd);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFileHandleAssociationsNullUser() {
 		List<FileHandleAssociation> toAdd = createResultsOfSize(10);
 		userInfo = null;
-		// call under test
-		manager.addFileHandleAssociations(userInfo, toAdd);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFileHandleAssociations(userInfo, toAdd);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testAddFileHandleAssociationsNullList() {
 		List<FileHandleAssociation> toAdd = null;
-		// call under test
-		manager.addFileHandleAssociations(userInfo, toAdd);
+
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.addFileHandleAssociations(userInfo, toAdd);
+		});
 	}
 
 	@Test
@@ -489,49 +580,60 @@ public class BulkDownloadManagerImplTest {
 		verify(mockBulkDownloadDao).removeFilesFromDownloadList(userInfo.getId().toString(), toRemove);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testRemoveFileHandleAssociationsNullUser() {
 		List<FileHandleAssociation> toRemove = createResultsOfSize(2);
 		userInfo = null;
-		// call under test
-		manager.removeFileHandleAssociations(userInfo, toRemove);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.removeFileHandleAssociations(userInfo, toRemove);
+		});
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testRemoveFileHandleAssociationsNullList() {
 		List<FileHandleAssociation> toRemove = null;
-		// call under test
-		manager.removeFileHandleAssociations(userInfo, toRemove);
+
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.removeFileHandleAssociations(userInfo, toRemove);
+		});
 	}
 
 	@Test
 	public void testGetDownloadList() {
+		when(mockBulkDownloadDao.getUsersDownloadList(any(String.class))).thenReturn(addedFiles);
 		// call under test
 		DownloadList list = manager.getDownloadList(userInfo);
 		assertNotNull(list);
 		verify(mockBulkDownloadDao).getUsersDownloadList(userInfo.getId().toString());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testGetDownloadListNullUser() {
 		userInfo = null;
-		// call under test
-		manager.getDownloadList(userInfo);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.getDownloadList(userInfo);
+		});
 	}
 
 	@Test
 	public void testClearDownloadList() {
+		when(mockBulkDownloadDao.clearDownloadList(any(String.class))).thenReturn(addedFiles);
 		// call under test
 		DownloadList list = manager.clearDownloadList(userInfo);
 		assertNotNull(list);
 		verify(mockBulkDownloadDao).clearDownloadList(userInfo.getId().toString());
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void testClearDownloadListNullUser() {
 		userInfo = null;
-		// call under test
-		manager.clearDownloadList(userInfo);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.clearDownloadList(userInfo);
+		});
 	}
 
 	@Test
@@ -557,6 +659,8 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testGetSizesOfDownloadableFilesAuthorizedS3File() {
+		when(mockFileHandlerManager.getFileHandleAndUrlBatch(any(UserInfo.class), any(BatchFileRequest.class))).thenReturn(batchFileResult);
+		
 		List<FileHandleAssociation> files = createResultsOfSize(5);
 		// call under test
 		Map<String, Long> downloadableSize = manager.getSizesOfDownloadableFiles(userInfo, files);
@@ -715,6 +819,10 @@ public class BulkDownloadManagerImplTest {
 
 	@Test
 	public void testCreateDownloadOrder() {
+		when(mockBulkDownloadDao.getUsersDownloadListForUpdate(any(String.class))).thenReturn(downloadList);
+		when(mockFileHandlerManager.getFileHandleAndUrlBatch(any(UserInfo.class), any(BatchFileRequest.class))).thenReturn(batchFileResult);
+		when(mockBulkDownloadDao.createDownloadOrder(any(DownloadOrder.class))).thenReturn(new DownloadOrder());
+		
 		// call under test
 		DownloadOrder order = manager.createDownloadOrder(userInfo, zipFileName);
 		assertNotNull(order);
@@ -749,6 +857,8 @@ public class BulkDownloadManagerImplTest {
 	
 	@Test
 	public void testCreateDownloadOrderNoFilesCanBeDownload() {
+		when(mockBulkDownloadDao.getUsersDownloadListForUpdate(any(String.class))).thenReturn(downloadList);
+		
 		BatchFileResult batchResult = new BatchFileResult();
 		batchResult.setRequestedFiles(new LinkedList<>());
 		when(mockFileHandlerManager.getFileHandleAndUrlBatch(any(UserInfo.class), any(BatchFileRequest.class))).thenReturn(batchResult);
@@ -763,18 +873,22 @@ public class BulkDownloadManagerImplTest {
 		verify(mockBulkDownloadDao, never()).createDownloadOrder(any(DownloadOrder.class));
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateDownloadOrderNullUser() {
 		userInfo = null;
-		// call under test
-		manager.createDownloadOrder(userInfo, zipFileName);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.createDownloadOrder(userInfo, zipFileName);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testCreateDownloadOrderNullFileName() {
 		zipFileName = null;
-		// call under test
-		manager.createDownloadOrder(userInfo, zipFileName);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.createDownloadOrder(userInfo, zipFileName);
+		});
 	}
 	
 	@Test
@@ -793,51 +907,63 @@ public class BulkDownloadManagerImplTest {
 		assertEquals(pageSize-1, response.getPage().size());
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetDownloadHistoryNullUser() {
 		DownloadOrderSummaryRequest request = new DownloadOrderSummaryRequest();
 		userInfo = null;
-		// call under test
-		manager.getDownloadHistory(userInfo, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.getDownloadHistory(userInfo, request);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetDownloadHistoryNullRequest() {
 		DownloadOrderSummaryRequest request = null;
-		// call under test
-		manager.getDownloadHistory(userInfo, request);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.getDownloadHistory(userInfo, request);
+		});
 	}
 	
 	@Test
 	public void testGetDownloadOrder() {
+		when(mockBulkDownloadDao.getDownloadOrder(any(String.class))).thenReturn(downloadOrder);
 		String orderId = "123";
 		// call under test
 		DownloadOrder result = manager.getDownloadOrder(userInfo, orderId);
 		assertEquals(downloadOrder, result);
 	}
 	
-	@Test (expected=UnauthorizedException.class)
+	@Test
 	public void testGetDownloadOrderUnauthorized() {
+		when(mockBulkDownloadDao.getDownloadOrder(any(String.class))).thenReturn(downloadOrder);
 		// order created by another.
 		downloadOrder.setCreatedBy(userInfo.getId().toString()+"1");
 		String orderId = "123";
-		// call under test
-		manager.getDownloadOrder(userInfo, orderId);
+		assertThrows(UnauthorizedException.class, ()->{
+			// call under test
+			manager.getDownloadOrder(userInfo, orderId);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetDownloadOrderNullOrderId() {
 		String orderId = null;
-		// call under test
-		manager.getDownloadOrder(userInfo, orderId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.getDownloadOrder(userInfo, orderId);
+		});
 	}
 	
-	@Test (expected=IllegalArgumentException.class)
+	@Test
 	public void testGetDownloadOrderNullUser() {
 		String orderId = "123";
 		userInfo = null;
-		// call under test
-		manager.getDownloadOrder(userInfo, orderId);
+		assertThrows(IllegalArgumentException.class, ()->{
+			// call under test
+			manager.getDownloadOrder(userInfo, orderId);
+		});
 	}
 	
 	/**
@@ -885,6 +1011,7 @@ public class BulkDownloadManagerImplTest {
 		for (int i = 0; i < size; i++) {
 			Row row = new Row();
 			row.setRowId(new Long(i));
+			row.setVersionNumber(24L+i);
 			results.add(row);
 		}
 		return results;

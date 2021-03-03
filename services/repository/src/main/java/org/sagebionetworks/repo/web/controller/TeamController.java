@@ -3,13 +3,6 @@
  */
 package org.sagebionetworks.repo.web.controller;
 
-import static org.sagebionetworks.repo.web.UrlHelpers.ID_PATH_VARIABLE;
-
-import java.io.IOException;
-import java.util.Collections;
-
-import javax.servlet.http.HttpServletResponse;
-
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
@@ -27,6 +20,7 @@ import org.sagebionetworks.repo.model.TeamMemberTypeFilterOptions;
 import org.sagebionetworks.repo.model.TeamMembershipStatus;
 import org.sagebionetworks.repo.model.TeamSortOrder;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -40,6 +34,15 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.Collections;
+
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+import static org.sagebionetworks.repo.web.UrlHelpers.ID_PATH_VARIABLE;
 
 /**
  * Teams are groups of users.  Teams can be granted access permissions to projects, 
@@ -90,6 +93,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TEAM, method = RequestMethod.POST)
 	public @ResponseBody
@@ -114,6 +118,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAMS, method = RequestMethod.GET)
 	public @ResponseBody
@@ -133,6 +138,7 @@ public class TeamController {
 	 * @param offset the starting index of the returned results (default 0)
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_TEAM, method = RequestMethod.GET)
 	public @ResponseBody
@@ -154,6 +160,7 @@ public class TeamController {
 	 * @param ascending the direction of sort: true for ascending, and false for descending
 	 * @return
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_TEAM_IDS, method = RequestMethod.GET)
 	public @ResponseBody
@@ -176,6 +183,7 @@ public class TeamController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_LIST, method = RequestMethod.POST)
 	public @ResponseBody
@@ -205,6 +213,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_MEMBER_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -234,6 +243,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -251,6 +261,7 @@ public class TeamController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.TEAM_ID_ICON, method = RequestMethod.GET)
 	public
 	void fileRedirectURLForTeamIcon(
@@ -262,6 +273,27 @@ public class TeamController {
 		String redirectUrl = serviceProvider.getTeamService().getIconURL(userId, id);
 		RedirectUtils.handleRedirect(redirect, redirectUrl, response);
 	}
+
+	/**
+	 * Retrieve the download URL for the Team icon preview, or receive a redirect response to said URL.
+	 * @param id the ID of the Team
+	 * @param redirect if true or omitted, then redirect to the URL.  If false then simply return the URL.
+	 * @param response
+	 * @throws NotFoundException
+	 * @throws IOException
+	 */
+	@RequiredScope({download})
+	@RequestMapping(value = UrlHelpers.TEAM_ID_ICON_PREVIEW, method = RequestMethod.GET)
+	public
+	void filePreviewRedirectURLForTeamIcon(
+			@PathVariable String id,
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
+			@RequestParam(required = false) Boolean redirect,
+			HttpServletResponse response
+	) throws NotFoundException, IOException  {
+		String redirectUrl = serviceProvider.getTeamService().getIconPreviewURL(userId, id);
+		RedirectUtils.handleRedirect(redirect, redirectUrl, response);
+	}
 	
 	/**
 	 * Update the Team metadata for the specified Team.  
@@ -271,6 +303,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -288,6 +321,7 @@ public class TeamController {
 	 * @param userId
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.TEAM_ID, method = RequestMethod.DELETE)
 	public void deleteTeam(
@@ -313,6 +347,7 @@ public class TeamController {
 	 * <ahref="${org.sagebionetworks.repo.model.message.NotificationSettingsSignedToken}">NotificationSettingsSignedToken</a>
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_MEMBER_ID, method = RequestMethod.PUT)
 	public void addTeamMember(
@@ -338,6 +373,7 @@ public class TeamController {
 	 * @param notificationUnsubscribeEndpoint
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_MEMBER, method = RequestMethod.PUT)
 	public @ResponseBody ResponseMessage addTeamMemberViaSignedToken(
@@ -360,6 +396,7 @@ public class TeamController {
 	 * @throws NotFoundException
 	 */
 	@Deprecated
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_MEMBER_ID_PERMISSION, method = RequestMethod.PUT)
 	public void setTeamAdmin(
@@ -381,6 +418,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_MEMBER_ID_MEMBERSHIP_STATUS, method = RequestMethod.GET)
 	public @ResponseBody 
@@ -406,6 +444,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_MEMBERS_ID, method = RequestMethod.GET)
 	public  @ResponseBody 
@@ -430,6 +469,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_MEMBERS_COUNT_ID, method = RequestMethod.GET)
 	public  @ResponseBody 
@@ -452,6 +492,7 @@ public class TeamController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_MEMBER_LIST, method = RequestMethod.POST)
 	public @ResponseBody
@@ -464,16 +505,16 @@ public class TeamController {
 	
 	/**
 	 * Returns the TeamMember info for a user and a given list of Team IDs.
-	 * 
-	 * Invalid IDs in the list are ignored:  The results list is simply
-	 * smaller than the list of IDs passed in.
+	 * Not Found status is returned if the user ID is invalid, any of the Team IDs 
+	 * are invalid, or the user is not in any of the given teams.
 	 *
 	 * @param id user's ID
 	 * @param ids Team IDs
 	 * @return
 	 * @throws DatastoreException
-	 * @throws NotFoundException
+	 * @throws NotFoundException 
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.USER_TEAM_MEMBER_LIST, method = RequestMethod.POST)
 	public @ResponseBody
@@ -492,6 +533,7 @@ public class TeamController {
 	 * @param userId
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_MEMBER_ID, method = RequestMethod.DELETE)
 	public void removeTeamMember(
@@ -510,6 +552,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_ID_ACL, method = RequestMethod.GET)
 	public @ResponseBody
@@ -527,6 +570,7 @@ public class TeamController {
 	 * @return
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.TEAM_ACL, method = RequestMethod.PUT)
 	public @ResponseBody

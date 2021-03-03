@@ -35,7 +35,6 @@ import org.sagebionetworks.client.SynapseAdminClientImpl;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseBadRequestException;
-import org.sagebionetworks.client.exceptions.SynapseDeprecatedServiceException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseForbiddenException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
@@ -44,11 +43,11 @@ import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessApproval;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.AccessRequirement;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.AuthorizationConstants;
 import org.sagebionetworks.repo.model.Entity;
-import org.sagebionetworks.repo.model.EntityBundle;
-import org.sagebionetworks.repo.model.EntityBundleCreate;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundle;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundleCreate;
+import org.sagebionetworks.repo.model.entitybundle.v2.EntityBundleRequest;
 import org.sagebionetworks.repo.model.EntityChildrenRequest;
 import org.sagebionetworks.repo.model.EntityChildrenResponse;
 import org.sagebionetworks.repo.model.EntityHeader;
@@ -70,12 +69,11 @@ import org.sagebionetworks.repo.model.UserGroupHeader;
 import org.sagebionetworks.repo.model.UserGroupHeaderResponsePage;
 import org.sagebionetworks.repo.model.UserProfile;
 import org.sagebionetworks.repo.model.UserSessionData;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsV2TestUtils;
+import org.sagebionetworks.repo.model.annotation.v2.AnnotationsValueType;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
-import org.sagebionetworks.repo.model.entity.query.EntityFieldName;
-import org.sagebionetworks.repo.model.entity.query.EntityQuery;
-import org.sagebionetworks.repo.model.entity.query.EntityQueryUtils;
-import org.sagebionetworks.repo.model.entity.query.Operator;
-import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.principal.TypeFilter;
 import org.sagebionetworks.repo.model.quiz.PassingRecord;
 import org.sagebionetworks.repo.model.quiz.Quiz;
@@ -116,7 +114,7 @@ public class IT500SynapseJavaClient {
 		bootstrappedTeams.add("464532"); // Access and Compliance Team
 		bootstrappedTeams.add("4"); // Trusted message senders
 	}
-	
+
 	private long getBootstrapCountPlus(long number) {
 		return bootstrappedTeams.size() + number;
 	}
@@ -178,7 +176,7 @@ public class IT500SynapseJavaClient {
 	public void after() throws Exception {
 		for (String id: toDelete) {
 			try {
-				adminSynapse.deleteAndPurgeEntityById(id);
+				adminSynapse.deleteEntityById(id);
 			} catch (SynapseNotFoundException e) {}
 		}
 
@@ -273,14 +271,13 @@ public class IT500SynapseJavaClient {
 		assertEquals(project.getId(), clone.getId());
 		
 		// Get the entity annotations
-		Annotations annos = synapseOne.getAnnotations(file.getId());
+		Annotations annos = synapseOne.getAnnotationsV2(file.getId());
 		assertNotNull(annos);
 		assertEquals(file.getId(), annos.getId());
 		assertNotNull(annos.getEtag());
 		// Add some values
-		annos.addAnnotation("longKey", new Long(999999));
-		annos.addAnnotation("blob", "This will be converted to a blob!".getBytes("UTF-8"));
-		Annotations updatedAnnos = synapseOne.updateAnnotations(file.getId(), annos);
+		AnnotationsV2TestUtils.putAnnotations(annos, "longKey", "999999", AnnotationsValueType.DOUBLE);
+		Annotations updatedAnnos = synapseOne.updateAnnotationsV2(file.getId(), annos);
 		assertNotNull(updatedAnnos);
 		assertEquals(file.getId(), annos.getId());
 		assertNotNull(updatedAnnos.getEtag());
@@ -337,21 +334,12 @@ public class IT500SynapseJavaClient {
 		// should not be able to download
 		assertFalse(synapseTwo.canAccess(file.getId(), ACCESS_TYPE.DOWNLOAD));
 		
-		RestrictableObjectDescriptor subjectId = new RestrictableObjectDescriptor();
-		subjectId.setType(RestrictableObjectType.ENTITY);
-		subjectId.setId(file.getId());
-		PaginatedResults<AccessRequirement> vcpr = synapseTwo.getUnmetAccessRequirements(subjectId, ACCESS_TYPE.DOWNLOAD, 10L, 0L);
-		assertEquals(1, vcpr.getResults().size());
-		
 		// now add the ToU approval
 		AccessApproval aa = new AccessApproval();
 		aa.setAccessorId(otherProfile.getOwnerId());
 		aa.setRequirementId(ar.getId());
 		
 		synapseTwo.createAccessApproval(aa);
-		
-		vcpr = synapseTwo.getUnmetAccessRequirements(subjectId, ACCESS_TYPE.DOWNLOAD, 10L, 0L);
-		assertEquals(0, vcpr.getResults().size());
 		
 		// should be able to download
 		assertTrue(synapseTwo.canAccess(file.getId(), ACCESS_TYPE.DOWNLOAD));
@@ -433,40 +421,37 @@ public class IT500SynapseJavaClient {
 
 	@Test
 	public void testJavaClientGetEntityBundle() throws SynapseException {
-		Annotations annos = synapseOne.getAnnotations(project.getId());
-		annos.addAnnotation("doubleAnno", new Double(45.0001));
-		annos.addAnnotation("string", "A string");
-		annos = synapseOne.updateAnnotations(project.getId(), annos);
+		Annotations annos = synapseOne.getAnnotationsV2(project.getId());
+		AnnotationsV2TestUtils.putAnnotations(annos, "doubleAnno", "45.0001", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(annos, "string", "A string", AnnotationsValueType.STRING);
+		annos = synapseOne.updateAnnotationsV2(project.getId(), annos);
 
 		AccessControlList acl = synapseOne.getACL(project.getId());
 		acl.setCreatedBy("John Doe");
 		acl.setId(project.getId());
 		synapseOne.updateACL(acl);
 
-		int allPartsMask = EntityBundle.ENTITY |
-				EntityBundle.ANNOTATIONS |
-				EntityBundle.PERMISSIONS |
-				EntityBundle.ENTITY_PATH |
-				EntityBundle.HAS_CHILDREN |
-				EntityBundle.ACL |
-				EntityBundle.ACCESS_REQUIREMENTS |
-				EntityBundle.UNMET_ACCESS_REQUIREMENTS |
-				EntityBundle.FILE_NAME |
-				EntityBundle.RESTRICTION_INFORMATION;
+		EntityBundleRequest request = new EntityBundleRequest();
+		request.setIncludeEntity(true);
+		request.setIncludeAnnotations(true);
+		request.setIncludePermissions(true);
+		request.setIncludeEntityPath(true);
+		request.setIncludeHasChildren(true);
+		request.setIncludeAccessControlList(true);
+		request.setIncludeFileName(true);
+		request.setIncludeRestrictionInformation(true);
 		
 		long startTime = System.nanoTime();
-		EntityBundle entityBundle = synapseOne.getEntityBundle(project.getId(), allPartsMask);
+		EntityBundle entityBundle = synapseOne.getEntityBundleV2(project.getId(), request);
 		long endTime = System.nanoTime();
 		long requestTime = (endTime - startTime) / 1000000;
 		System.out.println("Bundle request time was " + requestTime + " ms");
 
 		assertNotNull(entityBundle.getRestrictionInformation());
 		assertEquals(synapseOne.getEntityById(project.getId()), entityBundle.getEntity(),"Invalid fetched Entity in the EntityBundle");
-		assertEquals(synapseOne.getAnnotations(project.getId()), entityBundle.getAnnotations(), "Invalid fetched Annotations in the EntityBundle");
+		assertEquals(synapseOne.getAnnotationsV2(project.getId()), entityBundle.getAnnotations(), "Invalid fetched Annotations in the EntityBundle");
 		assertEquals(synapseOne.getEntityPath(project.getId()), entityBundle.getPath(), "Invalid fetched EntityPath in the EntityBundle");
 		assertEquals(synapseOne.getACL(project.getId()), entityBundle.getAccessControlList(), "Invalid fetched ACL in the EntityBundle");
-		assertEquals(0, entityBundle.getAccessRequirements().size(), "Unexpected ARs in the EntityBundle");
-		assertEquals(0, entityBundle.getUnmetAccessRequirements().size(), "Unexpected unmet-ARs in the EntityBundle");
 		assertNull(entityBundle.getFileName());
 	}
 	
@@ -499,9 +484,9 @@ public class IT500SynapseJavaClient {
 		s1.setParentId(project.getId());
 		
 		// Create annotations for this entity
-		Annotations a1 = new Annotations();		
-		a1.addAnnotation("doubleAnno", new Double(45.0001));
-		a1.addAnnotation("string", "A string");
+		Annotations a1 = new Annotations();
+		AnnotationsV2TestUtils.putAnnotations(a1, "doubleAnno", "45.0001", AnnotationsValueType.DOUBLE);
+		AnnotationsV2TestUtils.putAnnotations(a1, "string", "A string", AnnotationsValueType.STRING);
 		
 		// Create ACL for this entity
 		AccessControlList acl1 = new AccessControlList();
@@ -515,7 +500,7 @@ public class IT500SynapseJavaClient {
 		ebc.setAnnotations(a1);
 		ebc.setAccessControlList(acl1);
 				
-		EntityBundle response = synapseOne.createEntityBundle(ebc);
+		EntityBundle response = synapseOne.createEntityBundleV2(ebc);
 		
 		Folder s2 = (Folder) response.getEntity();
 		toDelete.add(s2.getId());
@@ -526,9 +511,8 @@ public class IT500SynapseJavaClient {
 		Annotations a2 = response.getAnnotations();
 		assertNotNull(a2);
 		assertNotNull(a2.getEtag(), "Etag should have been generated, but was not");
-		assertEquals(a1.getStringAnnotations(), a2.getStringAnnotations(), "Retrieved Annotations in bundle do not match original ones");
-		assertEquals(a1.getDoubleAnnotations(), a2.getDoubleAnnotations(), "Retrieved Annotations in bundle do not match original ones");
-		
+		assertEquals(a1.getAnnotations(), a2.getAnnotations(), "Retrieved Annotations in bundle do not match original ones");
+
 		AccessControlList acl2 = response.getAccessControlList();
 		assertNotNull(acl2);
 		assertNotNull(acl2.getEtag(), "Etag should have been generated, but was not");
@@ -536,7 +520,7 @@ public class IT500SynapseJavaClient {
 	
 		// Update the bundle, verify contents
 		s2.setName("Dummy study 1 updated");
-		a2.addAnnotation("string2", "Another string");
+		AnnotationsV2TestUtils.putAnnotations(a2, "string2", "Another string", AnnotationsValueType.STRING);
 		acl2.setModifiedBy("Update user");
 		
 		EntityBundleCreate ebc2 = new EntityBundleCreate();
@@ -544,7 +528,7 @@ public class IT500SynapseJavaClient {
 		ebc2.setAnnotations(a2);
 		ebc2.setAccessControlList(acl2);
 				
-		EntityBundle response2 = synapseOne.updateEntityBundle(s2.getId(), ebc2);
+		EntityBundle response2 = synapseOne.updateEntityBundleV2(s2.getId(), ebc2);
 		
 		Folder s3 = (Folder) response2.getEntity();
 		assertNotNull(s3);
@@ -554,9 +538,8 @@ public class IT500SynapseJavaClient {
 		Annotations a3 = response2.getAnnotations();
 		assertNotNull(a3);
 		assertNotEquals(a2.getEtag(), a3.getEtag(), "Etag should have been updated, but was not");
-		assertEquals(a2.getStringAnnotations(), a3.getStringAnnotations(), "Retrieved Annotations in bundle do not match original ones");
-		assertEquals(a2.getDoubleAnnotations(), a3.getDoubleAnnotations(), "Retrieved Annotations in bundle do not match original ones");
-		
+		assertEquals(a2.getAnnotations(), a3.getAnnotations(), "Retrieved Annotations in bundle do not match original ones");
+
 		AccessControlList acl3 = response2.getAccessControlList();
 		assertNotNull(acl3);
 		assertNotEquals(acl2.getEtag(), acl3.getEtag(), "Etag should have been updated, but was not");
@@ -719,42 +702,23 @@ public class IT500SynapseJavaClient {
 		// check that another can't download
 		assertFalse(synapseTwo.canAccess(layer.getId(), ACCESS_TYPE.DOWNLOAD));
 		
-		// get unmet access requirements
-		RestrictableObjectDescriptor subjectId = new RestrictableObjectDescriptor();
-		subjectId.setType(RestrictableObjectType.ENTITY);
-		subjectId.setId(layer.getId());
-		PaginatedResults<AccessRequirement> ars = synapseTwo.getUnmetAccessRequirements(subjectId, ACCESS_TYPE.DOWNLOAD, 10L, 0L);
-		assertEquals(1, ars.getTotalNumberOfResults());
-		assertEquals(1, ars.getResults().size());
-		AccessRequirement clone = ars.getResults().get(0);
-		assertEquals(r.getConcreteType(), clone.getConcreteType());
-		assertTrue(clone instanceof TermsOfUseAccessRequirement);
-		assertEquals(r.getTermsOfUse(), ((TermsOfUseAccessRequirement)clone).getTermsOfUse());
-		
-		// check that access type param works
-		assertEquals(ars, synapseTwo.getUnmetAccessRequirements(subjectId, ACCESS_TYPE.DOWNLOAD, 10L, 0L));
-		
 		// create approval for the requirement
 		AccessApproval approval = new AccessApproval();
 		approval.setAccessorId(otherProfile.getOwnerId());
-		approval.setRequirementId(clone.getId());
+		approval.setRequirementId(r.getId());
 		AccessApproval created = synapseTwo.createAccessApproval(approval);
 		
 		// make sure we can retrieve by ID
 		assertEquals(created, synapseTwo.getAccessApproval(created.getId()));
 		
-		// get unmet requirements -- should be empty
-		ars = synapseTwo.getUnmetAccessRequirements(subjectId, ACCESS_TYPE.DOWNLOAD, 10L, 0L);
-		assertEquals(0, ars.getTotalNumberOfResults());
-		assertEquals(0, ars.getResults().size());
-		
 		// check that CAN download
 		assertTrue(synapseTwo.canAccess(layer.getId(), ACCESS_TYPE.DOWNLOAD));
 
-		adminSynapse.deleteAccessApproval(created.getId());
-
 		String accessRequirementId = r.getId().toString();
+
 		assertThrows(SynapseBadRequestException.class, () -> adminSynapse.revokeAccessApprovals(accessRequirementId, otherProfile.getOwnerId()));
+		
+		adminSynapse.deleteAccessRequirement(Long.parseLong(accessRequirementId));
 	}
 
 	@Test
@@ -780,7 +744,7 @@ public class IT500SynapseJavaClient {
 
 		// Get the profile to update.
 		UserProfile profile = synapseOne.getMyProfile();
-		S3FileHandle fileHandle = synapseOne.multipartUpload(originalFile, null, true, false);
+		FileHandle fileHandle = synapseOne.multipartUpload(originalFile, null, true, false);
 		profile.setProfilePicureFileHandleId(fileHandle.getId());
 		synapseOne.updateMyProfile(profile);
 		profile = synapseOne.getMyProfile();
@@ -918,27 +882,5 @@ public class IT500SynapseJavaClient {
 	@Test
 	public void testLookupEntity() throws SynapseException {
 		assertEquals(dataset.getId(), synapseOne.lookupChild(project.getId(), dataset.getName()));
-	}
-	
-	
-	/*
-	 * Test deprecated services
-	 * These test can be removed when the services are removed
-	 */
-	
-	@Test
-	public void testDeprecatedStructuredQuery() throws Exception {
-		// setup a query to find the project by ID.
-		EntityQuery query = new EntityQuery();
-		query.setFilterByType(EntityType.project);
-		query.setConditions(new ArrayList<>(1));
-		query.getConditions().add(EntityQueryUtils.buildCondition(EntityFieldName.id, Operator.EQUALS, project.getId()));
-		assertThrows(SynapseDeprecatedServiceException.class, () -> synapseOne.entityQuery(query));
-	}
-	
-
-	@Test
-	public void testJavaClientDeprecatedQueryService() throws Exception {
-		assertThrows(SynapseDeprecatedServiceException.class, () -> synapseOne.query("select * from folder limit 10"));
 	}
 }

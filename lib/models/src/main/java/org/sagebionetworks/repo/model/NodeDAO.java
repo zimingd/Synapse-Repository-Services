@@ -1,22 +1,23 @@
 package org.sagebionetworks.repo.model;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
 import org.sagebionetworks.repo.model.entity.Direction;
+import org.sagebionetworks.repo.model.entity.NameIdType;
 import org.sagebionetworks.repo.model.entity.SortBy;
 import org.sagebionetworks.repo.model.entity.query.SortDirection;
 import org.sagebionetworks.repo.model.file.ChildStatsRequest;
 import org.sagebionetworks.repo.model.file.ChildStatsResponse;
 import org.sagebionetworks.repo.model.file.FileHandleAssociation;
 import org.sagebionetworks.repo.model.message.ChangeType;
-import org.sagebionetworks.repo.model.table.EntityDTO;
+import org.sagebionetworks.repo.model.table.ObjectDataDTO;
 import org.sagebionetworks.repo.model.table.SnapshotRequest;
-import org.sagebionetworks.repo.transactions.MandatoryWriteTransaction;
-import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Interface for all Node C.R.U.D. operations.
@@ -30,13 +31,14 @@ public interface NodeDAO {
 	 * the value to pass into the node to remove the generatedBy link between node and activity
 	 * 
 	 */
-	public static String DELETE_ACTIVITY_VALUE = "-1";
+	String DELETE_ACTIVITY_VALUE = "-1";
+	int NODE_VERSION_LIMIT_BY_FILE_MD5 = 200;
 	
 	/**
 	 * use: {@link #createNewNode(Node)}
 	 */
 	@Deprecated 
-	public String createNew(Node node) throws NotFoundException, DatastoreException, InvalidModelException;
+	public String createNew(Node node);
 	
 	/**
 	 * Create a new node.
@@ -46,7 +48,7 @@ public interface NodeDAO {
 	 * @throws DatastoreException
 	 * @throws InvalidModelException
 	 */
-	public Node createNewNode(Node node) throws NotFoundException, DatastoreException, InvalidModelException;
+	public Node createNewNode(Node node);
 	
 	/**
 	 * Create a bootstrap node.
@@ -64,7 +66,7 @@ public interface NodeDAO {
 	 * @throws DatastoreException 
 	 * @throws NotFoundException 
 	 */
-	public Long createNewVersion(Node newVersion) throws NotFoundException, DatastoreException, InvalidModelException;
+	public Long createNewVersion(Node newVersion);
 	
 	/**
 	 * Fetch a node using its id.
@@ -73,7 +75,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException 
 	 * @throws DatastoreException 
 	 */
-	public Node getNode(String id) throws NotFoundException, DatastoreException;
+	public Node getNode(String id);
 	
 	/**
 	 * Get the node for a given version number.
@@ -83,25 +85,27 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException 
 	 */
-	public Node getNodeForVersion(String id, Long versionNumber) throws NotFoundException, DatastoreException;
+	public Node getNodeForVersion(String id, Long versionNumber);
 	
 	/**
-	 * Delete a node using its id.
-	 * @param id
-	 * @return boolean
-	 * @throws NotFoundException 
-	 * @throws DatastoreException 
-	 */
-	public boolean delete(String id) throws DatastoreException;
-	
-	/**
-	 * Delete all nodes within a list of IDs. All nodes in the list must have < 14 levels of children.
-	 * @param IDs list of IDs to remove
-	 * @return int number of nodes deleted
+	 * Deletes the node with the given id. If the node is a container the sub-tree must have less than 15 levels of depth.
+	 * 
+	 * @param id The if of a node
+	 * @throws NotFoundException
 	 * @throws DatastoreException
 	 */
-	public int delete(List<Long> IDs) throws DatastoreException;
+	public void delete(String id) throws DatastoreException;
 	
+	/**
+	 * Deletes the tree of nodes rooted in the node with the given id starting from the leaves of the sub-tree. Deletes
+	 * a maximum of subTreeLimit nodes in the sub-tree. This method runs in a new transaction.
+	 * 
+	 * @param id The if of the root node
+	 * @return True if the whole sub-tree along with the node was deleted, false if the sub-tree has more than the given
+	 * number of nodes and additional calls are needed in order to delete the node.
+	 */
+	public boolean deleteTree(String id, int subTreeLimit);
+		
 	/**
 	 * Delete a specific version.
 	 * @param id
@@ -109,17 +113,14 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException 
 	 */
-	public void deleteVersion(String id, Long versionNumber) throws NotFoundException, DatastoreException;
+	public void deleteVersion(String id, Long versionNumber);
 
 	/**
-	 * Update user generated annotations that are associated with this node
-	 * @param nodeId
-	 * @param updatedAnnos
-	 * @throws NotFoundException
-	 * @throws DatastoreException
+	 * Update user annotations.
+	 * @param id
+	 * @param annotationsV2
 	 */
-	@WriteTransaction
-	void updateUserAnnotationsV1(String nodeId, Annotations updatedAnnos) throws NotFoundException, DatastoreException;
+	void updateUserAnnotations(String id, Annotations annotationsV2);
 
 	/**
 	 * Update annotations for the node's additional entity properties
@@ -128,8 +129,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException
 	 */
-	@WriteTransaction
-	void updateEntityPropertyAnnotations(String nodeId, Annotations updatedAnnos) throws NotFoundException, DatastoreException;
+	void updateEntityPropertyAnnotations(String nodeId, org.sagebionetworks.repo.model.Annotations updatedAnnos) throws NotFoundException, DatastoreException;
 
 	/**
 	 * Get all of the version numbers for this node.
@@ -138,30 +138,47 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException 
 	 */
-	public List<Long> getVersionNumbers(String id) throws NotFoundException, DatastoreException;
+	List<Long> getVersionNumbers(String id);
 
 	/**
-	 * Get User annotations
+	 * Returns an optional containing the latest version number set in the revisions of the node with the given id if any revision exist
+	 * 
+	 * @param id The if of the node
+	 * @return An optional containing the latest revision number for the node, empty if no such revision exist
+	 */
+	Optional<Long> getLatestVersionNumber(String id);
+	
+	/**
+	 * Get user annotations associated with the current version of the entity
 	 * @param id
 	 * @return
 	 * @throws NotFoundException
-	 * @throws DatastoreException
 	 */
-	Annotations getUserAnnotationsV1(String id) throws NotFoundException, DatastoreException;
+	Annotations getUserAnnotations(String id);
 
 	/**
-	 * Get User Annotations for a specific version
+	 * Get user annotations for a specific version of the entity
 	 * @param id
 	 * @param versionNumber
 	 * @return
 	 * @throws NotFoundException
-	 * @throws DatastoreException
 	 */
-	Annotations getUserAnnotationsV1ForVersion(String id, Long versionNumber) throws NotFoundException, DatastoreException;
+	Annotations getUserAnnotationsForVersion(String id, Long versionNumber);
 
-	Annotations getEntityPropertyAnnotations(String id) throws NotFoundException, DatastoreException;
+	/**
+	 * Get Entity properties that could not be stored as a Node
+	 * @param id
+	 * @return Annotations containing the extra properties for the Entity
+	 */
+	org.sagebionetworks.repo.model.Annotations getEntityPropertyAnnotations(String id);
 
-	Annotations getEntityPropertyAnnotationsForVersion(String id, Long versionNumber) throws NotFoundException, DatastoreException;
+	/**
+	 * Get Entity properties for a specific version that could not be stored as a Node
+	 * @param id
+	 * @param versionNumber
+	 * @return Annotations containing the extra properties for the Entity
+	 */
+	org.sagebionetworks.repo.model.Annotations getEntityPropertyAnnotationsForVersion(String id, Long versionNumber);
 
 	/**
 	 * Look at the current eTag without locking or changing anything.
@@ -170,7 +187,7 @@ public interface NodeDAO {
 	 * @throws DatastoreException 
 	 * @throws NotFoundException 
 	 */
-	public String peekCurrentEtag(String id) throws NotFoundException, DatastoreException;
+	public String peekCurrentEtag(String id);
 
 	/**
 	 * Make changes to an existing node.
@@ -178,7 +195,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException 
 	 * @throws DatastoreException 
 	 */
-	public void updateNode(Node updatedNode) throws NotFoundException, DatastoreException, InvalidModelException;
+	public void updateNode(Node updatedNode);
 	
 	/**
 	 * Does a given node exist?
@@ -219,7 +236,7 @@ public interface NodeDAO {
 	 * @throws DatastoreException 
 	 * @throws NotFoundException 
 	 */
-	public EntityHeader getEntityHeader(String nodeId, Long versionNumber) throws DatastoreException, NotFoundException;
+	public EntityHeader getEntityHeader(String nodeId) throws DatastoreException, NotFoundException;
 	
 	/**
 	 * Get a list of entity headers from a list of references.
@@ -242,7 +259,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException
 	 */
-	public EntityType getNodeTypeById(String nodeId) throws NotFoundException, DatastoreException;
+	public EntityType getNodeTypeById(String nodeId);
 
 	/**
 	 * Gets the header information for entities whose file's MD5 matches the given MD5 checksum.
@@ -257,7 +274,27 @@ public interface NodeDAO {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
-	public List<EntityHeader> getEntityPath(String nodeId) throws DatastoreException, NotFoundException;
+	public List<NameIdType> getEntityPath(String nodeId) throws DatastoreException, NotFoundException;
+	
+	/**
+	 * Get the IDs of the entities in the provided entityId's path.
+	 * @param nodeId
+	 * @return Result order will be from root to leaf. The results will include the requested entity (as the last item).
+	 * Results will also include the root folder as the first item.
+	 */
+	public List<Long> getEntityPathIds(String nodeId);
+	
+	/**
+	 * @deprecated Use: {@link #getEntityPathIds(String)}.
+	 * <p>
+	 * Get the IDs of the entities in the provided entityId's path.
+	 * 
+	 * @param entityId
+	 * @param includeSelf When true, the passed entityId will be included in the results.
+	 * @return Result order will be from root to leaf.
+	 */
+	@Deprecated 
+	List<Long> getEntityPathIds(String entityId, boolean includeSelf);
 	
 	/**
 	 * Lookup a node id using its unique path.
@@ -292,7 +329,7 @@ public interface NodeDAO {
 	 * @throws NumberFormatException 
 	 * @throws DatastoreException 
 	 */
-	public String getParentId(String nodeId) throws NumberFormatException, NotFoundException, DatastoreException;
+	public String getParentId(String nodeId) throws NumberFormatException, NotFoundException;
 	
 	/**
 	 * Get the current revision number for a node.
@@ -301,14 +338,14 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException 
 	 */
-	public Long getCurrentRevisionNumber(String nodeId) throws NotFoundException, DatastoreException;
+	public Long getCurrentRevisionNumber(String nodeId);
 	
 	/**
 	 * Get the activity id for the current version of the node. 
 	 * @param nodeId
 	 * @return
 	 */
-	public String getActivityId(String nodeId) throws NotFoundException, DatastoreException;
+	public String getActivityId(String nodeId);
 	
 	/**
 	 * Get the activity id for a specific version of the node.
@@ -316,13 +353,13 @@ public interface NodeDAO {
 	 * @param revNumber
 	 * @return
 	 */
-	public String getActivityId(String nodeId, Long revNumber) throws NotFoundException, DatastoreException;
+	public String getActivityId(String nodeId, Long revNumber);
 	
 	/**
 	 * Get the Synapse ID of the creator of a node.
 	 * @throws DatastoreException 
 	 */
-	public Long getCreatedBy(String nodeId) throws NotFoundException, DatastoreException;
+	public Long getCreatedBy(String nodeId);
 	
 	/**
 	 * returns true iff the given node is root
@@ -332,8 +369,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException
 	 */
-	public boolean isNodeRoot(String nodeId) throws NotFoundException,
-	DatastoreException;
+	public boolean isNodeRoot(String nodeId);
 
 	/**
 	 * returns true iff the parent of the given node is root
@@ -343,7 +379,7 @@ public interface NodeDAO {
 	 * @throws NotFoundException
 	 * @throws DatastoreException 
 	 */
-    public boolean isNodesParentRoot(String nodeId) throws NotFoundException, DatastoreException;
+    public boolean isNodesParentRoot(String nodeId);
 
     /**
      * Does this given node have any children?
@@ -353,7 +389,7 @@ public interface NodeDAO {
 	public boolean doesNodeHaveChildren(String nodeId);
 
 	public List<VersionInfo> getVersionsOfEntity(String entityId, long offset,
-			long limit) throws NotFoundException, DatastoreException;
+			long limit);
 
 	/**
 	 * Get the FileHandle Id for a given version number.
@@ -390,16 +426,21 @@ public interface NodeDAO {
 	public String lockNode(String nodeId);
 
 	/**
-	 * get a list of projects
+	 * Return one page of ProjectHeader information, based on a (long) list of project IDs,
+	 * sorted according to the sortColumn and sortDirection param's.  The project metadata
+	 * includes when it was last accessed by the given user.
 	 * 
-	 * @param userInfo
-	 * @param userToGetInfoFor user to get listing for
-	 * @param teamToFetch optional team to get the listing for
-	 * @param type type of list
-	 * @param sortColumn sort column
+	 * 
+	 * if type is CREATED then return only projects created by the given user.
+	 * if type is PARTICIPATED then return only projects NOT created by the given user.
+	 * 
+	 * @param userId user whose activity is to be returned
+	 * @param projectIds list of IDs to filter
+	 * @param type filter criterion
+	 * @param sortColumn sort criterion (last activity time or project name)
 	 * @param sortDirection sort direction
-	 * @param limit
-	 * @param offset
+	 * @param limit (>=0)
+	 * @param offset (>=0)
 	 * @return
 	 */
 	public List<ProjectHeader> getProjectHeaders(Long userId, Set<Long> projectIds,
@@ -434,11 +475,29 @@ public interface NodeDAO {
 	Set<Long> getAllContainerIds(String parentId, int maxNumberIds) throws LimitExceededException;
 	
 	/**
+	 * Return all the nodes in the sub tree of the node with the given id ordered (decreasing) by their distance from
+	 * the input node.
+	 *  
+	 * @param parentId The id of a (container) node
+	 * @param limit The max number of nodes to be fetched
+	 * @return The list of nodes in the sub-tree of the node with the given id, does not include the input node id
+	 */
+	List<Long> getSubTreeNodeIdsOrderByDistanceDesc(Long parentId, int limit);
+	
+	/**
 	 * Lookup a nodeId using its alias.
 	 * @param alias
 	 * @return
 	 */
 	String getNodeIdByAlias(String alias);
+	
+	/**
+	 * Get the aliases for nodeIds.  If a nodeId is missing from the results then it has no alias
+	 * 
+	 * @param nodeIds
+	 * @return
+	 */
+	List<IdAndAlias> getAliasByNodeId(List<String> nodeIds);
 
 	/**
 	 * Get the project for the given Entity.
@@ -471,7 +530,7 @@ public interface NodeDAO {
 	 * @param maxAnnotationChars the maximum number of characters for any annotation value.
 	 * @return
 	 */
-	public List<EntityDTO> getEntityDTOs(List<String> ids, int maxAnnotationChars);
+	public List<ObjectDataDTO> getEntityDTOs(List<Long> ids, int maxAnnotationChars);
 
 	/**
 	 * 
@@ -566,4 +625,52 @@ public interface NodeDAO {
 	 * @return The version number of the the snapshot (will always be the current version number).
 	 */
 	public long snapshotVersion(Long userId, String nodeId, SnapshotRequest request);
+
+	/**
+	 * Get the name of the given Node.
+	 * @param projectId
+	 * @return
+	 */
+	public String getNodeName(String nodeId);
+
+	/**
+	 * Walk the hierarchy to find the fist bound JSON schema for the provide entity Id.
+	 * @param nodeId
+	 * @param maxDepth The maximum depth that should be recursively searched for a match.
+	 * @return
+	 */
+	public Long getEntityIdOfFirstBoundSchema(Long nodeId, long maxDepth);
+
+	/**
+	 * Walk the hierarchy to find the fist bound JSON schema for the provide entity Id.
+	 * @param entityId
+	 * @return
+	 */
+	public Long getEntityIdOfFirstBoundSchema(Long entityId);
+
+	/**
+	 * Updates the file handle of the node with the given id and version
+	 * 
+	 * @param nodeId The id of the node to update
+	 * @param versionNumber The version number of the node
+	 * @param fileHandleId The new file handle id
+	 * @return True if the node was updated, false otherwise
+	 */
+	boolean updateRevisionFileHandle(String nodeId, Long versionNumber, String fileHandleId);
+	
+	/**
+	 * Truncate everything expect bootstrap nodes.
+	 */
+	public void truncateAll();
+
+	/**
+	 * For the given entity get the number of entities in the entity's hierarchy.
+	 * 
+	 * @param entityId
+	 * @param maxDepth The maximum depth do search. The results will not exceed this
+	 *                 max even if the hierarchy is deeper.
+	 * @return
+	 */
+	Integer getEntityPathDepth(String entityId, int maxDepth);
+
 }

@@ -6,9 +6,7 @@
 		<groupId>org.sagebionetworks</groupId>
 		<version>develop-SNAPSHOT</version>
 	</parent>
-	<groupId>org.sagebionetworks</groupId>
 	<artifactId>lib-shared-models</artifactId>
-	<version>develop-SNAPSHOT</version>
 	<name>lib-shared-models</name>
 	<description>These model objects are shared between the client and server.  Only GWT compatible models should exist in this project</description>
 
@@ -34,7 +32,7 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>gwt-maven-plugin</artifactId>
-				<version>2.5.1</version>
+				<version>${gwtVersion}</version>
 				<executions>
 					<execution>
 						<goals>
@@ -107,7 +105,16 @@
 			<artifactId>junit-vintage-engine</artifactId>
 			<scope>test</scope>
 		</dependency>
-
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
@@ -115,5 +122,8 @@
 
 	</dependencies>
 
-
+	<properties>
+		<jacoco.branch.minumum>0.30</jacoco.branch.minumum>
+		<jacoco.line.minumum>0.40</jacoco.line.minumum>
+	</properties>
 </project>

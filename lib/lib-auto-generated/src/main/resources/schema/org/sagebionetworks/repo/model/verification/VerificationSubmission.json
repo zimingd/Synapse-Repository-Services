@@ -38,6 +38,11 @@
 				"type": "string"
 			}
 		},
+		"notificationEmail": {
+			"type": "string",
+			"title": "Notification Email Address",
+			"description": "The primary (notification) email address registered to this user."
+		},
 		"location": {
 			"type": "string",
 			"title": "Location",
@@ -66,7 +71,7 @@
 		},
 		"attachments":{
 			"type":"array",
-			"description":"Metadata of Files attached to the submission",
+			"description":"Metadata of Files attached to the submission. The list will be emptied after the state is APPROVED or REJECTED.",
 			"items":{
 				"type":"object",
 				"$ref":"org.sagebionetworks.repo.model.verification.AttachmentMetadata"

@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
-       xmlns:util="http://www.springframework.org/schema/util"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+	   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	   xmlns:aop="http://www.springframework.org/schema/aop"
+	   xmlns:util="http://www.springframework.org/schema/util"
+	   xmlns:context="http://www.springframework.org/schema/context"
+	   xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
 
        http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-3.0.xsd
-       http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-3.0.xsd">
+       http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd
+       http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd">
 
+	<context:annotation-config/>
+    <context:component-scan base-package="org.sagebionetworks.repo.model" annotation-config="false"/>
 	<!-- Turn on Spring's autoproxy using AspectJ's @Aspect annotations. -->
 	<aop:aspectj-autoproxy />
-
 
 	<bean id="clock" class="org.sagebionetworks.util.DefaultClock" />
 
@@ -18,9 +22,6 @@
 	<!-- Transactional Messenger -->
 	<bean id="transactionalMessenger"
 		class="org.sagebionetworks.repo.model.message.TransactionalMessengerImpl" />
-
-	<bean id="uploadDaemonStatusDao"
-		class="org.sagebionetworks.repo.model.dbo.dao.DBOUploadDaemonStatusDaoImpl" />
 
 	<bean id="nodeDao" class="org.sagebionetworks.repo.model.dbo.dao.NodeDAOImpl"
 		depends-on="idGenerator" />
@@ -35,6 +36,19 @@
 		class="org.sagebionetworks.repo.model.dbo.dao.DBOActivityDAOImpl"
 		depends-on="idGenerator" />
 		
+	<!--  DAO for managing OAuthClients -->
+	<bean id="oauthClientDao"
+		class="org.sagebionetworks.repo.model.dbo.auth.OAuthClientDaoImpl" 
+		depends-on="idGenerator" />
+
+	<bean id="oauthRefreshTokenDao"
+		  class="org.sagebionetworks.repo.model.dbo.auth.OAuthRefreshTokenDaoImpl"
+		  depends-on="idGenerator" />
+
+	<bean id="personalAccessTokenDao"
+		  class="org.sagebionetworks.repo.model.dbo.auth.PersonalAccessTokenDaoImpl"
+		  depends-on="idGenerator" />
+
 	<bean id="fileHandleDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.DBOFileHandleDaoImpl" />
 		
@@ -97,6 +111,30 @@
 			   	</bean>
 			</property>			
 		</bean>
+		<bean class="org.sagebionetworks.repo.model.principal.BootstrapGroup">
+			<property name="id" value="6" />
+			<property name="groupAlias">
+			   	<bean class="org.sagebionetworks.repo.model.principal.BootstrapAlias">
+			   		<property name="aliasName" value="TESTING_USERS" />
+			   		<property name="aliasId" value="7" />
+			   	</bean>
+			</property>			
+		</bean>
+		<bean class="org.sagebionetworks.repo.model.principal.BootstrapUser">
+			<property name="id" value="3412389" />
+			<property name="email">
+			   	<bean class="org.sagebionetworks.repo.model.principal.BootstrapAlias">
+			   		<property name="aliasName" value="act@sagebase.org" />
+			   		<property name="aliasId" value="172631" />
+			   	</bean>
+			</property>
+			<property name="userName">
+			   	<bean class="org.sagebionetworks.repo.model.principal.BootstrapAlias">
+			   		<property name="aliasName" value="ACTAccessManagement" />
+			   		<property name="aliasId" value="172630" />
+			   	</bean>
+			</property>
+		</bean>
 	</util:list>
 
 	<bean id="userGroupDAO"
@@ -147,12 +185,6 @@
 		depends-on="userGroupDAO"
 		init-method="bootstrapCredentials" />
 
-	<bean id="accessRequirementDAO"
-		class="org.sagebionetworks.repo.model.dbo.dao.DBOAccessRequirementDAOImpl" />
-
-	<bean id="accessApprovalDAO"
-		class="org.sagebionetworks.repo.model.dbo.dao.DBOAccessApprovalDAOImpl" />
-
 	<bean id="aclDAO"
 		class="org.sagebionetworks.repo.model.dbo.dao.DBOAccessControlListDaoImpl"
 		scope="singleton" />
@@ -162,6 +194,12 @@
 
 	<bean id="amazonS3Client" class="org.sagebionetworks.aws.AwsClientFactory"
 		factory-method="createAmazonS3Client" scope="singleton" />
+		
+	<bean id="amazonAthenaClient" class="org.sagebionetworks.aws.AwsClientFactory"
+		factory-method="createAmazonAthenaClient" scope="singleton" />
+		
+	<bean id="amazonGlueClient" class="org.sagebionetworks.aws.AwsClientFactory"
+		factory-method="createAmazonGlueClient" scope="singleton" />
 
 	<bean id="transferManager" class="org.sagebionetworks.aws.AwsClientFactory"
 		factory-method="createTransferManager" scope="singleton" />
@@ -173,11 +211,6 @@
         scope="singleton" />
 
 	<bean id="changeDAO" class="org.sagebionetworks.repo.model.dbo.dao.DBOChangeDAOImpl"
-		scope="singleton">
-	</bean>
-
-	<bean id="trashCanDao"
-		class="org.sagebionetworks.repo.model.dbo.dao.DBOTrashCanDaoImpl"
 		scope="singleton">
 	</bean>
 	
@@ -205,7 +238,7 @@
 	
 	<bean id="tableRowTruthDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.table.TableRowTruthDAOImpl"
-		scope="singleton" init-method="initialize">
+		scope="singleton">
 		<property name="s3Bucket" ref="stackConfiguration.tableRowChangeBucketName"/>
 	</bean>
 	
@@ -248,9 +281,6 @@
 	<bean id="stackStatusDao" class="org.sagebionetworks.repo.model.jdo.StackStatusDaoImpl"
 		scope="singleton" />	
 
-	<bean id="multipartUplaodDAO" class="org.sagebionetworks.repo.model.dbo.file.MultipartUploadDAOImpl"
-		scope="singleton" />
-
 	<bean id="multipartUploadComposerDAO" class="org.sagebionetworks.repo.model.dbo.file.MultipartUploadComposerDAOImpl"
 		  scope="singleton" />
 
@@ -269,8 +299,6 @@
 		class="org.sagebionetworks.evaluation.dao.AnnotationsDAOImpl" />
 	<bean id="quizResponseDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.DBOQuizResponseDAOImpl" />
-	<bean id="verificationDao"
-		class="org.sagebionetworks.repo.model.dbo.dao.DBOVerificationDAOImpl" />
 
 	<bean id="broadcastMessageDao" class="org.sagebionetworks.repo.model.message.BroadcastMessageDaoImpl"/>
 	
@@ -289,10 +317,6 @@
 	<!--  DAO for View Scope -->
 	<bean id="viewScopeDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.table.ViewScopeDaoImpl" />
-
-	<!--  DAO for Authentication Receipt -->
-	<bean id="authReceiptDao"
-		class="org.sagebionetworks.repo.model.dbo.auth.DBOAuthenticationReceiptDAOImpl" />
 
 	<!-- Misc beans -->
 	
@@ -321,9 +345,6 @@
 	<bean id="submissionDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.dataaccess.DBOSubmissionDAOImpl" />
 		
-	<bean id="nodeQueryDaoFactory"
-		class="org.sagebionetworks.repo.model.query.entity.NodeQueryDaoFactoryImpl" />
-		
 	<bean id="tableExceptionTranslator"
 		class="org.sagebionetworks.repo.model.dbo.dao.table.TableExceptionTranslatorImpl"/>
 		
@@ -333,7 +354,4 @@
 	<bean id="dataTypeDao"
 		class="org.sagebionetworks.repo.model.dbo.dao.DataTypeDaoImpl"/>
 
-	<!-- DAO for blocking repeated unsuccessful attempts -->
-	<bean id="unsuccessfulAtteptLockoutDao"
-		class="org.sagebionetworks.repo.model.dbo.dao.UnsuccessfulLoginLockoutDAOImpl"/>
 </beans>

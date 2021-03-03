@@ -22,13 +22,12 @@ import java.util.Set;
 import org.apache.http.entity.ContentType;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.AuthorizationManager;
-import org.sagebionetworks.repo.manager.AuthorizationStatus;
 import org.sagebionetworks.repo.manager.EmailUtils;
 import org.sagebionetworks.repo.manager.MessageToUserAndBody;
 import org.sagebionetworks.repo.manager.UserProfileManager;
+import org.sagebionetworks.repo.manager.dataaccess.RestrictionInformationManager;
 import org.sagebionetworks.repo.manager.token.TokenGenerator;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
-import org.sagebionetworks.repo.model.AccessRequirementDAO;
 import org.sagebionetworks.repo.model.AuthorizationUtils;
 import org.sagebionetworks.repo.model.Count;
 import org.sagebionetworks.repo.model.DatastoreException;
@@ -37,11 +36,13 @@ import org.sagebionetworks.repo.model.MembershipRequest;
 import org.sagebionetworks.repo.model.MembershipRequestDAO;
 import org.sagebionetworks.repo.model.ObjectType;
 import org.sagebionetworks.repo.model.RestrictableObjectType;
+import org.sagebionetworks.repo.model.RestrictionInformationRequest;
 import org.sagebionetworks.repo.model.Team;
 import org.sagebionetworks.repo.model.TeamDAO;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.UserProfile;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.message.MessageToUser;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
@@ -63,9 +64,9 @@ public class MembershipRequestManagerImpl implements MembershipRequestManager {
 	@Autowired
 	private TeamDAO teamDAO;
 	@Autowired
-	private AccessRequirementDAO accessRequirementDAO;
-	@Autowired
 	TokenGenerator tokenGenerator;
+	@Autowired
+	private RestrictionInformationManager restrictionInformationManager;
 	
 	public static final String TEAM_MEMBERSHIP_REQUEST_CREATED_TEMPLATE = "message/teamMembershipRequestCreatedTemplate.html";
 	private static final String TEAM_MEMBERSHIP_REQUEST_MESSAGE_SUBJECT = "Someone Has Requested to Join Your Team";
@@ -80,10 +81,10 @@ public class MembershipRequestManagerImpl implements MembershipRequestManager {
 	}
 	
 	private boolean hasUnmetAccessRequirements(UserInfo memberUserInfo, String teamId) throws NotFoundException {
-		List<Long> unmetRequirements = accessRequirementDAO.getAllUnmetAccessRequirements(
-				Collections.singletonList(teamId), RestrictableObjectType.TEAM, memberUserInfo.getGroups(), 
-				Collections.singletonList(ACCESS_TYPE.PARTICIPATE));
-		return !unmetRequirements.isEmpty();
+		RestrictionInformationRequest request = new RestrictionInformationRequest();
+		request.setObjectId(teamId);
+		request.setRestrictableObjectType(RestrictableObjectType.TEAM);
+		return restrictionInformationManager.getRestrictionInformation(memberUserInfo, request).getHasUnmetAccessRequirement();
 	}
 
 
@@ -122,8 +123,13 @@ public class MembershipRequestManagerImpl implements MembershipRequestManager {
 			String acceptRequestEndpoint, String notificationUnsubscribeEndpoint) {
 		ValidateArgument.required(acceptRequestEndpoint, "acceptRequestEndpoint");
 		ValidateArgument.required(notificationUnsubscribeEndpoint, "notificationUnsubscribeEndpoint");
+		
 		List<MessageToUserAndBody> result = new ArrayList<MessageToUserAndBody>();
-		if (mr.getCreatedOn() == null) mr.setCreatedOn(new Date());
+		
+		if (mr.getCreatedOn() == null) {
+			mr.setCreatedOn(new Date());
+		}
+		
 		UserProfile userProfile = userProfileManager.getUserProfile(mr.getCreatedBy());
 		String displayName = EmailUtils.getDisplayNameWithUsername(userProfile);
 		Map<String,String> fieldValues = new HashMap<String,String>();
@@ -131,6 +137,7 @@ public class MembershipRequestManagerImpl implements MembershipRequestManager {
 		fieldValues.put(TEMPLATE_KEY_USER_ID, mr.getCreatedBy());
 		fieldValues.put(TEMPLATE_KEY_TEAM_NAME, teamDAO.get(mr.getTeamId()).getName());
 		fieldValues.put(TEMPLATE_KEY_TEAM_ID, mr.getTeamId());
+		
 		if (mr.getMessage()==null || mr.getMessage().length()==0) {
 			fieldValues.put(TEMPLATE_KEY_REQUESTER_MESSAGE, "");
 		} else {
@@ -140,16 +147,21 @@ public class MembershipRequestManagerImpl implements MembershipRequestManager {
 		}
 		
 		Set<String> teamAdmins = new HashSet<>(teamDAO.getAdminTeamMemberIds(mr.getTeamId()));
+		
 		for (String recipientPrincipalId : teamAdmins) {
+
 			fieldValues.put(TEMPLATE_KEY_ONE_CLICK_JOIN, EmailUtils.createOneClickJoinTeamLink(
 					acceptRequestEndpoint, recipientPrincipalId, mr.getCreatedBy(), mr.getTeamId(), mr.getCreatedOn(), tokenGenerator));
+
 			String messageContent = EmailUtils.readMailTemplate(TEAM_MEMBERSHIP_REQUEST_CREATED_TEMPLATE, fieldValues);
+			
 			MessageToUser mtu = new MessageToUser();
 			mtu.setRecipients(Collections.singleton(recipientPrincipalId));
 			mtu.setSubject(TEAM_MEMBERSHIP_REQUEST_MESSAGE_SUBJECT);
 			mtu.setNotificationUnsubscribeEndpoint(notificationUnsubscribeEndpoint);
 			result.add(new MessageToUserAndBody(mtu, messageContent, ContentType.TEXT_HTML.getMimeType()));
 		}
+		
 		return result;
 	}
 	

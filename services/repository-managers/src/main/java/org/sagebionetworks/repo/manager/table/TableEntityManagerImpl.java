@@ -1,21 +1,15 @@
 package org.sagebionetworks.repo.manager.table;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.sagebionetworks.common.util.progress.ProgressCallback;
 import org.sagebionetworks.common.util.progress.SynchronizedProgressCallback;
 import org.sagebionetworks.manager.util.CollectionUtils;
 import org.sagebionetworks.manager.util.Validate;
 import org.sagebionetworks.repo.manager.NodeManager;
+import org.sagebionetworks.repo.manager.events.EventsCollector;
+import org.sagebionetworks.repo.manager.statistics.StatisticsFileEvent;
+import org.sagebionetworks.repo.manager.statistics.StatisticsFileEventUtils;
 import org.sagebionetworks.repo.manager.table.change.TableChangeMetaData;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DatastoreException;
@@ -29,8 +23,8 @@ import org.sagebionetworks.repo.model.dao.table.RowHandler;
 import org.sagebionetworks.repo.model.dao.table.TableRowTruthDAO;
 import org.sagebionetworks.repo.model.dbo.dao.table.TableTransactionDao;
 import org.sagebionetworks.repo.model.entity.IdAndVersion;
-import org.sagebionetworks.repo.model.entity.IdAndVersionBuilder;
 import org.sagebionetworks.repo.model.exception.ReadOnlyException;
+import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSetRequest;
@@ -78,8 +72,17 @@ import org.sagebionetworks.workers.util.semaphore.LockUnavilableException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class TableEntityManagerImpl implements TableEntityManager {
 	
@@ -119,6 +122,8 @@ public class TableEntityManagerImpl implements TableEntityManager {
 	TableTransactionDao tableTransactionDao;
 	@Autowired
 	NodeManager nodeManager;
+	@Autowired
+	EventsCollector statisticsCollector;
 	
 	/**
 	 * Injected via spring
@@ -195,7 +200,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 		// Validate the user has permission to edit the table
 		tableManagerSupport.validateTableWriteAccess(user, idAndVersion);
 		
-		List<ColumnModel> columns = tableManagerSupport.getColumnModelsForTable(idAndVersion);
+		List<ColumnModel> columns = columModelManager.getColumnModelsForTable(user, tableId);
 		SparseChangeSet changeSet = new SparseChangeSet(tableId, columns, rowsToDelete.getEtag());
 		for(Long rowId: rowsToDelete.getRowIds()){
 			SparseRow row = changeSet.addEmptyRow();
@@ -342,6 +347,9 @@ public class TableEntityManagerImpl implements TableEntityManager {
 		// Now assign the rowIds and set the version number
 		TableModelUtils.assignRowIdsAndVersionNumbers(delta, range);
 		
+		// Send the file uploads events (after commit)
+		sendFileUploadEvents(user.getId(), delta);
+		
 		tableRowTruthDao.appendRowSetToTable(user.getId().toString(), delta.getTableId(), range.getEtag(), range.getVersionNumber(), columns, delta.writeToDto(), transactionId);
 		
 		// Prepare the results
@@ -358,7 +366,42 @@ public class TableEntityManagerImpl implements TableEntityManager {
 			refs.add(ref);
 		}
 		results.setRows(refs);
+		
 		return results;
+	}
+	
+	private void sendFileUploadEvents(Long userId, SparseChangeSet delta) {
+		String tableId = delta.getTableId();
+		
+		Set<Long> fileHandleIds = delta.getFileHandleIdsInSparseChangeSet();
+
+		List<StatisticsFileEvent> downloadEvents = getFileHandleIdsNotAssociatedWithTable(tableId, fileHandleIds).stream().map(fileHandleId -> 
+			StatisticsFileEventUtils.buildFileUploadEvent(userId, fileHandleId.toString(), tableId, FileHandleAssociateType.TableEntity)
+		).collect(Collectors.toList());
+		
+		if (!downloadEvents.isEmpty()) {
+			statisticsCollector.collectEvents(downloadEvents);
+		}
+		
+	}
+	
+	/**
+	 * From the given set of file handle ids computes the subset of ids that are NOT associated with the given table
+	 * 
+	 * @param tableId The id of the table
+	 * @param fileHandleIds A set of file handle ids
+	 * @return The subset of file handle ids from the given input set that are not associated with the given table
+	 */
+	Set<Long> getFileHandleIdsNotAssociatedWithTable(String tableId, Set<Long> fileHandleIds) {
+		IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
+		
+		TableIndexDAO indexDao = tableConnectionFactory.getConnection(idAndVersion);
+		
+		// First get the set of file handles among the input that are actually associated with the table
+		Set<Long> filesAssociatedWithTable = indexDao.getFileHandleIdsAssociatedWithTable(fileHandleIds, idAndVersion);
+		
+		// Now compute the set difference
+		return fileHandleIds.stream().filter( id -> !filesAssociatedWithTable.contains(id)).collect(Collectors.toSet());
 	}
 	
 	/**
@@ -436,7 +479,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 		String sql = SQLUtils.buildSelectRowIds(tableId, rows, columns);
 		final Map<Long, Row> rowMap = new HashMap<Long, Row>(rows.size());
 		try {
-			SqlQuery query = new SqlQueryBuilder(sql, columns).build();
+			SqlQuery query = new SqlQueryBuilder(sql, columns, userInfo.getId()).build();
 			indexDao.queryAsStream(null, query, new  RowHandler() {
 				@Override
 				public void nextRow(Row row) {
@@ -471,7 +514,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 	 * @param tableId
 	 * @param rowSet
 	 */
-	public void validateFileHandles(UserInfo user, String tableId,
+	void validateFileHandles(UserInfo user, String tableId,
 			SparseChangeSet rowSet) {
 		if(user.isAdmin()){
 			return;
@@ -540,8 +583,8 @@ public class TableEntityManagerImpl implements TableEntityManager {
 	public void setTableSchema(final UserInfo userInfo, final List<String> newSchema, final String tableId) {
 		try {
 			IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
-			SynchronizedProgressCallback callback = new SynchronizedProgressCallback();
-			tableManagerSupport.tryRunWithTableExclusiveLock(callback, idAndVersion, EXCLUSIVE_LOCK_TIMEOUT_SECONDS,
+			SynchronizedProgressCallback callback = new SynchronizedProgressCallback(EXCLUSIVE_LOCK_TIMEOUT_SECONDS);
+			tableManagerSupport.tryRunWithTableExclusiveLock(callback, idAndVersion,
 					(ProgressCallback callbackInner) -> {
 						setTableSchemaWithExclusiveLock(callbackInner, userInfo, newSchema, tableId);
 						return null;
@@ -564,7 +607,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 	void setTableSchemaWithExclusiveLock(final ProgressCallback callback, final UserInfo userInfo, final List<String> newSchema,
 			final String tableId) {
 		// Lookup the current schema for this table
-		List<String> oldSchema = columModelManager.getColumnIdForTable(IdAndVersion.parse(tableId));
+		List<String> oldSchema = columModelManager.getColumnIdsForTable(IdAndVersion.parse(tableId));
 		// Calculate the schema change (if there is one).
 		List<ColumnChange> schemaChange = TableModelUtils.createChangesFromOldSchemaToNew(oldSchema, newSchema);
 		TableSchemaChangeRequest changeRequest = new TableSchemaChangeRequest();
@@ -750,7 +793,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 		IdAndVersion idAndVersion = IdAndVersion.parse(changes.getEntityId());
 		// First determine if this will be an actual change to the schema.
 		List<String> newSchemaIds = columModelManager.calculateNewSchemaIdsAndValidate(changes.getEntityId(), changes.getChanges(), changes.getOrderedColumnIds());
-		List<String> currentSchemaIds = columModelManager.getColumnIdForTable(idAndVersion);
+		List<String> currentSchemaIds = columModelManager.getColumnIdsForTable(idAndVersion);
 		List<ColumnModel> newSchema = null;
 		if (!currentSchemaIds.equals(newSchemaIds)) {
 			// This will 
@@ -797,25 +840,7 @@ public class TableEntityManagerImpl implements TableEntityManager {
 
 	@Override
 	public List<String> getTableSchema(final IdAndVersion inputIdAndVersion) {
-		IdAndVersionBuilder lookupBuilder = IdAndVersion.newBuilder();
-		lookupBuilder.setId(inputIdAndVersion.getId());
-		if(inputIdAndVersion.getVersion().isPresent()) {
-			/*
-			 * The current version of any table is always 'in progress' and does not have a
-			 * schema bound to it. This means the schema for the current version always
-			 * matches the latest schema for the table. Therefore, when a caller explicitly
-			 * requests the schema of the current version, the latest schema is returned.
-			 */
-			long currentVersion = nodeManager.getCurrentRevisionNumber(inputIdAndVersion.getId().toString());
-			long inputVersion = inputIdAndVersion.getVersion().get();
-			if(inputVersion != currentVersion) {
-				// Only use the input version number when it is not the current version.
-				lookupBuilder.setVersion(inputVersion);
-			}
-			
-		}
-		// lookup the schema for the appropriate version.
-		return columModelManager.getColumnIdForTable(lookupBuilder.build());
+		return columModelManager.getColumnIdsForTable(inputIdAndVersion);
 	}
 
 	
@@ -952,8 +977,12 @@ public class TableEntityManagerImpl implements TableEntityManager {
 		tableTransactionDao.linkTransactionToVersion(transactionId, version);
 		// bump the parent etag so the change can migrate.
 		tableTransactionDao.updateTransactionEtag(transactionId);
+		
+		IdAndVersion resultingIdAndVersion = IdAndVersion.newBuilder().setId(tableId).setVersion(version).build();
 		// bind the current schema to the version
-		columModelManager.bindDefaultColumnsToObjectVersion(IdAndVersion.newBuilder().setId(tableId).setVersion(version).build());
+		columModelManager.bindCurrentColumnsToVersion(resultingIdAndVersion);
+		// trigger the build of new version (see: PLFM-5957)
+		tableManagerSupport.setTableToProcessingAndTriggerUpdate(resultingIdAndVersion);
 	}
 
 
@@ -965,20 +994,26 @@ public class TableEntityManagerImpl implements TableEntityManager {
 
 	@WriteTransaction
 	@Override
-	public SnapshotResponse createTableSnapshot(UserInfo userInfo, String tableIdString, SnapshotRequest request) {
+	public SnapshotResponse createTableSnapshot(UserInfo userInfo, String tableId, SnapshotRequest request) {
 		ValidateArgument.required(userInfo, "userInfo");
-		ValidateArgument.required(tableIdString, "TableId");
+		ValidateArgument.required(tableId, "TableId");
 		ValidateArgument.required(request, "request");
-		Long tableId = KeyFactory.stringToKey(tableIdString);
-		IdAndVersion idAndVersion = IdAndVersion.newBuilder().setId(tableId).build();
+		
+		IdAndVersion idAndVersion = IdAndVersion.parse(tableId);
+		
+		ObjectType type = tableManagerSupport.getTableType(idAndVersion);
+		if(ObjectType.ENTITY_VIEW.equals(type)) {
+			throw new IllegalArgumentException("EntityView snapshots can only be created via an asynchronous table transaction job.");
+		}
+		
 		// Validate the user has permission to edit the table
 		tableManagerSupport.validateTableWriteAccess(userInfo, idAndVersion);
 		// Table must have at least one transaction, such as setting the table's schema.
-		Optional<Long> lastTransactionNumber = tableRowTruthDao.getLastTransactionId(tableIdString);
+		Optional<Long> lastTransactionNumber = tableRowTruthDao.getLastTransactionId(tableId);
 		if(!lastTransactionNumber.isPresent()) {
 			throw new IllegalArgumentException("This table: "+tableId+" does not have a schema so a snapshot cannot be created.");
 		}
-		long snapshotVersion = createSnapshotAndBindToTransaction(userInfo, tableIdString, request, lastTransactionNumber.get());
+		long snapshotVersion = createSnapshotAndBindToTransaction(userInfo, tableId, request, lastTransactionNumber.get());
 		SnapshotResponse response = new SnapshotResponse();
 		response.setSnapshotVersionNumber(snapshotVersion);
 		return response;

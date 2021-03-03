@@ -1,14 +1,9 @@
 package org.sagebionetworks.repo.manager;
 
-import java.net.URI;
+import java.util.Map;
 
-import org.sagebionetworks.repo.util.jrjc.JiraClient;
-import org.sagebionetworks.repo.util.jrjc.JiraClientImpl;
-
-import com.atlassian.jira.rest.client.api.domain.BasicIssue;
-import com.atlassian.jira.rest.client.api.domain.Field;
-import com.atlassian.jira.rest.client.api.domain.Project;
-import com.atlassian.jira.rest.client.api.domain.input.IssueInput;
+import org.json.simple.JSONObject;
+import org.sagebionetworks.repo.util.jrjc.*;
 
 /**
  * This is a test Jira client which avoids creating any actual issues in Jira
@@ -20,12 +15,12 @@ public class TestJiraClient implements JiraClient {
 	private JiraClient innerJiraClient = new JiraClientImpl();
 	
 	@Override
-	public Project getProject(String projectKey) {
-		return innerJiraClient.getProject(projectKey);
+	public ProjectInfo getProjectInfo(String projectKey, String issueTypeName) {
+		return innerJiraClient.getProjectInfo(projectKey, issueTypeName);
 	}
 
 	@Override
-	public Iterable<Field> getFields() {
+	public Map<String,String> getFields() {
 		return innerJiraClient.getFields();
 	}
 
@@ -35,9 +30,12 @@ public class TestJiraClient implements JiraClient {
 	 * @see org.sagebionetworks.repo.util.jrjc.JiraClient#createIssue(com.atlassian.jira.rest.client.api.domain.input.IssueInput)
 	 */
 	@Override
-	public BasicIssue createIssue(IssueInput issueInput) {
-		BasicIssue result = new BasicIssue(URI.create("/foo/bar/bas"), "test-key", 999L);
-		return result;
+	public CreatedIssue createIssue(BasicIssue issueInput) {
+		CreatedIssue createdIssue = new CreatedIssue();
+		createdIssue.setId("9999");
+		createdIssue.setKey("test-key");
+		createdIssue.setUrl("https://someUrl");
+		return createdIssue;
 	}
 
 }

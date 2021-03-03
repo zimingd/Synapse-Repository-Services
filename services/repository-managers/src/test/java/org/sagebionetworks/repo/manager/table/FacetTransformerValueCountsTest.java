@@ -1,19 +1,11 @@
 package org.sagebionetworks.repo.manager.table;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.sagebionetworks.repo.model.table.TableConstants.NULL_VALUE_KEYWORD;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.junit.Before;
 import org.junit.Test;
-import org.sagebionetworks.repo.model.dbo.dao.table.TableModelTestUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.FacetColumnResultValueCount;
 import org.sagebionetworks.repo.model.table.FacetColumnResultValues;
 import org.sagebionetworks.repo.model.table.FacetColumnValuesRequest;
@@ -27,12 +19,19 @@ import org.sagebionetworks.table.query.ParseException;
 import org.sagebionetworks.table.query.util.FacetRequestColumnModel;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.sagebionetworks.repo.model.table.TableConstants.NULL_VALUE_KEYWORD;
 
 public class FacetTransformerValueCountsTest {
-	private FacetTransformerValueCounts facetTransformer;
-	private String columnName;
 	String selectedValue;
 	String notSelectedValue;
 	private List<ColumnModel> schema;
@@ -42,24 +41,43 @@ public class FacetTransformerValueCountsTest {
 	private RowSet rowSet;
 	private List<SelectColumn> correctSelectList;
 	private Set<String> selectedValuesSet;
+	private ColumnModel stringModel;
+	private ColumnModel stringListModel;
+	private Long userId;
 
 	
 	@Before
 	public void before() throws ParseException{
-		schema = TableModelTestUtils.createOneOfEachType(true);
-		assertFalse(schema.isEmpty());
-		columnName = "i0";
+		stringModel = new ColumnModel();
+		stringModel.setName("stringColumn");
+		stringModel.setColumnType(ColumnType.STRING);
+		stringModel.setId("1");
+		stringModel.setFacetType(FacetType.enumeration);
+		stringModel.setMaximumSize(50L);
+
+		stringListModel = new ColumnModel();
+		stringListModel.setName("stringListColumn");
+		stringListModel.setColumnType(ColumnType.STRING_LIST);
+		stringListModel.setId("2");
+		stringListModel.setFacetType(FacetType.enumeration);
+		stringListModel.setMaximumSize(50L);
+		stringListModel.setMaximumListLength(24L);
+
+		schema = Arrays.asList(stringModel, stringListModel);
+
 		facets = new ArrayList<>();
 		selectedValue = "selectedValue";
 		notSelectedValue = "notSelectedValue";
 		FacetColumnValuesRequest valuesRequest = new FacetColumnValuesRequest();
-		valuesRequest.setColumnName(columnName);
+		valuesRequest.setColumnName(stringModel.getName());
 		selectedValuesSet = Sets.newHashSet(selectedValue);
 		valuesRequest.setFacetValues(selectedValuesSet);
 		facets.add(new FacetRequestColumnModel(schema.get(0), valuesRequest));//use column "i0"
 
-		originalSearchCondition = "\"i0\" LIKE 'asdf%'";
-		originalQuery = new SqlQueryBuilder("SELECT * FROM syn123 WHERE " + originalSearchCondition, schema).build();
+		userId = 1L;
+
+		originalSearchCondition = "\"stringColumn\" LIKE 'asdf%'";
+		originalQuery = new SqlQueryBuilder("SELECT * FROM syn123 WHERE " + originalSearchCondition, schema, userId).build();
 		
 		rowSet = new RowSet();
 		
@@ -68,9 +86,6 @@ public class FacetTransformerValueCountsTest {
 		SelectColumn col2 = new SelectColumn();
 		col2.setName(FacetTransformerValueCounts.COUNT_ALIAS);
 		correctSelectList = Lists.newArrayList(col1, col2);
-		
-		facetTransformer = new FacetTransformerValueCounts(columnName, facets, originalQuery, selectedValuesSet);		
-
 	}
 	/////////////////////////////////
 	// constructor tests()
@@ -78,7 +93,9 @@ public class FacetTransformerValueCountsTest {
 	
 	@Test
 	public void testConstructor() {
-		assertEquals(columnName, ReflectionTestUtils.getField(facetTransformer, "columnName"));
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
+
+		assertEquals(stringModel.getName(), ReflectionTestUtils.getField(facetTransformer, "columnName"));
 		assertEquals(facets, ReflectionTestUtils.getField(facetTransformer, "facets"));
 		assertEquals(selectedValuesSet, ReflectionTestUtils.getField(facetTransformer, "selectedValues"));
 		
@@ -92,35 +109,61 @@ public class FacetTransformerValueCountsTest {
 	/////////////////////////////////
 	@Test
 	public void testGenerateFacetSqlQuery(){
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
 
 		//check the non-transformed sql
-		String expectedString = "SELECT \"i0\" AS value, COUNT(*) AS frequency"
+		String expectedString = "SELECT \"stringColumn\" AS value, COUNT(*) AS frequency"
 				+ " FROM syn123"
-				+ " WHERE \"i0\" LIKE 'asdf%'"
-				+ " GROUP BY \"i0\" LIMIT 100";
+				+ " WHERE \"stringColumn\" LIKE 'asdf%'"
+				+ " GROUP BY \"stringColumn\""
+				+ " ORDER BY frequency DESC, value ASC"
+				+ " LIMIT 100";
 		assertEquals(expectedString, facetTransformer.getFacetSqlQuery().getModel().toSql());
 		
 		//transformed model will be correct if schema and non-transformed query are correct
 		//because it is handled by SqlQuery Constructor
 	}
-	
+
+	@Test
+	public void testGenerateFacetSqlQuery_ForListTypes(){
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringListModel.getName(), true, facets, originalQuery, selectedValuesSet);
+
+		//check the non-transformed sql
+		String expectedString = "SELECT UNNEST(\"stringListColumn\") AS value, COUNT(*) AS frequency"
+				+ " FROM syn123"
+				+ " WHERE ( \"stringColumn\" LIKE 'asdf%' ) AND ( ( ( \"stringColumn\" = 'selectedValue' ) ) )"
+				+ " GROUP BY UNNEST(\"stringListColumn\")"
+				+ " ORDER BY frequency DESC, value ASC"
+				+ " LIMIT 100";
+		assertEquals(expectedString, facetTransformer.getFacetSqlQuery().getModel().toSql());
+
+		//transformed model will be correct if schema and non-transformed query are correct
+		//because it is handled by SqlQuery Constructor
+	}
+
+
 
 	////////////////////////////
 	// translateToResult() tests
 	////////////////////////////
 	@Test (expected = IllegalArgumentException.class)
 	public void testTranslateToResultNullRowSet(){
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
 		facetTransformer.translateToResult(null);
 	}
 	
 	@Test (expected = IllegalArgumentException.class)
 	public void testTranslateToResultWrongHeaders(){
-		rowSet.setHeaders(new ArrayList<SelectColumn>());
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
+
+		rowSet.setHeaders(Collections.emptyList());
 		facetTransformer.translateToResult(rowSet);
 	}
 	
 	@Test 
 	public void testTranslateToResultNullValueColumn(){
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
+
 		Long row1Count = 42L;
 		rowSet.setHeaders(correctSelectList);
 		Row row1 = new Row();
@@ -130,7 +173,7 @@ public class FacetTransformerValueCountsTest {
 		rowSet.setRows(Lists.newArrayList(row1));
 		FacetColumnResultValues result = (FacetColumnResultValues) facetTransformer.translateToResult(rowSet);
 
-		assertEquals(columnName, result.getColumnName());
+		assertEquals(stringModel.getName(), result.getColumnName());
 		assertEquals(FacetType.enumeration, result.getFacetType());
 
 		List<FacetColumnResultValueCount> valueCounts = result.getFacetValues();
@@ -145,6 +188,8 @@ public class FacetTransformerValueCountsTest {
 	
 	@Test 
 	public void testTranslateToResultCorrectHeaders(){
+		FacetTransformerValueCounts facetTransformer = new FacetTransformerValueCounts(stringModel.getName(), false, facets, originalQuery, selectedValuesSet);
+
 		Long row1Count = 42L;
 		Long row2Count = 23L;
 		rowSet.setHeaders(correctSelectList);
@@ -155,7 +200,7 @@ public class FacetTransformerValueCountsTest {
 		rowSet.setRows(Lists.newArrayList(row1, row2));
 		FacetColumnResultValues result = (FacetColumnResultValues) facetTransformer.translateToResult(rowSet);
 
-		assertEquals(columnName, result.getColumnName());
+		assertEquals(stringModel.getName(), result.getColumnName());
 		assertEquals(FacetType.enumeration, result.getFacetType());
 
 		List<FacetColumnResultValueCount> valueCounts = result.getFacetValues();

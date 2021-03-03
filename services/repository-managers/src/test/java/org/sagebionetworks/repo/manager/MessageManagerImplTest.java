@@ -1,14 +1,12 @@
 package org.sagebionetworks.repo.manager;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,10 +18,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.sagebionetworks.ids.IdGenerator;
 import org.sagebionetworks.ids.IdType;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
@@ -56,6 +57,7 @@ import org.sagebionetworks.repo.model.dbo.DBOBasicDao;
 import org.sagebionetworks.repo.model.dbo.dao.TestUtils;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOCredential;
 import org.sagebionetworks.repo.model.dbo.persistence.DBOTermsOfUseAgreement;
+import org.sagebionetworks.repo.model.dbo.ses.EmailQuarantineDao;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.message.MessageBundle;
@@ -69,12 +71,14 @@ import org.sagebionetworks.repo.model.principal.PrincipalAliasDAO;
 import org.sagebionetworks.repo.web.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
 import com.amazonaws.services.simpleemail.model.SendEmailRequest;
 import com.amazonaws.services.simpleemail.model.SendRawEmailRequest;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 /**
  * Tests message access requirement checking and the sending of messages
@@ -82,11 +86,9 @@ import com.amazonaws.services.simpleemail.model.SendRawEmailRequest;
  * 
  * Sorting of messages is not tested.  All tests order their results as most recent first.
  */
-@RunWith(SpringJUnit4ClassRunner.class)
+@ExtendWith(SpringExtension.class)
 @ContextConfiguration(locations = { "classpath:test-context.xml" })
 public class MessageManagerImplTest {
-	
-	private MessageManagerImpl messageManager;
 	
 	@Autowired
 	private UserManager userManager;
@@ -105,8 +107,6 @@ public class MessageManagerImplTest {
 	
 	@Autowired
 	private UserGroupDAO userGroupDAO;
-	
-	private FileHandleManager mockFileHandleManager;
 	
 	@Autowired
 	private NodeManager nodeManager;
@@ -141,6 +141,13 @@ public class MessageManagerImplTest {
 	@Autowired
 	private IdGenerator idGenerator;
 	
+	@Autowired
+	private EmailQuarantineDao emailQuarantineDao;
+	
+	@Mock
+	private FileHandleManager mockFileHandleManager;
+	
+	private MessageManagerImpl messageManager;
 
 	private static final MessageSortBy SORT_ORDER = MessageSortBy.SEND_DATE;
 	private static final boolean DESCENDING = true;
@@ -173,43 +180,38 @@ public class MessageManagerImplTest {
 	
 	private List<PrincipalAlias> aliasesToDelete;
 	
+	// Counter for messages sent (e.g. ses invocations) after the setup
+	private int sentMessagesCount;
+	
+	
 	/**
 	 * Note: This setup is very similar to {@link #DBOMessageDAOImplTest}
 	 */
-	@SuppressWarnings("serial")
-	@Before
+	@BeforeEach
 	public void setUp() throws Exception {
-		messageManager = new MessageManagerImpl();
-		ReflectionTestUtils.setField(messageManager, "messageDAO", messageDAO);
-		ReflectionTestUtils.setField(messageManager, "userGroupDAO", userGroupDAO);
-		ReflectionTestUtils.setField(messageManager, "groupMembersDAO", groupMembersDao);
-		ReflectionTestUtils.setField(messageManager, "userManager", userManager);
-		ReflectionTestUtils.setField(messageManager, "userProfileManager", userProfileManager);
-		ReflectionTestUtils.setField(messageManager, "notificationEmailDao", notificationEmailDao);
-		ReflectionTestUtils.setField(messageManager, "principalAliasDAO", principalAliasDAO);
-		ReflectionTestUtils.setField(messageManager, "authorizationManager", authorizationManager);
-		ReflectionTestUtils.setField(messageManager, "fileHandleDao", fileDAO);
-		ReflectionTestUtils.setField(messageManager, "nodeDAO", nodeDAO);
-		ReflectionTestUtils.setField(messageManager, "entityPermissionsManager", entityPermissionsManager);
-		// the normally autowired SynapseEmailService diverts email from Amazon SES into an S3
-		// file for testing.  In this test suite, however, we want mail to actually go to SES,
-		// so we override the normal autowiring.
-		ReflectionTestUtils.setField(messageManager, "sesClient", 
-				new SynapseEmailService() {
-					@Override
-					public void sendEmail(SendEmailRequest emailRequest) {
-						amazonSESClient.sendEmail(emailRequest);
-					}
-
-					@Override
-					public void sendRawEmail(
-							SendRawEmailRequest sendRawEmailRequest) {
-						amazonSESClient.sendRawEmail(sendRawEmailRequest);
-					}});
-		mockFileHandleManager = mock(FileHandleManager.class);
-		ReflectionTestUtils.setField(messageManager, "fileHandleManager", mockFileHandleManager);
+		MockitoAnnotations.initMocks(this);
 		
+		SynapseEmailService emailService = new SynapseEmailService() {
+			@Override
+			public void sendEmail(SendEmailRequest emailRequest) {
+				amazonSESClient.sendEmail(emailRequest);
+				sentMessagesCount++;
+			}
 
+			@Override
+			public void sendRawEmail(SendRawEmailRequest sendRawEmailRequest) {
+				amazonSESClient.sendRawEmail(sendRawEmailRequest);
+				sentMessagesCount++;
+			}
+		};
+		
+		messageManager = new MessageManagerImpl(messageDAO,
+				userGroupDAO, groupMembersDao, userManager,
+				userProfileManager, notificationEmailDao, principalAliasDAO, 
+				authorizationManager, emailService,
+				mockFileHandleManager, nodeDAO, entityPermissionsManager,
+				fileDAO, emailQuarantineDao);
+		
 		aliasesToDelete = new ArrayList<PrincipalAlias>();
 		
 		adminUserInfo = userManager.getUserInfo(BOOTSTRAP_PRINCIPAL.THE_ADMIN_USER.getPrincipalId());
@@ -255,7 +257,7 @@ public class MessageManagerImplTest {
 
 		// Create a team
 		testTeam = new Team();
-		testTeam.setName("MessageManagerImplTest");
+		testTeam.setName("MessageManagerImplTest_" + UUID.randomUUID());
 		testTeam = teamManager.create(testUser, testTeam);
 		final String testTeamId = testTeam.getId();
 		
@@ -300,26 +302,29 @@ public class MessageManagerImplTest {
 			when(mockFileHandleManager.downloadFileToString(tmsFileHandleId)).thenReturn("some other message body");
 		}
 		
-		// Create all the messages
-		// These will be sent automatically since they have only one recipient
 		final String otherTestUserId = otherTestUser.getId().toString();
-		userToOther = createMessage(testUser, "userToOther", 
-				new HashSet<String>() {{add(otherTestUserId);}}, null);
-		otherReplyToUser = createMessage(otherTestUser, "otherReplyToUser", 
-				new HashSet<String>() {{add(testUserId);}}, userToOther.getId());
+		userToOther = createMessage(testUser, "userToOther",  ImmutableSet.of(otherTestUserId), null);
+		otherReplyToUser = createMessage(otherTestUser, "otherReplyToUser", ImmutableSet.of(testUserId), userToOther.getId());
 		
-		// These must be sent by a worker
+		// Process the message right away (emulate the worker processing the messages)
+		messageManager.processMessage(userToOther.getId(), null);
+		messageManager.processMessage(otherReplyToUser.getId(), null);
+		
+		// This messages are sent later by a worker
 		userReplyToOtherAndSelf = createMessage(testUser, "userReplyToOtherAndSelf", 
-				new HashSet<String>() {{add(testUserId); add(otherTestUserId);}}, otherReplyToUser.getId());
+				ImmutableSet.of(testUserId, otherTestUserId), otherReplyToUser.getId());
 		otherReplyToUserAndSelf = createMessage(otherTestUser, "otherReplyToUserAndSelf", 
-				new HashSet<String>() {{add(testUserId); add(otherTestUserId);}}, userReplyToOtherAndSelf.getId());
+				ImmutableSet.of(testUserId, otherTestUserId), userReplyToOtherAndSelf.getId());
 		userToSelfAndGroup = createMessage(testUser, "userToSelfAndGroup", 
-				new HashSet<String>() {{add(testUserId); add(testTeamId);}}, null);
+				ImmutableSet.of(testUserId, testTeamId), null);
 		otherToGroup = createMessage(otherTestUser, "otherToGroup", 
-				new HashSet<String>() {{add(testTeamId);}}, null);
+				ImmutableSet.of(testTeamId), null);
+		
+		// Reset the message counter
+		sentMessagesCount = 0;
 	}
 	
-	@After
+	@AfterEach
 	public void tearDown() throws Exception {
 		for (String id : cleanup) {
 			messageManager.deleteMessage(adminUserInfo, id);
@@ -414,12 +419,14 @@ public class MessageManagerImplTest {
 		return new ArrayList<String>();
 	}
 	
-	@Test(expected=UnauthorizedException.class)
+	@Test
 	public void testSendMessageFromAnonymous() throws Exception {
 		UserInfo anonymousUserInfo = userManager.getUserInfo(BOOTSTRAP_PRINCIPAL.ANONYMOUS_USER.getPrincipalId());
 		Set<String> recipients = new HashSet<String>();
 		recipients.add(BOOTSTRAP_PRINCIPAL.AUTHENTICATED_USERS_GROUP.getPrincipalId().toString());
-		createMessage(anonymousUserInfo, "anonymous message", recipients, null);
+		Assertions.assertThrows(UnauthorizedException.class, ()-> {
+			createMessage(anonymousUserInfo, "anonymous message", recipients, null);
+		});
 	}
 	
 	
@@ -432,7 +439,7 @@ public class MessageManagerImplTest {
 		final String testUserId = testUser.getId().toString();
 		final String otherTestUserId = otherTestUser.getId().toString();
 		MessageToUser aMessage = createMessage(testUser, StubAmazonSimpleEmailServiceClient.MESSAGE_SUBJECT_FOR_FAILURE, 
-				new HashSet<String>() {{add(testUserId); add(otherTestUserId);}}, null);
+				ImmutableSet.of(testUserId, otherTestUserId), null);
 		
 		List<MessageBundle> inbox = null;
 		inbox = messageManager.getInbox(testUser, Collections.singletonList(MessageStatusType.UNREAD), MessageSortBy.SEND_DATE, true, 100, 0);
@@ -464,7 +471,6 @@ public class MessageManagerImplTest {
 		assertEquals(0, errors.size());
 	}
 	
-	@SuppressWarnings("serial")
 	@Test
 	public void testGetMessagePermissions() throws Exception {
 		// User should be able to see both messages that have been delivered
@@ -479,27 +485,29 @@ public class MessageManagerImplTest {
 		
 		// User should not be able to see a message that the other user sends to itself
 		final String otherId = otherTestUser.getId().toString();
-		Set<String> otherIdSet = new HashSet<String>() {{add(otherId);}};
+		Set<String> otherIdSet = ImmutableSet.of(otherId);
 		MessageToUser invisible = createMessage(otherTestUser, "This is a personal reminder", otherIdSet, null);
-		try {
+	
+		UnauthorizedException e = Assertions.assertThrows(UnauthorizedException.class, () -> {
 			messageManager.getMessage(testUser, invisible.getId());
-			fail();
-		} catch (UnauthorizedException e) {
-			assertTrue(e.getMessage().contains("not the sender or receiver"));
-		}
+		});
+		
+		assertTrue(e.getMessage().contains("not the sender or receiver"));
+		
 	}
 	
-	@SuppressWarnings("serial")
 	@Test
 	public void testForwardMessage() throws Exception {
 		// Forward a message
 		final String testUserId = testUser.getId().toString();
 		MessageRecipientSet recipients = new MessageRecipientSet();
-		recipients.setRecipients(new HashSet<String>() {{add(testUserId);}});
+		recipients.setRecipients(ImmutableSet.of(testUserId));
 		MessageToUser forwarded = messageManager.forwardMessage(testUser, userToOther.getId(), recipients);
 		cleanup.add(forwarded.getId());
 		
-		// It should appear in the test user's inbox immediately
+		// Process the message (emulates the worker)
+		messageManager.processMessage(forwarded.getId(), null);
+		
 		List<MessageBundle> messages = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
 		assertEquals(2, messages.size());
@@ -538,7 +546,7 @@ public class MessageManagerImplTest {
 		
 		List<MessageToUser> whatTheOtherUserSees = messageManager.getConversation(otherTestUser, otherReplyToUser.getId(), 
 				SORT_ORDER, DESCENDING, LIMIT, OFFSET);
-		assertEquals("The users have the same privileges regarding the thread's visibility", messages, whatTheOtherUserSees);
+		assertEquals(messages, whatTheOtherUserSees, "The users have the same privileges regarding the thread's visibility");
 	}
 	
 	@Test
@@ -616,14 +624,13 @@ public class MessageManagerImplTest {
 	@Test
 	public void testTrustedUserCanSendToAnyTeam() throws Exception {
 		// Cannot send a message to a team you're not in...
-		MessageToUser messageToTeam = createMessage(otherTestUser, "messageToTeam", 
-					new HashSet<String>() {{add(testTeam.getId());}}, null);
+		MessageToUser messageToTeam = createMessage(otherTestUser, "messageToTeam", ImmutableSet.of(testTeam.getId()), null);
 		cleanup.add(messageToTeam.getId());
 		assertEquals(1, messageManager.processMessage(messageToTeam.getId(), null).size());
 
 		// ... unless you're a Trusted Message Sender
 		messageToTeam = createMessageWithThrottle(trustedMessageSender, "messageToTeam", tmsFileHandleId,
-				new HashSet<String>() {{add(testTeam.getId());}}, null);
+				ImmutableSet.of(testTeam.getId()), null);
 		assertEquals(0, messageManager.processMessage(messageToTeam.getId(), null).size());
 	}
 	
@@ -657,44 +664,45 @@ public class MessageManagerImplTest {
 		}
 		
 		// This gets past one of the checks, but not the DAO's check
-		try {
+		IllegalArgumentException e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
 			createMessage(testUser, null, tooMany, null);
-			fail();
-		} catch (IllegalArgumentException e) {
-			assertTrue(e.getMessage().contains("not recognized"));
-		}
+		});
+	
+		assertTrue(e.getMessage().contains("not recognized"));
 		
 		for (long i = MessageManagerImpl.MAX_NUMBER_OF_RECIPIENTS; i < MessageManagerImpl.MAX_NUMBER_OF_RECIPIENTS * 2; i++) {
 			tooMany.add("" + i);
 		}
 		
 		// This fails the manager's check
-		try {
+		e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
 			createMessage(testUser, null, tooMany, null);
-			fail();
-		} catch (IllegalArgumentException e) {
-			assertTrue(e.getMessage().contains("Consider grouping"));
-		}
+		});
+		assertTrue(e.getMessage().contains("Consider grouping"));	
 		
 		// it's OK to do this as a trusted message sender
-		try {
+
+		e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
 			createMessageWithThrottle(trustedMessageSender, null, tmsFileHandleId, tooMany, null);
-			fail();
-		} catch (IllegalArgumentException e) {
-			// this shows that we got past the quantity and frequency limitations
-			assertTrue(e.getMessage().contains("One or more of the following IDs are not recognized"));
-		}
+		});
+		// this shows that we got past the quantity and frequency limitations
+		assertTrue(e.getMessage().contains("One or more of the following IDs are not recognized"));
 	}
 	
 	// can't create more than 10 messages in a minute
 	// we test by creating this many plus one
-	@Test(expected=TooManyRequestsException.class)
+	@Test
 	public void testCreateTooFast() throws Exception {
-		for (int i=0; i<11; i++) {
-			MessageToUser m = createMessage(testUser, "userToOther", 
-				new HashSet<String>() {{add(otherTestUser.getId().toString());}}, null);
+		// 3 messages are created before the test
+		for (int i=0; i < 7; i++) {
+			MessageToUser m = createMessage(testUser, "userToOther", ImmutableSet.of(otherTestUser.getId().toString()), null);
 			cleanup.add(m.getId());
 		}
+		
+		Assertions.assertThrows(TooManyRequestsException.class, () -> {
+			// Call under test
+			createMessage(testUser, "userToOther", ImmutableSet.of(otherTestUser.getId().toString()), null);
+		});
 
 	}
 	
@@ -704,20 +712,27 @@ public class MessageManagerImplTest {
 	public void testCreateTooFastAsTrustedMessageSender() throws Exception {
 		for (int i=0; i<11; i++) {
 			MessageToUser m = createMessageWithThrottle(trustedMessageSender, "userToOther", tmsFileHandleId, 
-				new HashSet<String>() {{add(trustedMessageSender.getId().toString());}}, null);
+					ImmutableSet.of(trustedMessageSender.getId().toString()), null);
 			cleanup.add(m.getId());
 		}
 
 	}
 	
-	@SuppressWarnings("serial")
 	@Test
 	public void testSendMessageSettings() throws Exception {
 		final String testUserId = testUser.getId().toString();
-		Set<String> testUserIdSet = new HashSet<String>() {{add(testUserId);}};
+		Set<String> testUserIdSet = ImmutableSet.of(testUserId);
 		
 		// With default settings, the message should appear in the user's inbox
 		MessageToUser message = createMessage(otherTestUser, "message1", testUserIdSet, null);
+		
+		int expectedMessageCount = 1;
+		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);
+		
+		assertEquals(expectedMessageCount, sentMessagesCount);
+		
 		List<MessageBundle> inbox = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
 		assertEquals(message, inbox.get(0).getMessage());
@@ -730,11 +745,19 @@ public class MessageManagerImplTest {
 		
 		// Now this second message will be marked as READ
 		MessageToUser message2 = createMessage(otherTestUser, "message2", testUserIdSet, null);
+		
+		expectedMessageCount++;
+		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message2.getId(), null);
+		
+		assertEquals(expectedMessageCount, sentMessagesCount);
+				
 		inbox = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
 		assertEquals(message, inbox.get(0).getMessage());
 		inbox = messageManager.getInbox(testUser, 
-				new ArrayList<MessageStatusType>() {{add(MessageStatusType.READ);}}, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
+				ImmutableList.of(MessageStatusType.READ), SORT_ORDER, DESCENDING, LIMIT, OFFSET);
 		assertEquals(message2, inbox.get(0).getMessage());
 		
 		// If you disable the sending of emails, the auto-READ-marking gets disabled too
@@ -743,9 +766,51 @@ public class MessageManagerImplTest {
 		
 		// Now the third message appears UNREAD
 		MessageToUser message3 = createMessage(otherTestUser, "message3", testUserIdSet, null);
+		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message3.getId(), null);
+		
+		// The message is not sent, so no other call to SES should have been made
+		assertEquals(expectedMessageCount, sentMessagesCount);
+		
 		inbox = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
 		assertEquals(message3, inbox.get(0).getMessage());
+	}
+	
+	@Test
+	public void testSendMessageWithOverrideNotificationSettings() throws Exception {
+		final String testUserId = testUser.getId().toString();
+		Set<String> testUserIdSet = ImmutableSet.of(testUserId);
+		
+		// Emails are sent by default
+		UserProfile profile = userProfileManager.getUserProfile(testUser.getId().toString());
+		profile.setNotificationSettings(new Settings());
+		
+		// Disable the user notifications
+		profile.getNotificationSettings().setSendEmailNotifications(false);
+		profile = userProfileManager.updateUserProfile(testUser, profile);
+
+		MessageToUser message = new MessageToUser();
+		message.setFileHandleId(fileHandleId);
+		message.setSubject("message");
+		message.setRecipients(testUserIdSet);
+		message.setNotificationUnsubscribeEndpoint("https://www.synapse.org/#unsubscribeEndpoint:");
+		
+		boolean overrideNotificationSettings = true;
+		
+		// Now this message will appear as UNREAD
+		message = messageManager.createMessage(otherTestUser, message, overrideNotificationSettings);
+		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);		
+		
+		assertEquals(1, sentMessagesCount);
+		
+		List<MessageBundle> inbox = messageManager.getInbox(testUser, unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
+		assertEquals(message, inbox.get(0).getMessage());
+		
+		cleanup.add(message.getId());
 	}
 	
 	@Test
@@ -761,6 +826,9 @@ public class MessageManagerImplTest {
 		userToOther.setRecipients(null);
 		MessageToUser message = messageManager.createMessageToEntityOwner(otherTestUser, nodeId, userToOther);
 		cleanup.add(message.getId());
+
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);
 		
 		// Check the test user's inbox
 		List<MessageBundle> inbox = messageManager.getInbox(testUser, 
@@ -783,6 +851,9 @@ public class MessageManagerImplTest {
 		message = messageManager.createMessageToEntityOwner(otherTestUser, nodeId, userToOther);
 		cleanup.add(message.getId());
 		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);
+		
 		// Check the test user's inbox
 		inbox = messageManager.getInbox(otherTestUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
@@ -803,6 +874,9 @@ public class MessageManagerImplTest {
 		message = messageManager.createMessageToEntityOwner(otherTestUser, nodeId, userToOther);
 		cleanup.add(message.getId());
 		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);
+		
 		// Check the test user's inbox
 		inbox = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
@@ -813,12 +887,9 @@ public class MessageManagerImplTest {
 		acl.setResourceAccess(new HashSet<ResourceAccess>());
 		entityPermissionsManager.updateACL(acl, adminUserInfo);
 
-		try {
-			message = messageManager.createMessageToEntityOwner(otherTestUser, nodeId, userToOther);
-			fail("Exception expected");
-		} catch (UnauthorizedException e) { 
-			// as expected
-		}
+		Assertions.assertThrows(UnauthorizedException.class, ()-> {
+			messageManager.createMessageToEntityOwner(otherTestUser, nodeId, userToOther);
+		});
 	}
 	
 	@Test
@@ -841,6 +912,9 @@ public class MessageManagerImplTest {
 		MessageToUser message = messageManager.createMessageToEntityOwner(otherTestUser, childId, userToOther);
 		cleanup.add(message.getId());
 		
+		// Process the message (emulates the worker)
+		messageManager.processMessage(message.getId(), null);
+		
 		// Check the test user's inbox
 		List<MessageBundle> inbox = messageManager.getInbox(testUser, 
 				unreadMessageFilter, SORT_ORDER, DESCENDING, LIMIT, OFFSET);
@@ -852,14 +926,12 @@ public class MessageManagerImplTest {
 	public void testCreateMessageToInvalidRecipient() throws Exception {
 		// No user has a negative ID (I hope)
 		userToOther.getRecipients().add("-1");
-		
-		try {
+		 
+		IllegalArgumentException e = Assertions.assertThrows(IllegalArgumentException.class, () -> {
 			messageManager.createMessage(testUser, userToOther);
-			fail();
-		} catch (IllegalArgumentException e) {
-			// We shouldn't get a nasty DB error
-			assertFalse(e.getMessage().contains("foreign key"));
-		}
+		});
+		// We shouldn't get a nasty DB error
+		assertFalse(e.getMessage().contains("foreign key"));
 	}
 	
 	@Test

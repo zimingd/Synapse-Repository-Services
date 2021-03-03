@@ -1,5 +1,8 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 
 import org.sagebionetworks.repo.model.AuthorizationConstants;
@@ -11,6 +14,7 @@ import org.sagebionetworks.repo.model.project.ProjectSetting;
 import org.sagebionetworks.repo.model.project.ProjectSettingsType;
 import org.sagebionetworks.repo.model.project.StorageLocationSetting;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -26,14 +30,28 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 
 /**
- * Project settings services provide configuration options that can be applied to projects, including
- * <a href="${POST.projectSettings}">POST /projectSettings</a>. Note that multiple project settings can be applied to
- * an individual project, each with its own <a href="${org.sagebionetworks.repo.model.project.ProjectSettingsType}">ProjectSettingsType</a>.
+ * The project settings services provide configuration options that can be applied to projects. In particular through the <a href="${POST.projectSettings}">POST /projectSettings</a> and <a href="${PUT.projectSettings}">PUT /projectSettings</a> services
+ * a user can create or update the setting of a specific <a href="${org.sagebionetworks.repo.model.project.ProjectSettingsType}">type</a> for a project.
+ * </p>
+ * Currently supported settings for a project are:
+ * 
+ * <ul>
+ * <li><a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a>: Used to customize the storage location for files in a project</li>
+ * </ul>
  *
- * Services for setting a custom storage location for a project are also included. By setting a custom storage location,
- * users can store their data in their own S3 or Google Cloud bucket. For a guide on setting a custom storage location,
- * see the <a href="http://docs.synapse.org/articles/custom_storage_location.html">Custom Storage Location</a> documentation
+ * </p>
+ * The <a href="${POST.storageLocation}">POST /storageLocation</a> service is provided in order to create <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a>. The id of a
+ * <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> can then be set in the <b>locations</b> property of 
+ * the <a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a>.
+ * </p>
+ * When uploading a file the id of the default <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> to be used on a folder can be retrieved
+ * using the <a href="${GET.entity.id.uploadDestination}">GET /entity/{id}/uploadDestination</a> service using the id of the parent entity (e.g. a folder or a project).
+ * </p>
+ * By setting a custom storage location, users can store the data in their own S3 or Google Cloud bucket. Note that when a folder or a project is configured to use a custom storage location,
+ * only future uploads through Synapse are affected (e.g. changing the storage location does not automatically change the location of existing files).
+ * For a guide on setting a custom storage location, see the <a href="http://docs.synapse.org/articles/custom_storage_location.html">Custom Storage Location</a> documentation
  * article.
+ * </p>
  */
 @ControllerInfo(displayName = "Project Settings Services", path = "repo/v1")
 @Controller
@@ -41,17 +59,21 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 public class ProjectSettingsController {
 
 	@Autowired
-	ServiceProvider serviceProvider;
+	private ServiceProvider serviceProvider;
 
 	/**
-	 * Gets the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> for a particular project by the
-	 * project settings ID. Note that this is <b>not</b> the project ID.
+	 * Gets the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> with the given id. Note that this is <b>not</b> the id of a project, 
+	 * in order to retrieve the project settings by the project id please refer to <a href="${GET.projectSettings.projectId.type.type}">GET /projectSettings/{projectId}/type/{type}</a>.
+	 * <p>
+	 * Only users with READ access on a project can retrieve its <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * 
 	 * @param id the ID of the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>
 	 * @return the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> with the corresponding ID, if it exists.
 	 * @throws DatastoreException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.PROJECT_SETTINGS_BY_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -61,8 +83,16 @@ public class ProjectSettingsController {
 	}
 
 	/**
-	 * Gets the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> of a particular type for a
-	 * project specified by ID.
+	 * Gets the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> of a particular <a href="${org.sagebionetworks.repo.model.project.ProjectSettingsType}">type</a> for the 
+	 * project with the given id.
+	 * <p>
+	 * Currently supported types:
+	 * <ul>
+	 * <li><a href="${org.sagebionetworks.repo.model.project.ProjectSettingsType}">upload</a>: Used to retrieve the <a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a></li>
+	 * </ul>
+	 * <p>
+	 * Only users with READ access on a project can retrieve its <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * 
 	 * @param projectId the ID of the project
 	 * @param type The <a href="${org.sagebionetworks.repo.model.project.ProjectSettingsType}">ProjectSettingsType</a> to get.
 	 * @return
@@ -70,6 +100,7 @@ public class ProjectSettingsController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.PROJECT_SETTINGS_BY_PROJECT_ID_AND_TYPE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -81,9 +112,16 @@ public class ProjectSettingsController {
 
 	/**
 	 * Create a <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a> for a project. The setting may be any of the
-	 * implementations for <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>
-	 * (e.g. <a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a>).
+	 * implementations of <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * <p>
+	 * Only the users with CREATE access to the project can add a project setting.
+	 * <p>
+	 * Currently supports:
 	 * 
+	 * <ul>
+	 * <li><a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a>: Used to customize the storage location for files in a project or folder.
+	 *  The id within the <b>locations</b> property must reference existing <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> that the user created.</li>
+	 * </ul>
 	 * <p>
 	 * <b>Service Limits</b>
 	 * <table border="1">
@@ -105,6 +143,7 @@ public class ProjectSettingsController {
 	 * @throws UnauthorizedException
 	 * @throws InvalidModelException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = { UrlHelpers.PROJECT_SETTINGS }, method = RequestMethod.POST)
 	public @ResponseBody
@@ -116,7 +155,20 @@ public class ProjectSettingsController {
 
 	/**
 	 * Update an existing <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * <p>
+	 * Only the users with UPDATE access to the project can update a project setting.
+	 * <p>
+	 * Currently supports:
 	 * 
+	 * <ul>
+	 * <li>
+	 * <a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a>: Used to customize the 
+	 * storage location for files in a project. 
+	 * The id within the <b>locations</b> property must reference existing <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> 
+	 * that the user created. To create <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> 
+	 * refer to the <a href="${POST.storageLocation}">POST /storageLocation</a> service
+	 * </li>
+	 * </ul>
 	 * <p>
 	 * <b>Service Limits</b>
 	 * <table border="1">
@@ -137,6 +189,7 @@ public class ProjectSettingsController {
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.PROJECT_SETTINGS }, method = RequestMethod.PUT)
 	public @ResponseBody
@@ -147,17 +200,20 @@ public class ProjectSettingsController {
 	}
 
 	/**
-	 * Delete a <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * Deletes a <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>.
+	 * <p>
+	 * Only the users with DELETE access to the project can delete a project setting. 
+	 * 
 	 * @param id The ID of the <a href="${org.sagebionetworks.repo.model.project.ProjectSetting}">ProjectSetting</a>. This is not the ID of the project.
 	 * @throws DatastoreException
 	 * @throws InvalidModelException
 	 * @throws UnauthorizedException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({modify})
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	@RequestMapping(value = { UrlHelpers.PROJECT_SETTINGS_BY_ID }, method = RequestMethod.DELETE)
-	public @ResponseBody
-	void deleteProjectSetting(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @PathVariable String id) throws DatastoreException, InvalidModelException, UnauthorizedException, NotFoundException {
+	public void deleteProjectSetting(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @PathVariable String id) throws DatastoreException, InvalidModelException, UnauthorizedException, NotFoundException {
 		serviceProvider.getProjectSettingsService().deleteProjectSetting(userId, id);
 	}
 
@@ -172,7 +228,7 @@ public class ProjectSettingsController {
 	 * </p>
 	 * A storage location can be linked to a project adding its id in the locations property of an 
 	 * <a href="${org.sagebionetworks.repo.model.project.UploadDestinationListSetting}">UploadDestinationListSetting</a> and saving the setting to the
-	 * project.
+	 * project using the <a href="${POST.projectSettings}">POST /projectSettings</a> or <a href="${PUT.projectSettings}">PUT /projectSettings</a> services.
 	 * 
 	 * @param storageLocationSetting The setting to create.
 	 * @return
@@ -182,6 +238,7 @@ public class ProjectSettingsController {
 	 * @throws InvalidModelException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = { UrlHelpers.STORAGE_LOCATION }, method = RequestMethod.POST)
 	public @ResponseBody
@@ -203,6 +260,7 @@ public class ProjectSettingsController {
 	 * @throws UnauthorizedException
 	 * @throws InvalidModelException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.STORAGE_LOCATION }, method = RequestMethod.GET)
 	@Deprecated
@@ -212,7 +270,10 @@ public class ProjectSettingsController {
 	}
 
 	/**
-	 * Get the <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> with a particular ID.
+	 * Get the <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> with the given id.
+	 * <p>
+	 * Only the creator of the <a href="${org.sagebionetworks.repo.model.project.StorageLocationSetting}">StorageLocationSetting</a> can retrieve it by its id.
+	 * 
 	 * @param id the ID of the storage location setting.
 	 * @return
 	 * @throws NotFoundException
@@ -220,6 +281,7 @@ public class ProjectSettingsController {
 	 * @throws UnauthorizedException
 	 * @throws InvalidModelException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = { UrlHelpers.STORAGE_LOCATION_BY_ID }, method = RequestMethod.GET)
 	public @ResponseBody

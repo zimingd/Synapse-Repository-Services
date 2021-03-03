@@ -23,7 +23,9 @@ public class AccessRecordDAOImpl implements AccessRecordDAO {
 	/**
 	 * This is the schema. If it changes we will not be able to read old data.
 	 */
-	private final static String[] HEADERS = new String[]{"returnObjectId", "elapseMS","timestamp","via","host","threadId","userAgent","queryString","sessionId","xForwardedFor","requestURL","userId","origin", "date","method","vmId","instance","stack","success", "responseStatus"};
+	private final static String[] HEADERS = new String[] { "returnObjectId", "elapseMS", "timestamp", "via", "host",
+			"threadId", "userAgent", "queryString", "sessionId", "xForwardedFor", "requestURL", "userId", "origin",
+			"date", "method", "vmId", "instance", "stack", "success", "responseStatus", "oauthClientId", "basicAuthUsername" };
 
 	@Autowired
 	private SynapseS3Client s3Client;
@@ -64,8 +66,6 @@ public class AccessRecordDAOImpl implements AccessRecordDAO {
 		if (auditRecordBucketName == null)
 			throw new IllegalArgumentException(
 					"bucketName has not been set and cannot be null");
-		// Create the bucket if it does not exist
-		s3Client.createBucket(auditRecordBucketName);
 		objectCsvDao = new ObjectCSVDAO<AccessRecord>(s3Client, stackInstanceNumber, 
 				auditRecordBucketName, AccessRecord.class, HEADERS);
 	}

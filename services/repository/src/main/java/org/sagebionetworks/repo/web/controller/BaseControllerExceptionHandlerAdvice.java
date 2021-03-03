@@ -15,6 +15,7 @@ import org.sagebionetworks.StackConfigurationSingleton;
 import org.sagebionetworks.repo.manager.UserCertificationRequiredException;
 import org.sagebionetworks.repo.manager.authentication.PasswordResetViaEmailRequiredException;
 import org.sagebionetworks.repo.manager.loginlockout.UnsuccessfulLoginLockoutException;
+import org.sagebionetworks.repo.manager.oauth.OAuthClientNotVerifiedException;
 import org.sagebionetworks.repo.manager.password.InvalidPasswordException;
 import org.sagebionetworks.repo.manager.table.InvalidTableQueryFacetColumnRequestException;
 import org.sagebionetworks.repo.manager.trash.EntityInTrashCanException;
@@ -29,16 +30,23 @@ import org.sagebionetworks.repo.model.InvalidModelException;
 import org.sagebionetworks.repo.model.LockedException;
 import org.sagebionetworks.repo.model.NameConflictException;
 import org.sagebionetworks.repo.model.NotReadyException;
+import org.sagebionetworks.repo.model.OAuthErrorResponse;
 import org.sagebionetworks.repo.model.TermsOfUseException;
 import org.sagebionetworks.repo.model.TooManyRequestsException;
 import org.sagebionetworks.repo.model.UnauthenticatedException;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.asynch.AsynchronousJobStatus;
+import org.sagebionetworks.repo.model.ses.QuarantinedEmailException;
 import org.sagebionetworks.repo.model.table.TableStatus;
 import org.sagebionetworks.repo.model.table.TableUnavailableException;
 import org.sagebionetworks.repo.queryparser.ParseException;
 import org.sagebionetworks.repo.web.DeprecatedServiceException;
+import org.sagebionetworks.repo.web.FileHandleLinkedException;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.OAuthBadRequestException;
+import org.sagebionetworks.repo.web.OAuthException;
+import org.sagebionetworks.repo.web.OAuthForbiddenException;
+import org.sagebionetworks.repo.web.OAuthUnauthenticatedException;
 import org.sagebionetworks.repo.web.ServiceUnavailableException;
 import org.sagebionetworks.repo.web.TemporarilyUnavailableException;
 import org.sagebionetworks.repo.web.UrlHelpers;
@@ -107,10 +115,6 @@ import com.amazonaws.AmazonServiceException;
  * </ul>
  * <p>
  * 
- * TODO when our integration test framework is in place, add tests for stuff
- * managed by error pages in web.xml since we can't test that with our unit
- * tests
- * 
  * @author deflaux
  */
 @ControllerAdvice
@@ -118,7 +122,43 @@ public class BaseControllerExceptionHandlerAdvice {
 
 	static final String SERVICE_TEMPORARILY_UNAVAIABLE_PLEASE_TRY_AGAIN_LATER = "Service temporarily unavailable, please try again later.";
 	private static Logger log = LogManager.getLogger(BaseControllerExceptionHandlerAdvice.class);
-	
+
+	/**
+	 * @param ex
+	 * @param request
+	 * @return
+	 */
+	@ExceptionHandler(OAuthBadRequestException.class)
+	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	public @ResponseBody
+	OAuthErrorResponse handleOAuthBadRequestException(OAuthBadRequestException ex, HttpServletRequest request) {
+		return handleOAuthException(ex, request, false);
+	}
+
+	/**
+	 * @param ex
+	 * @param request
+	 * @return
+	 */
+	@ExceptionHandler(OAuthUnauthenticatedException.class)
+	@ResponseStatus(HttpStatus.UNAUTHORIZED)
+	public @ResponseBody
+	OAuthErrorResponse handleOAuthUnauthenticatedException(OAuthUnauthenticatedException ex, HttpServletRequest request) {
+		return handleOAuthException(ex, request, false);
+	}
+
+	/**
+	 * @param ex
+	 * @param request
+	 * @return
+	 */
+	@ExceptionHandler(OAuthForbiddenException.class)
+	@ResponseStatus(HttpStatus.FORBIDDEN)
+	public @ResponseBody
+	OAuthErrorResponse handleOAuthForbiddenException(OAuthForbiddenException ex, HttpServletRequest request) {
+		return handleOAuthException(ex, request, false);
+	}
+
 	/**
 	 * When a TableUnavilableException occurs we need to communicate the table status to the caller with a 202 ACCEPTED,
 	 * indicating we accepted they call but the resource is not ready yet.
@@ -302,6 +342,44 @@ public class BaseControllerExceptionHandlerAdvice {
 			HttpServletRequest request) {
 		return handleException(ex, request, false);
 	}
+	
+	/**
+	 * This is an application exception thrown when while trying to send an email
+	 * the recipient is in quarantine
+	 * 
+	 * @param ex
+	 *            the exception to be handled
+	 * @param request
+	 *            the client request
+	 * @return an ErrorResponse object containing the exception reason or some
+	 *         other human-readable response
+	 */
+	@ExceptionHandler(QuarantinedEmailException.class)
+	@ResponseStatus(HttpStatus.CONFLICT)
+	public @ResponseBody
+	ErrorResponse handleQuarantinedEmailException(QuarantinedEmailException ex,
+			HttpServletRequest request) {
+		return handleException(ex, request, true);
+	}
+	
+	/**
+	 * This is an application exception thrown when while trying to delete a file handle
+	 * that is somehow still linked
+	 * 
+	 * @param ex
+	 *            the exception to be handled
+	 * @param request
+	 *            the client request
+	 * @return an ErrorResponse object containing the exception reason or some
+	 *         other human-readable response
+	 */
+	@ExceptionHandler(FileHandleLinkedException.class)
+	@ResponseStatus(HttpStatus.CONFLICT)
+	public @ResponseBody
+	ErrorResponse handleFileHandleLinkedException(FileHandleLinkedException ex, HttpServletRequest request) {
+		return handleException(ex, request, false);
+	}
+
 
 	/**
 	 * This is an application exception thrown when a model object does not pass
@@ -633,6 +711,34 @@ public class BaseControllerExceptionHandlerAdvice {
 	}
 
 	/**
+	 * Log the exception at the warning level and return an OAuthErrorResponse
+	 * object, which provides JSON error messages that are in-spec with OAuth2/OIDC error messages
+	 *
+	 * @param ex
+	 *            the exception to be handled
+	 * @param request
+	 *            the client request
+	 * @param fullTrace Should the full stack trace of the exception be written to the log.
+	 * @return an OAuthErrorResponse object containing the exception reason or some
+	 *         other human-readable response
+	 */
+	OAuthErrorResponse handleOAuthException(OAuthException ex,
+								 HttpServletRequest request, boolean fullTrace) {
+		// Let the existing exception handler deal with logging
+		handleException(ex, request, fullTrace);
+		// Create the necessary object
+		OAuthErrorResponse errorResponse = new OAuthErrorResponse();
+		errorResponse.setError(ex.getError().name());
+		errorResponse.setError_description(ex.getErrorDescription());
+		if (ex.getErrorDescription() == null) {
+			errorResponse.setReason(ex.getError().name());
+		} else {
+			errorResponse.setReason(ex.getError().name() + ". " + ex.getErrorDescription());
+		}
+		return errorResponse;
+	}
+
+	/**
 	 * Log the exception at the warning level and return an ErrorResponse
 	 * object. Child classes should override this method if they want to change
 	 * the behavior for all exceptions.
@@ -911,8 +1017,17 @@ public class BaseControllerExceptionHandlerAdvice {
 	ErrorResponse handleNoHandlerFoundException(NoHandlerFoundException ex, HttpServletRequest request){
 		return handleException(ex,
 				request,
-				ex.getHttpMethod() + " " + ex.getRequestURL() + " was not found. Please reference API documentation at https://docs.synapse.org/rest/",
+				ex.getHttpMethod() +" was not found. Please reference API documentation at https://docs.synapse.org/rest/",
 				false,
 				null);
 	}
+	
+	@ExceptionHandler(OAuthClientNotVerifiedException.class)
+	@ResponseStatus(HttpStatus.FORBIDDEN)
+	public @ResponseBody
+	ErrorResponse handleOAuthClientNotVerifiedException(OAuthClientNotVerifiedException ex,
+														HttpServletRequest request){
+		return handleException(ex, request, true, ErrorResponseCode.OAUTH_CLIENT_NOT_VERIFIED);
+	}
+
 }

@@ -3,16 +3,17 @@ package org.sagebionetworks.repo.web.service;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.json.JSONObject;
 import org.sagebionetworks.reflection.model.PaginatedResults;
 import org.sagebionetworks.repo.manager.EntityManager;
 import org.sagebionetworks.repo.manager.EntityPermissionsManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.file.FileHandleManager;
 import org.sagebionetworks.repo.manager.file.FileHandleUrlRequest;
+import org.sagebionetworks.repo.manager.sts.StsManager;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.ACLInheritanceException;
 import org.sagebionetworks.repo.model.AccessControlList;
-import org.sagebionetworks.repo.model.Annotations;
 import org.sagebionetworks.repo.model.ConflictingUpdateException;
 import org.sagebionetworks.repo.model.DataType;
 import org.sagebionetworks.repo.model.DataTypeResponse;
@@ -30,11 +31,21 @@ import org.sagebionetworks.repo.model.ServiceConstants;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
 import org.sagebionetworks.repo.model.VersionInfo;
+import org.sagebionetworks.repo.model.annotation.v2.Annotations;
 import org.sagebionetworks.repo.model.auth.UserEntityPermissions;
+import org.sagebionetworks.repo.model.entity.BindSchemaToEntityRequest;
 import org.sagebionetworks.repo.model.entity.EntityLookupRequest;
+import org.sagebionetworks.repo.model.entity.FileHandleUpdateRequest;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
 import org.sagebionetworks.repo.model.file.FileHandleResults;
 import org.sagebionetworks.repo.model.provenance.Activity;
+import org.sagebionetworks.repo.model.schema.JsonSchemaObjectBinding;
+import org.sagebionetworks.repo.model.schema.ListValidationResultsRequest;
+import org.sagebionetworks.repo.model.schema.ListValidationResultsResponse;
+import org.sagebionetworks.repo.model.schema.ValidationResults;
+import org.sagebionetworks.repo.model.schema.ValidationSummaryStatistics;
+import org.sagebionetworks.repo.model.sts.StsCredentials;
+import org.sagebionetworks.repo.model.sts.StsPermission;
 import org.sagebionetworks.repo.queryparser.ParseException;
 import org.sagebionetworks.repo.transactions.WriteTransaction;
 import org.sagebionetworks.repo.web.NotFoundException;
@@ -63,25 +74,26 @@ import org.springframework.beans.factory.annotation.Autowired;
  * handling.
  * 
  * @author deflaux
- * @param <T>
- *            the particular type of entity the controller is managing
+ * @param <T> the particular type of entity the controller is managing
  */
 public class EntityServiceImpl implements EntityService {
 	public static final Integer DEFAULT_LIMIT = 10;
 	public static final Integer DEFAULT_OFFSET = 0;
 	
 	@Autowired
-	EntityManager entityManager;
+	private EntityManager entityManager;
 	@Autowired
-	EntityPermissionsManager entityPermissionsManager;
+	private EntityPermissionsManager entityPermissionsManager;
 	@Autowired
-	UserManager userManager;
+	private StsManager stsManager;
 	@Autowired
-	MetadataProviderFactory metadataProviderFactory;
+	private UserManager userManager;
 	@Autowired
-	AllTypesValidator allTypesValidator;
+	private MetadataProviderFactory metadataProviderFactory;
 	@Autowired
-	FileHandleManager fileHandleManager;
+	private AllTypesValidator allTypesValidator;
+	@Autowired
+	private FileHandleManager fileHandleManager;
 	
 	@Override
 	public PaginatedResults<VersionInfo> getAllVersionsOfEntity(
@@ -110,7 +122,7 @@ public class EntityServiceImpl implements EntityService {
 	@Override
 	public Entity getEntity(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		EntityHeader header = entityManager.getEntityHeader(userInfo, id, null);
+		EntityHeader header = entityManager.getEntityHeader(userInfo, id);
 		EntityType type = EntityTypeUtils.getEntityTypeForClassName(header.getType());
 		return getEntity(userInfo, id, EntityTypeUtils.getClassForType(type), EventType.GET);
 	}
@@ -161,7 +173,7 @@ public class EntityServiceImpl implements EntityService {
 	
 	@Override
 	public <T extends Entity> T getEntityForVersion(Long userId, String id, Long versionNumber,
-													Class<? extends T> clazz) throws NotFoundException,
+			Class<? extends T> clazz) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return getEntityForVersion(userInfo, id, versionNumber, clazz);
@@ -169,7 +181,7 @@ public class EntityServiceImpl implements EntityService {
 	
 	@Override
 	public <T extends Entity> T getEntityForVersion(UserInfo info, String id, Long versionNumber,
-													Class<? extends T> clazz) throws NotFoundException,
+			Class<? extends T> clazz) throws NotFoundException,
 			DatastoreException, UnauthorizedException {
 		// Determine the object type from the url.
 		EntityType type = EntityTypeUtils.getEntityTypeForClass(clazz);
@@ -295,7 +307,7 @@ public class EntityServiceImpl implements EntityService {
 	@WriteTransaction
 	@Override
 	public <T extends Entity> T updateEntity(Long userId,
-											 T updatedEntity, boolean newVersion, String activityId)
+			T updatedEntity, boolean newVersion, String activityId)
 			throws NotFoundException, ConflictingUpdateException,
 			DatastoreException, InvalidModelException, UnauthorizedException {
 		if(updatedEntity == null) throw new IllegalArgumentException("Entity cannot be null");
@@ -316,6 +328,17 @@ public class EntityServiceImpl implements EntityService {
 		fireAfterUpdateEntityEvent(userInfo, updatedEntity, type, wasNewVersionCrated);
 		// Return the updated entity
 		return getEntity(userInfo, entityId, clazz, eventType);
+	}
+	
+	@Override
+	@WriteTransaction
+	public void updateEntityFileHandle(Long userId, String entityId, Long versionNumber, FileHandleUpdateRequest updateRequest)
+			throws NotFoundException, ConflictingUpdateException, UnauthorizedException {
+		ValidateArgument.required(userId, "The user id");
+		
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		
+		entityManager.updateEntityFileHandle(userInfo, entityId, versionNumber, updateRequest);
 	}
 	
 	@WriteTransaction
@@ -385,10 +408,6 @@ public class EntityServiceImpl implements EntityService {
 		}
 	}
 
-	private void addServiceSpecificMetadata(String id, Annotations annotations) {
-		annotations.setId(id); // the NON url-encoded id
-	}
-
 	@Override
 	public Annotations getEntityAnnotations(Long userId, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
@@ -397,31 +416,24 @@ public class EntityServiceImpl implements EntityService {
 	
 	@Override
 	public Annotations getEntityAnnotations(UserInfo info, String id) throws NotFoundException, DatastoreException, UnauthorizedException {
-		Annotations annotations = entityManager.getAnnotations(info, id);
-		addServiceSpecificMetadata(id, annotations);
-		return annotations;
+		return entityManager.getAnnotations(info, id);
 	}
 	
 	@Override
-	public Annotations getEntityAnnotationsForVersion(Long userId, String id,
-													  Long versionNumber)
+	public Annotations getEntityAnnotationsForVersion(Long userId, String id, Long versionNumber)
 			throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		Annotations annotations = entityManager.getAnnotationsForVersion(userInfo, id, versionNumber);
-		addServiceSpecificMetadata(id, annotations);
-		return annotations;
+		return entityManager.getAnnotationsForVersion(userInfo, id, versionNumber);
 	}
 
 	@WriteTransaction
 	@Override
 	public Annotations updateEntityAnnotations(Long userId, String entityId,
-											   Annotations updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException {
+		Annotations updatedAnnotations) throws ConflictingUpdateException, NotFoundException, DatastoreException, UnauthorizedException, InvalidModelException {
 		if(updatedAnnotations.getId() == null) throw new IllegalArgumentException("Annotations must have a non-null id");
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		entityManager.updateAnnotations(userInfo,entityId, updatedAnnotations);
-		Annotations annos = entityManager.getAnnotations(userInfo, updatedAnnotations.getId());
-		addServiceSpecificMetadata(updatedAnnotations.getId(), annos);
-		return annos;
+		return entityManager.getAnnotations(userInfo, updatedAnnotations.getId());
 	}
 
 	@WriteTransaction
@@ -447,24 +459,19 @@ public class EntityServiceImpl implements EntityService {
 
 	@WriteTransaction
 	@Override
-	public AccessControlList updateEntityACL(Long userId,
-											 AccessControlList updated, String recursive) throws DatastoreException, NotFoundException, InvalidModelException, UnauthorizedException, ConflictingUpdateException {
+	public AccessControlList updateEntityACL(Long userId, AccessControlList updated) throws DatastoreException, NotFoundException, InvalidModelException, UnauthorizedException, ConflictingUpdateException {
 		// Resolve the user
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		AccessControlList acl = entityPermissionsManager.updateACL(updated, userInfo);
-		if (recursive != null && recursive.equalsIgnoreCase("true"))
-			entityPermissionsManager.applyInheritanceToChildren(updated.getId(), userInfo);
-		return acl;
+		return entityPermissionsManager.updateACL(updated, userInfo);
 	}
 
 	@WriteTransaction
 	@Override
-	public AccessControlList createOrUpdateEntityACL(Long userId,
-													 AccessControlList acl, String recursive) throws DatastoreException, NotFoundException, InvalidModelException, UnauthorizedException, ConflictingUpdateException {
+	public AccessControlList createOrUpdateEntityACL(Long userId, AccessControlList acl) throws DatastoreException, NotFoundException, InvalidModelException, UnauthorizedException, ConflictingUpdateException {
 		String entityId = acl.getId();
 		if (entityPermissionsManager.hasLocalACL(entityId)) {
 			// Local ACL exists; update it
-			return updateEntityACL(userId, acl, recursive);
+			return updateEntityACL(userId, acl);
 		} else {
 			// Local ACL does not exist; create it
 			return createEntityACL(userId, acl);
@@ -493,9 +500,9 @@ public class EntityServiceImpl implements EntityService {
 	}
 
 	@Override
-	public EntityHeader getEntityHeader(Long userId, String entityId, Long versionNumber) throws NotFoundException, DatastoreException, UnauthorizedException {
+	public EntityHeader getEntityHeader(Long userId, String entityId) throws NotFoundException, DatastoreException, UnauthorizedException {
 		UserInfo userInfo = userManager.getUserInfo(userId);
-		return entityManager.getEntityHeader(userInfo, entityId, versionNumber);
+		return entityManager.getEntityHeader(userInfo, entityId);
 	}
 	
 	@Override
@@ -515,7 +522,7 @@ public class EntityServiceImpl implements EntityService {
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		// First get the permissions benefactor
 		String benefactor = entityPermissionsManager.getPermissionBenefactor(entityId, userInfo);
-		return getEntityHeader(userId, benefactor, null);
+		return getEntityHeader(userId, benefactor);
 	}
 
 	@Override
@@ -692,5 +699,70 @@ public class EntityServiceImpl implements EntityService {
 		ValidateArgument.required(userId, "userId");
 		UserInfo userInfo = userManager.getUserInfo(userId);
 		return entityManager.changeEntityDataType(userInfo, id, dataType);
+	}
+
+	@Override
+	public StsCredentials getTemporaryCredentialsForEntity(Long userId, String entityId, StsPermission permission) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return stsManager.getTemporaryCredentials(userInfo, entityId, permission);
+	}
+
+	@Override
+	public JsonSchemaObjectBinding bindSchemaToEntity(Long userId, BindSchemaToEntityRequest request) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.bindSchemaToEntity(userInfo, request);
+	}
+
+	@Override
+	public JsonSchemaObjectBinding getBoundSchema(Long userId, String id) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.getBoundSchema(userInfo, id);
+	}
+
+	@Override
+	public void clearBoundSchema(Long userId, String id) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		entityManager.clearBoundSchema(userInfo, id);
+	}
+
+	@Override
+	public JSONObject getEntityJson(Long userId, String id) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.getEntityJson(userInfo, id);
+	}
+
+	@Override
+	public JSONObject updateEntityJson(Long userId, String entityId, JSONObject request) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.updateEntityJson(userInfo, entityId, request);
+	}
+
+	@Override
+	public ValidationResults getEntitySchemaValidationResults(Long userId, String id) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.getEntityValidationResults(userInfo, id);
+	}
+
+	@Override
+	public ValidationSummaryStatistics getEntitySchemaValidationSummaryStatistics(Long userId, String entityId) {
+		ValidateArgument.required(userId, "userId");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.getEntityValidationStatistics(userInfo, entityId);
+	}
+
+	@Override
+	public ListValidationResultsResponse getInvalidEntitySchemaValidationResults(Long userId,
+			ListValidationResultsRequest request) {
+		ValidateArgument.required(userId, "userId");
+		ValidateArgument.required(request, "request");
+		UserInfo userInfo = userManager.getUserInfo(userId);
+		return entityManager.getInvalidEntitySchemaValidationResults(userInfo, request);
 	}
 }

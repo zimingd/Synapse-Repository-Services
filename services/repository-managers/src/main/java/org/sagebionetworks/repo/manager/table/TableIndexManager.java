@@ -2,7 +2,6 @@ package org.sagebionetworks.repo.manager.table;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import org.sagebionetworks.common.util.progress.ProgressCallback;
@@ -11,8 +10,10 @@ import org.sagebionetworks.repo.model.entity.IdAndVersion;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnModelPage;
 import org.sagebionetworks.repo.model.table.ViewScope;
+import org.sagebionetworks.repo.model.table.ViewScopeType;
 import org.sagebionetworks.table.cluster.ColumnChangeDetails;
 import org.sagebionetworks.table.model.SparseChangeSet;
+import org.sagebionetworks.util.csv.CSVWriterStream;
 import org.sagebionetworks.workers.util.aws.message.RecoverableMessageException;
 
 /**
@@ -50,13 +51,7 @@ public interface TableIndexManager {
 	 * 
 	 * @return
 	 */
-	public long getCurrentVersionOfIndex(IdAndVersion tableId);
-	
-	/**
-	 * The MD5 Hex string of the current schema.
-	 * @return
-	 */
-	public String getCurrentSchemaMD5Hex(IdAndVersion tableId);
+	long getCurrentVersionOfIndex(IdAndVersion tableId);
 
 	/**
 	 * Has the change set represented by the given version number already been
@@ -67,7 +62,7 @@ public interface TableIndexManager {
 	 * @return True if the change set for the given version has already been
 	 *         applied ot the table.
 	 */
-	public boolean isVersionAppliedToIndex(IdAndVersion tableId, long versionNumber);
+	boolean isVersionAppliedToIndex(IdAndVersion tableId, long versionNumber);
 
 	/**
 	 * Apply the given change set to a table's index. Each row in a change set
@@ -91,7 +86,7 @@ public interface TableIndexManager {
 	 *            must match the version number of each row in the passed
 	 *            changeset.
 	 */
-	public void applyChangeSetToIndex(IdAndVersion tableId, SparseChangeSet rowset,
+	void applyChangeSetToIndex(IdAndVersion tableId, SparseChangeSet rowset,
 			long changeSetVersionNumber);
 
 	/**
@@ -99,25 +94,19 @@ public interface TableIndexManager {
 	 * 
 	 * @param currentSchema
 	 */
-	public void setIndexSchema(IdAndVersion tableId, boolean isTableView, List<ColumnModel> currentSchema);
+	List<ColumnChangeDetails> setIndexSchema(IdAndVersion tableId, boolean isTableView, List<ColumnModel> currentSchema);
 	
 	/**
 	 * 
 	 * @param currentSchema
 	 */
-	public boolean updateTableSchema(IdAndVersion tableId, boolean isTableView, List<ColumnChangeDetails> changes);
+	boolean updateTableSchema(IdAndVersion tableId, boolean isTableView, List<ColumnChangeDetails> changes);
 	
 	/**
 	 * Delete the index for this table.
 	 */
-	public void deleteTableIndex(IdAndVersion tableId);
+	void deleteTableIndex(IdAndVersion tableId);
 
-	/**
-	 * Set current version of the index.
-	 * @param viewCRC
-	 */
-	public void setIndexVersion(IdAndVersion tableId, Long viewCRC);
-	
 	/**
 	 * Set the current version of the index and the schema MD5, both of which are used
 	 * to determine if the index is up-to-date.
@@ -125,7 +114,7 @@ public interface TableIndexManager {
 	 * @param viewCRC
 	 * @param schemaMD5Hex
 	 */
-	public void setIndexVersionAndSchemaMD5Hex(IdAndVersion tableId, Long viewCRC, String schemaMD5Hex);
+	void setIndexVersionAndSchemaMD5Hex(IdAndVersion tableId, Long viewCRC, String schemaMD5Hex);
 	
 	/**
 	 * Optimize the indices of this table. Indices are added until either all
@@ -136,20 +125,33 @@ public interface TableIndexManager {
 	 * 
 	 * Note: This method should be called after making all changes to a table.
 	 */
-	public void optimizeTableIndices(IdAndVersion tableId);
+	void optimizeTableIndices(IdAndVersion tableId);
+
+	/**
+	 * For _LIST type columns, create a separate table as an index for the multiple values in that table
+	 * @param tableIdAndVersion
+	 * @param schemas
+	 */
+	void populateListColumnIndexTables(IdAndVersion tableIdAndVersion, List<ColumnModel> schemas);
+	
+	/**
+	 * 
+	 * @param tableIdAndVersion
+	 * @param schema
+	 * @param rowIds
+	 */
+	void populateListColumnIndexTables(IdAndVersion tableIdAndVersion, List<ColumnModel> schema, Set<Long> rowIds);
 
 	/**
 	 * Create a temporary copy of the table's index table.
-	 * 
-	 * @param callback
+	 *
 	 */
-	public void createTemporaryTableCopy(IdAndVersion tableId, ProgressCallback callback);
+	void createTemporaryTableCopy(IdAndVersion tableId);
 
 	/**
 	 * Delete the temporary copy of table's index.
-	 * @param callback
 	 */
-	public void deleteTemporaryTableCopy(IdAndVersion tableId, ProgressCallback callback);
+	void deleteTemporaryTableCopy(IdAndVersion tableId);
 
 	/**
 	 * Attempt to alter the schema of a temporary copy of a table.
@@ -160,7 +162,7 @@ public interface TableIndexManager {
 	 * @param changes
 	 * @return
 	 */
-	boolean alterTempTableSchmea(IdAndVersion tableId, List<ColumnChangeDetails> changes);
+	void alterTempTableSchmea(IdAndVersion tableId, List<ColumnChangeDetails> changes);
 
 
 	/**
@@ -168,13 +170,23 @@ public interface TableIndexManager {
 	 * replication tables.
 	 * @param callback 
 	 * 
-	 * @param viewType
+	 * @param scopeType
 	 * @param allContainersInScope
 	 * @param currentSchema
-	 * @return The new CRC23 for the view.
+	 * @return View CRC32
 	 */
-	public Long populateViewFromEntityReplication(Long tableId, ProgressCallback callback, Long viewTypeMask,
-			Set<Long> allContainersInScope, List<ColumnModel> currentSchema);
+	long populateViewFromEntityReplication(Long viewId, ViewScopeType scopeType, Set<Long> allContainersInScope, List<ColumnModel> currentSchema);
+	
+	/**
+	 * Create a snapshot of the given view.
+	 * @param tableId
+	 * @param scopeType
+	 * @param allContainersInScope
+	 * @param viewSchema
+	 * @param writter
+	 */
+	void createViewSnapshot(Long viewId, ViewScopeType scopeType, Set<Long> allContainersInScope,
+			List<ColumnModel> viewSchema, CSVWriterStream writter);	
 	
 	/**
 	 * Get the possible ColumnModel definitions based on annotation within a given scope.
@@ -182,7 +194,7 @@ public interface TableIndexManager {
 	 * @param nextPageToken Optional: Controls pagination.
 	 * @return A ColumnModel for each distinct annotation for the given scope.
 	 */
-	public ColumnModelPage getPossibleColumnModelsForScope(ViewScope scope, String nextPageToken);
+	ColumnModelPage getPossibleColumnModelsForScope(ViewScope scope, String nextPageToken);
 	
 	/**
 	 * Get the possible ColumnModel definitions based on annotations for a given view.
@@ -190,7 +202,7 @@ public interface TableIndexManager {
 	 * @param nextPageToken Optional: Controls pagination.
 	 * @return A ColumnModel for each distinct annotation for the given scope.
 	 */
-	public ColumnModelPage getPossibleColumnModelsForView(Long viewId, String nextPageToken);
+	ColumnModelPage getPossibleColumnModelsForView(Long viewId, String nextPageToken);
 
 	/**
 	 * Build the index for the given table using the provided change metadata up to and
@@ -202,8 +214,54 @@ public interface TableIndexManager {
 	 * @param targetChangeNumber
 	 * @throws RecoverableMessageException Will RecoverableMessageException if the index cannot be built at this time.
 	 */
-	public void buildIndexToChangeNumber(ProgressCallback progressCallback, IdAndVersion idAndVersion, Iterator<TableChangeMetaData> iterator,
-			long targetChangeNumber) throws RecoverableMessageException;
+	void buildIndexToChangeNumber(ProgressCallback progressCallback, IdAndVersion idAndVersion, Iterator<TableChangeMetaData> iterator) throws RecoverableMessageException;
 	
+	/**
+	 * Populate a view table from a stream of snapshot CSV data.
+	 * @param idAndVersion
+	 * @param input
+	 */
+	void populateViewFromSnapshot(IdAndVersion idAndVersion, Iterator<String[]> input);
+
+	/**
+	 * Get a single page (up to the provided limit) of rowIds that are out-of-date
+	 * for the given view. A row is out-of-date if any of these conditions are true:
+	 * <ul>
+	 * <li>A row exists in the replication table but does not exist in the
+	 * view.</li>
+	 * <li>A row exists in the view but does not exist in the replication
+	 * table.</li>
+	 * <li>The rowId, etag, or benefactorId do not match in the view and the
+	 * replication table.</li>
+	 * </ul>
+	 * 
+	 * @param viewId The id of the view to check.
+	 * @param scopeType  The scope type of the view.
+	 * @param allContainersInScope All of the containers that define the scope 
+	 * @param limit Limit the number of rows returned. 
+	 * @return
+	 */
+	Set<Long> getOutOfDateRowsForView(IdAndVersion viewId, ViewScopeType scopeType, Set<Long> allContainersInScope, long limit);
+
+	/**
+	 * In a single transaction, update the provided rowIds for a view. For each
+	 * rowId, all data will first be deleted from the view, then copied back to the
+	 * view from the replication tables.
+	 * 
+	 * @param viewId The Id of the view.
+	 * @param rowsIdsWithChanges The Ids of the rows to be updated in this transaction.
+	 * @param viewTypeMask The type of view this is.
+	 * @param allContainersInScope The container Ids that define the scope of this view.
+	 * @param currentSchema The current schema of the view.
+	 */
+	void updateViewRowsInTransaction(IdAndVersion viewId, Set<Long> rowsIdsWithChanges, ViewScopeType scopeType,
+			Set<Long> allContainersInScope, List<ColumnModel> currentSchema);
+
+	/**
+	 * Ensure the benefactor IDs for the given view snapshot are up-to-date.
+	 * 
+	 * @param viewId
+	 */
+	void refreshViewBenefactors(IdAndVersion viewId);
 
 }

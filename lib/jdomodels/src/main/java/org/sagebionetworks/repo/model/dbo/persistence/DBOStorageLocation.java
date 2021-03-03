@@ -19,9 +19,11 @@ import org.sagebionetworks.repo.model.dbo.MigratableDatabaseObject;
 import org.sagebionetworks.repo.model.dbo.Table;
 import org.sagebionetworks.repo.model.dbo.TableMapping;
 import org.sagebionetworks.repo.model.dbo.dao.StorageLocationUtils;
+import org.sagebionetworks.repo.model.dbo.migration.BasicMigratableTableTranslation;
 import org.sagebionetworks.repo.model.dbo.migration.MigratableTableTranslation;
 import org.sagebionetworks.repo.model.file.UploadType;
 import org.sagebionetworks.repo.model.migration.MigrationType;
+import org.sagebionetworks.repo.model.project.ExternalGoogleCloudStorageLocationSetting;
 import org.sagebionetworks.repo.model.project.StorageLocationSetting;
 
 /**
@@ -37,7 +39,7 @@ public class DBOStorageLocation implements MigratableDatabaseObject<DBOStorageLo
 	@Field(name = COL_STORAGE_LOCATION_DESCRIPTION, varchar = 512)
 	private String description;
 
-	@Field(name = COL_STORAGE_LOCATION_UPLOAD_TYPE)
+	@Field(name = COL_STORAGE_LOCATION_UPLOAD_TYPE, nullable = false, sql = "DEFAULT 'NONE'")
 	private UploadType uploadType;
 
 	@Field(name = COL_PROJECT_SETTING_ETAG, etag = true, nullable = false)
@@ -55,11 +57,32 @@ public class DBOStorageLocation implements MigratableDatabaseObject<DBOStorageLo
 	@Field(name = COL_STORAGE_LOCATION_CREATED_ON, nullable = false)
 	private Date createdOn;
 
-	private static TableMapping<DBOStorageLocation> tableMapping = AutoTableMapping.create(DBOStorageLocation.class);
+	private static final TableMapping<DBOStorageLocation> TABLE_MAPPING = AutoTableMapping.create(DBOStorageLocation.class);
+	
+	private static final MigratableTableTranslation<DBOStorageLocation, DBOStorageLocation> MIGRATION_TRANSLATOR = new BasicMigratableTableTranslation<DBOStorageLocation>() {
+	
+	@Override
+		public DBOStorageLocation createDatabaseObjectFromBackup(DBOStorageLocation backup) {
+			StorageLocationSetting setting = backup.getData();
+			if (setting != null) {
+				if (setting instanceof ExternalGoogleCloudStorageLocationSetting) {
+					ExternalGoogleCloudStorageLocationSetting storageLocation = (ExternalGoogleCloudStorageLocationSetting) setting;
+					String sanitiedBaseKey = StorageLocationUtils.sanitizeBaseKey(storageLocation.getBaseKey());
+					storageLocation.setBaseKey(sanitiedBaseKey);
+					backup.setDataHash(null);
+				}
+				if (backup.getDataHash() == null) {
+					String settingHash = StorageLocationUtils.computeHash(setting);
+					backup.setDataHash(settingHash);
+				}
+			}
+			return backup;
+		}
+	};
 
 	@Override
 	public TableMapping<DBOStorageLocation> getTableMapping() {
-		return tableMapping;
+		return TABLE_MAPPING;
 	}
 
 	@Override
@@ -204,23 +227,7 @@ public class DBOStorageLocation implements MigratableDatabaseObject<DBOStorageLo
 
 	@Override
 	public MigratableTableTranslation<DBOStorageLocation, DBOStorageLocation> getTranslator() {
-		return new MigratableTableTranslation<DBOStorageLocation, DBOStorageLocation>() {
-			
-			@Override
-			public DBOStorageLocation createDatabaseObjectFromBackup(DBOStorageLocation backup) {
-				if (backup.getDataHash() == null && backup.getData() != null) {
-					StorageLocationSetting setting = backup.getData();
-					String settingHash = StorageLocationUtils.computeHash(setting);
-					backup.setDataHash(settingHash);
-				}
-				return backup;
-			}
-			
-			@Override
-			public DBOStorageLocation createBackupFromDatabaseObject(DBOStorageLocation dbo) {
-				return dbo;
-			}
-		};
+		return MIGRATION_TRANSLATOR;
 	}
 
 	@Override

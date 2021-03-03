@@ -1,5 +1,8 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 
 import javax.servlet.http.HttpServletResponse;
@@ -16,6 +19,7 @@ import org.sagebionetworks.repo.model.doi.v2.DoiRequest;
 import org.sagebionetworks.repo.model.doi.v2.DoiResponse;
 import org.sagebionetworks.repo.web.DeprecatedServiceException;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.ServiceUnavailableException;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
@@ -49,9 +53,10 @@ public class DoiController {
 	 * @throws DeprecatedServiceException This service is deprecated.
 	 */
 	@Deprecated
+	@RequiredScope({modify})
 	@RequestMapping(value = {UrlHelpers.ENTITY_DOI}, method = RequestMethod.PUT)
 	@ResponseStatus(HttpStatus.ACCEPTED)
-	public @ResponseBody void createDoi() throws DeprecatedServiceException {
+	public void createDoi() throws DeprecatedServiceException {
 		throw new DeprecatedServiceException(DEPRECATED_MESSAGE);
 	}
 
@@ -60,9 +65,10 @@ public class DoiController {
 	 * @throws DeprecatedServiceException This service is deprecated.
 	 */
 	@Deprecated
+	@RequiredScope({modify})
 	@RequestMapping(value = {UrlHelpers.ENTITY_VERSION_DOI}, method = RequestMethod.PUT)
 	@ResponseStatus(HttpStatus.ACCEPTED)
-	public @ResponseBody void createDoiForVersion() throws DeprecatedServiceException {
+	public void createDoiForVersion() throws DeprecatedServiceException {
 		throw new DeprecatedServiceException(DEPRECATED_MESSAGE);
 	}
 
@@ -72,9 +78,10 @@ public class DoiController {
 	 * @throws DeprecatedServiceException This service is deprecated.
 	 */
 	@Deprecated
+	@RequiredScope({view})
 	@RequestMapping(value = {UrlHelpers.ENTITY_DOI}, method = RequestMethod.GET)
 	@ResponseStatus(HttpStatus.OK)
-	public @ResponseBody void getDoi() throws DeprecatedServiceException {
+	public void getDoi() throws DeprecatedServiceException {
 		throw new DeprecatedServiceException(DEPRECATED_MESSAGE);
 	}
 
@@ -84,9 +91,10 @@ public class DoiController {
 	 * @throws DeprecatedServiceException This service is deprecated.
 	 */
 	@Deprecated
+	@RequiredScope({view})
 	@RequestMapping(value = {UrlHelpers.ENTITY_VERSION_DOI}, method = RequestMethod.GET)
 	@ResponseStatus(HttpStatus.OK)
-	public @ResponseBody void getDoiForVersion() throws DeprecatedServiceException {
+	public void getDoiForVersion() throws DeprecatedServiceException {
 		throw new DeprecatedServiceException(DEPRECATED_MESSAGE);
 	}
 
@@ -94,7 +102,6 @@ public class DoiController {
 	 * Retrieves the DOI for the object and its associated DOI metadata.
 	 * Note: this call calls an external API, which may impact performance
 	 * To just retrieve the DOI association, see: <a href="${GET.doi.association}">GET /doi/association</a>
-	 * @param userId The ID of the user making the call
 	 * @param objectId The ID of the object to retrieve
 	 * @param objectType The type of the object
 	 * @param versionNumber The version number of the object
@@ -102,21 +109,20 @@ public class DoiController {
 	 * @throws NotFoundException
 	 * @throws UnauthorizedException
 	 */
+	@RequiredScope({view})
 	@RequestMapping(value = {UrlHelpers.DOI}, method = RequestMethod.GET)
 	@ResponseStatus(HttpStatus.OK)
 	public @ResponseBody Doi
-	getDoiV2(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-			 @RequestParam(value = "id") String objectId,
+	getDoiV2(@RequestParam(value = "id") String objectId,
 			 @RequestParam(value = "type") ObjectType objectType,
 			 @RequestParam(value = "version", required = false) Long versionNumber) throws NotFoundException, UnauthorizedException, ServiceUnavailableException {
-		return serviceProvider.getDoiServiceV2().getDoi(userId, objectId, objectType, versionNumber);
+		return serviceProvider.getDoiServiceV2().getDoi(objectId, objectType, versionNumber);
 	}
 
 	/**
 	 * Retrieves the DOI for the object.
 	 * Note: this call only retrieves the DOI association, if it exists. To retrieve the metadata for the object,
 	 * see <a href="${GET.doi}">GET /doi</a>
-	 * @param userId The ID of the user making the call
 	 * @param objectId The ID of the object to retrieve
 	 * @param objectType The type of the object
 	 * @param versionNumber The version number of the object
@@ -124,15 +130,16 @@ public class DoiController {
 	 * @throws NotFoundException
 	 * @throws UnauthorizedException
 	 */
+	@RequiredScope({view})
 	@RequestMapping(value = {UrlHelpers.DOI_ASSOCIATION}, method = RequestMethod.GET)
 	@ResponseStatus(HttpStatus.OK)
 	public @ResponseBody
 	DoiAssociation
-	getDoiAssociation(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-					  @RequestParam(value = "id") String objectId,
-					  @RequestParam(value = "type") ObjectType objectType,
-					  @RequestParam(value = "version", required = false) Long versionNumber) throws NotFoundException, UnauthorizedException {
-		return serviceProvider.getDoiServiceV2().getDoiAssociation(userId, objectId, objectType, versionNumber);
+	getDoiAssociation(
+			@RequestParam(value = "id") String objectId,
+			@RequestParam(value = "type") ObjectType objectType,
+			@RequestParam(value = "version", required = false) Long versionNumber) throws NotFoundException, UnauthorizedException {
+		return serviceProvider.getDoiServiceV2().getDoiAssociation(objectId, objectType, versionNumber);
 	}
 
 	/**
@@ -145,6 +152,7 @@ public class DoiController {
 	 * @throws NotFoundException
 	 * @throws UnauthorizedException
 	 */
+	@RequiredScope({view,modify})
 	@RequestMapping(value = {UrlHelpers.DOI_ASYNC_START}, method = RequestMethod.POST)
 	@ResponseStatus(HttpStatus.CREATED)
 	public @ResponseBody
@@ -165,6 +173,7 @@ public class DoiController {
 	 * @return The results of the call
 	 * @throws Throwable
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.DOI_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -180,7 +189,6 @@ public class DoiController {
 	/**
 	 * Retrieves the Synapse web portal URL to the object entered.
 	 * Note: This call does not check to see if the object exists in Synapse.
-	 * @param userId The ID of the user making the call
 	 * @param objectId The ID of the object to retrieve
 	 * @param objectType The type of the object
 	 * @param versionNumber The version number of the object
@@ -189,14 +197,13 @@ public class DoiController {
 	 * @return The URL of the object in Synapse.
 	 * @throws IOException
 	 */
+	@RequiredScope({view})
 	@RequestMapping(value = {DoiManagerImpl.LOCATE_RESOURCE_PATH}, method = RequestMethod.GET)
-	public @ResponseBody
-	void locate(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
-		   @RequestParam(value = DoiManagerImpl.OBJECT_ID_PATH_PARAM) String objectId,
+	public void locate(@RequestParam(value = DoiManagerImpl.OBJECT_ID_PATH_PARAM) String objectId,
 		   @RequestParam(value = DoiManagerImpl.OBJECT_TYPE_PATH_PARAM) ObjectType objectType,
 		   @RequestParam(value = DoiManagerImpl.OBJECT_VERSION_PATH_PARAM, required = false) Long versionNumber,
 		   @RequestParam(value = "redirect", required = false, defaultValue = "true") Boolean redirect,
 				HttpServletResponse response) throws IOException {
-		RedirectUtils.handleRedirect(redirect, serviceProvider.getDoiServiceV2().locate(userId, objectId, objectType, versionNumber), response);
+		RedirectUtils.handleRedirect(redirect, serviceProvider.getDoiServiceV2().locate(objectId, objectType, versionNumber), response);
 	}
 }

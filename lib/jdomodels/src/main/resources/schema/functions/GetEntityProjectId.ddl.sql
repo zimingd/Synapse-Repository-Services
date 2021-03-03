@@ -1,5 +1,5 @@
 /* Function to find the first entity in an entity's hierarchy that is a Project*/
-CREATE FUNCTION `getEntityProjectId`(inputEntityId BIGINT) RETURNS bigint(20)
+CREATE FUNCTION `getEntityProjectId`(inputEntityId BIGINT) RETURNS BIGINT
     READS SQL DATA
 BEGIN
  	DECLARE entityId BIGINT;
@@ -26,7 +26,7 @@ BEGIN
 		SET entityId = parentId;
 		/* Prevent an infinite loop */
 		SET counter = counter + 1;
-		IF counter > 1000 THEN RETURN -1;
+		IF counter > 51 THEN RETURN -1;
 		END IF;
     END WHILE;
  END;

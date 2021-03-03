@@ -4,18 +4,18 @@ import static org.sagebionetworks.repo.model.docker.RegistryEventAction.pull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Set;
 
 import org.sagebionetworks.StackConfigurationSingleton;
-import org.sagebionetworks.evaluation.manager.EvaluationPermissionsManager;
 import org.sagebionetworks.evaluation.model.Submission;
 import org.sagebionetworks.reflection.model.PaginatedResults;
+import org.sagebionetworks.repo.manager.evaluation.EvaluationPermissionsManager;
+import org.sagebionetworks.repo.manager.file.FileHandleAssociationManager;
 import org.sagebionetworks.repo.manager.file.FileHandleAuthorizationStatus;
+import org.sagebionetworks.repo.manager.form.FormManager;
 import org.sagebionetworks.repo.manager.team.TeamConstants;
 import org.sagebionetworks.repo.manager.token.TokenGenerator;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
@@ -41,16 +41,17 @@ import org.sagebionetworks.repo.model.RestrictableObjectDescriptor;
 import org.sagebionetworks.repo.model.RestrictableObjectType;
 import org.sagebionetworks.repo.model.UnauthorizedException;
 import org.sagebionetworks.repo.model.UserInfo;
-import org.sagebionetworks.repo.model.VerificationDAO;
+import org.sagebionetworks.repo.model.auth.AuthorizationStatus;
 import org.sagebionetworks.repo.model.dao.FileHandleDao;
 import org.sagebionetworks.repo.model.dao.WikiPageKey;
 import org.sagebionetworks.repo.model.dao.discussion.DiscussionThreadDAO;
 import org.sagebionetworks.repo.model.dao.discussion.ForumDAO;
+import org.sagebionetworks.repo.model.dbo.verification.VerificationDAO;
 import org.sagebionetworks.repo.model.discussion.Forum;
 import org.sagebionetworks.repo.model.docker.RegistryEventAction;
 import org.sagebionetworks.repo.model.file.FileHandleAssociateType;
-import org.sagebionetworks.repo.model.file.FileHandleAssociationManager;
 import org.sagebionetworks.repo.model.jdo.KeyFactory;
+import org.sagebionetworks.repo.model.oauth.OAuthScope;
 import org.sagebionetworks.repo.model.provenance.Activity;
 import org.sagebionetworks.repo.model.subscription.SubscriptionObjectType;
 import org.sagebionetworks.repo.model.util.DockerNameUtil;
@@ -59,7 +60,6 @@ import org.sagebionetworks.repo.web.NotFoundException;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 
 public class AuthorizationManagerImpl implements AuthorizationManager {
@@ -100,7 +100,7 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 	@Autowired
 	private V2WikiPageDao wikiPageDaoV2;
 	@Autowired
-	private org.sagebionetworks.repo.model.evaluation.SubmissionDAO submissionDAO;
+	private org.sagebionetworks.evaluation.dao.SubmissionDAO submissionDAO;
 	@Autowired
 	private MessageManager messageManager;
 	@Autowired
@@ -111,6 +111,8 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 	private GroupMembersDAO groupMembersDao;
 	@Autowired
 	private TokenGenerator tokenGenerator;
+	@Autowired
+	private FormManager formManager;
 	
 	@Override
 	public AuthorizationStatus canAccess(UserInfo userInfo, String objectId, ObjectType objectType, ACCESS_TYPE accessType)
@@ -211,6 +213,13 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 					return AuthorizationStatus.accessDenied("Unexpected access type "+accessType);
 				}
 			}
+			case FORM_DATA: {
+				if (accessType==ACCESS_TYPE.DOWNLOAD) {
+					return formManager.canUserDownloadFormData(userInfo, objectId);
+				} else {
+					return AuthorizationStatus.accessDenied("Unexpected access type "+accessType);
+				}
+			}
 			default:
 				throw new IllegalArgumentException("Unknown ObjectType: "+objectType);
 		}
@@ -299,33 +308,6 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 		return canAccessRawFileHandleByCreator(userInfo, fileHandleId, creator);
 	}
 
-	@Deprecated
-	@Override
-	public void canAccessRawFileHandlesByIds(UserInfo userInfo, List<String> fileHandleIds, Set<String> allowed, Set<String> disallowed)
-			throws NotFoundException {
-		// no file handles, nothing to do
-		if (fileHandleIds.isEmpty()) {
-			return;
-		}
-
-		// Admins can do anything
-		if (userInfo.isAdmin()) {
-			allowed.addAll(fileHandleIds);
-			return;
-		}
-
-		// Lookup the creators
-		Multimap<String, String> creatorMap = fileHandleDao.getHandleCreators(fileHandleIds);
-		for (Entry<String, Collection<String>> entry : creatorMap.asMap().entrySet()) {
-			String creator = entry.getKey();
-			if (canAccessRawFileHandleByCreator(userInfo, "", creator).isAuthorized()) {
-				allowed.addAll(entry.getValue());
-			} else {
-				disallowed.addAll(entry.getValue());
-			}
-		}
-	}
-
 	@Override
 	public boolean isACTTeamMemberOrAdmin(UserInfo userInfo) throws DatastoreException, UnauthorizedException {
 		if (userInfo.isAdmin()) return true;
@@ -361,8 +343,8 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 		if (sourceParentId.equals(destParentId)) {
 			return AuthorizationStatus.authorized();
 		}
-		List<String> sourceParentAncestorIds = AccessRequirementUtil.getNodeAncestorIds(nodeDao, sourceParentId, true);
-		List<String> destParentAncestorIds = AccessRequirementUtil.getNodeAncestorIds(nodeDao, destParentId, true);
+		List<Long> sourceParentAncestorIds = nodeDao.getEntityPathIds(sourceParentId);
+		List<Long> destParentAncestorIds = nodeDao.getEntityPathIds(destParentId);
 
 		List<String> missingRequirements = accessRequirementDAO.getAccessRequirementDiff(sourceParentAncestorIds, destParentAncestorIds, RestrictableObjectType.ENTITY);
 		if (missingRequirements.isEmpty()) { // only OK if destParent has all the requirements that source parent has
@@ -467,18 +449,19 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 
 
 	@Override
-	public Set<Long> getAccessibleBenefactors(UserInfo userInfo, Set<Long> benefactors) {
+	public Set<Long> getAccessibleBenefactors(UserInfo userInfo, ObjectType objectType, Set<Long> benefactors) {
 		Set<Long> results = null;
 		if (userInfo.isAdmin()){
 			// admin same as input
 			results = Sets.newHashSet(benefactors);
 		}else{
 			// non-adim run a query
-			results = this.aclDAO.getAccessibleBenefactors(userInfo.getGroups(), benefactors,
-					ObjectType.ENTITY, ACCESS_TYPE.READ);
+			results = this.aclDAO.getAccessibleBenefactors(userInfo.getGroups(), benefactors, objectType, ACCESS_TYPE.READ);
 		}
-		// The trash folder should not be in the results
-		results.remove(TRASH_FOLDER_ID);
+		if (ObjectType.ENTITY.equals(objectType)) {
+			// The trash folder should not be in the results
+			results.remove(TRASH_FOLDER_ID);
+		}
 		return results;
 	}
 
@@ -556,8 +539,9 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 	}
 
 	@Override
-	public Set<String> getPermittedDockerActions(UserInfo userInfo, String service, String type, String name, String actionTypes) {
+	public Set<String> getPermittedDockerActions(UserInfo userInfo, List<OAuthScope> oauthScopes, String service, String type, String name, String actionTypes) {
 		ValidateArgument.required(userInfo, "userInfo");
+		ValidateArgument.required(oauthScopes, "oauthScopes");
 		ValidateArgument.required(service, "service");
 		ValidateArgument.required(type, "type");
 		ValidateArgument.required(name, "name");
@@ -565,9 +549,9 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 		
 		String[] actionArray = actionTypes.split(",");
 		if (REGISTRY_TYPE.equalsIgnoreCase(type)) {
-			return getPermittedDockerRegistryActions(userInfo, service, name, actionArray);
+			return getPermittedDockerRegistryActions(userInfo, oauthScopes, service, name, actionArray);
 		} else if (REPOSITORY_TYPE.equalsIgnoreCase(type)) {
-			Set<RegistryEventAction> approvedActions = getPermittedDockerRepositoryActions(userInfo, service, name, actionArray);
+			Set<RegistryEventAction> approvedActions = getPermittedDockerRepositoryActions(userInfo, oauthScopes, service, name, actionArray);
 			Set<String> result = new HashSet<String>();
 			for (RegistryEventAction a : approvedActions) result.add(a.name());
 			return result;
@@ -576,10 +560,10 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 		}
 	}
 
-	private Set<String> getPermittedDockerRegistryActions(UserInfo userInfo, String service, String name, String[] actionTypes) {
+	private Set<String> getPermittedDockerRegistryActions(UserInfo userInfo, List<OAuthScope> oauthScopes, String service, String name, String[] actionTypes) {
 		if (name.equalsIgnoreCase(REGISTRY_CATALOG)) {
 			// OK, it's a request to list the catalog
-			if (userInfo.isAdmin()) { 
+			if (userInfo.isAdmin() && oauthScopes.contains(OAuthScope.view)) { 
 				// an admin can do *anything*
 				return new HashSet<String>(Arrays.asList(actionTypes));
 			} else {
@@ -592,7 +576,7 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 		}
 	}
 
-	private Set<RegistryEventAction> getPermittedDockerRepositoryActions(UserInfo userInfo, String service, String repositoryPath, String[] actionTypes) {		Set<RegistryEventAction> permittedActions = new HashSet<RegistryEventAction>();
+	private Set<RegistryEventAction> getPermittedDockerRepositoryActions(UserInfo userInfo, List<OAuthScope> oauthScopes, String service, String repositoryPath, String[] actionTypes) {		Set<RegistryEventAction> permittedActions = new HashSet<RegistryEventAction>();
 
 		String repositoryName = service+DockerNameUtil.REPO_NAME_PATH_SEP+repositoryPath;
 
@@ -607,6 +591,9 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 			RegistryEventAction requestedAction = RegistryEventAction.valueOf(requestedActionString);
 			switch (requestedAction) {
 			case push:
+				if (!oauthScopes.contains(OAuthScope.modify)) {
+					break; // No need to check specific permissions
+				}
 				// check CREATE or UPDATE permission and add to permittedActions
 				AuthorizationStatus as = null;
 				if (existingDockerRepoId==null) {
@@ -630,6 +617,9 @@ public class AuthorizationManagerImpl implements AuthorizationManager {
 				}
 				break;
 			case pull:
+				if (!oauthScopes.contains(OAuthScope.download)) {
+					break; // No need to check specific permissions
+				}
 				if (
 					// check DOWNLOAD permission and add to permittedActions
 					(existingDockerRepoId!=null && !isInTrash && canAccess(

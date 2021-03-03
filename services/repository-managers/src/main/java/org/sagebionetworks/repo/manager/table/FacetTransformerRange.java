@@ -1,7 +1,5 @@
 package org.sagebionetworks.repo.manager.table;
 
-import java.util.List;
-
 import org.sagebionetworks.repo.model.table.FacetColumnResult;
 import org.sagebionetworks.repo.model.table.FacetColumnResultRange;
 import org.sagebionetworks.repo.model.table.FacetType;
@@ -14,7 +12,10 @@ import org.sagebionetworks.table.query.ParseException;
 import org.sagebionetworks.table.query.model.TableExpression;
 import org.sagebionetworks.table.query.util.FacetRequestColumnModel;
 import org.sagebionetworks.table.query.util.FacetUtils;
+import org.sagebionetworks.table.query.util.SqlElementUntils;
 import org.sagebionetworks.util.ValidateArgument;
+
+import java.util.List;
 
 public class FacetTransformerRange implements FacetTransformer {
 	public static final String MIN_ALIAS = "minimum";
@@ -70,10 +71,10 @@ public class FacetTransformerRange implements FacetTransformer {
 		builder.append(" ");
 		builder.append(tableExpressionFromModel.getFromClause().toSql());
 		String facetSearchConditionString = FacetUtils.concatFacetSearchConditionStrings(facets, columnName);
-		FacetUtils.appendFacetWhereClauseToStringBuilderIfNecessary(builder, facetSearchConditionString, tableExpressionFromModel.getWhereClause());
+		SqlElementUntils.appendCombinedWhereClauseToStringBuilder(builder, facetSearchConditionString, tableExpressionFromModel.getWhereClause());
 		
 		try {
-			return new SqlQueryBuilder(builder.toString(), originalQuery.getTableSchema()).build();
+			return new SqlQueryBuilder(builder.toString(), originalQuery.getTableSchema(), originalQuery.getUserId()).build();
 		} catch (ParseException e) {
 			throw new RuntimeException(e);
 		}

@@ -19,7 +19,9 @@ public class AuthorizationConstants {
 		ADMINISTRATORS_GROUP(2L),
 		ACCESS_AND_COMPLIANCE_GROUP(464532L),
 		TRUSTED_MESSAGE_SENDER_GROUP(4L),
-		SYNAPSE_REPORT_GROUP(5L);
+		SYNAPSE_REPORT_GROUP(5L),
+		DATA_ACCESS_NOTFICATIONS_SENDER(3412389L), // The synapse user used to send data access notifications
+		SYNAPSE_TESTING_GROUP(6L); // Internal group that can be used to enable features on a subset of users
 
 		private final long principalId;
 		
@@ -193,5 +195,58 @@ public class AuthorizationConstants {
 	public static final String DOCKER_SCOPE_PARAM = "scope";
 	
 	
+	/**
+	 * The oauth 'client id' representing Synapse itself
+	 */
+	public static final String SYNAPSE_OAUTH_CLIENT_ID = "0";
+	
+	
+	/**
+	 * Request parameters for the Synapse OAuth server, defined by
+	 * https://openid.net/specs/openid-connect-core-1_0.html#RefreshingAccessToken
+	 */
+	public static final String OAUTH2_SCOPE_PARAM = "scope";
+	public static final String OAUTH2_CLAIMS_PARAM = "claims";
+	public static final String OAUTH2_GRANT_TYPE_PARAM = "grant_type";
+	public static final String OAUTH2_CODE_PARAM = "code";
+	public static final String OAUTH2_REDIRECT_URI_PARAM = "redirect_uri";
+	public static final String OAUTH2_REFRESH_TOKEN_PARAM = "refresh_token";
+	public static final String OAUTH_VERIFIED_CLIENT_ID_HEADER = "verifiedOauthClientId";
+	
+	/**
+	 * The Oauth access token is passed as the 'bearer' request header
+	 */
+	public static final String BEARER_TOKEN_HEADER = "Bearer ";
+	
+	/**
+	 * Standard name for the HTTP Header containing credentials, bearer token, or other authentication/authorization information
+	 */
+	public static final String AUTHORIZATION_HEADER_NAME = "Authorization";
+	
+	/**
+	 * Internal header name used when passing authorization from a Synapse HTTP Filter to a Spring Controller
+	 */
+	public static final String SYNAPSE_AUTHORIZATION_HEADER_NAME = "Synapse-Authorization";
+	
+	/**
+	 * Internal header name used to identify a request that was authenticated for a service
+	 */
+	public static final String SYNAPSE_HEADER_SERVICE_NAME = "Synapse-Service-Name";
+	
+	public static final String BASIC_PREFIX = "Basic ";
+
+	public static final String PROJECT_FILTER_PARAM = "filter";
+	
+	public static final String ERR_MSG_YOU_HAVE_NOT_YET_AGREED_TO_THE_SYNAPSE_TERMS_OF_USE = "You have not yet agreed to the Synapse Terms of Use.";
+	public static final String ERR_MSG_YOU_LACK_ACCESS_TO_REQUESTED_ENTITY_TEMPLATE = "You lack %s access to the requested entity.";
+	public static final String ERR_MSG_YOU_DO_NOT_HAVE_PERMISSION_TEMPLATE = "You do not have %s permission for the requested entity, %s.";
+	public static final String ERR_MSG_ONLY_CERTIFIED_USERS_MAY_CHANGE_NODE_SETTINGS = "Only certified users may change node settings.";
+	public static final String ERR_MSG_THERE_ARE_UNMET_ACCESS_REQUIREMENTS = "There are unmet access requirements that must be met to read content in the requested container.";
+	public static final String ERR_MSG_ANONYMOUS_USERS_HAVE_ONLY_READ_ACCESS_PERMISSION = "Anonymous users have only READ access permission.";
+	public static final String ERR_MSG_CERTIFIED_USER_CONTENT = "Only certified users may create or update content in Synapse.";
+	public static final String ERR_MSG_THE_RESOURCE_YOU_ARE_ATTEMPTING_TO_ACCESS_CANNOT_BE_FOUND = "The resource you are attempting to access cannot be found";
+	public static final String ERR_MSG_ENTITY_IN_TRASH_TEMPLATE = "Entity %s is in trash can.";
+	public static final String ERR_MSG_ACCESS_DENIED = "Access denied.";
+
 	
 }

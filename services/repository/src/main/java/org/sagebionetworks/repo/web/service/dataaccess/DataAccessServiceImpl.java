@@ -1,9 +1,9 @@
 package org.sagebionetworks.repo.web.service.dataaccess;
 
-import org.sagebionetworks.repo.manager.AccessRequirementManager;
 import org.sagebionetworks.repo.manager.UserManager;
 import org.sagebionetworks.repo.manager.dataaccess.RequestManager;
 import org.sagebionetworks.repo.manager.dataaccess.ResearchProjectManager;
+import org.sagebionetworks.repo.manager.dataaccess.RestrictionInformationManager;
 import org.sagebionetworks.repo.manager.dataaccess.SubmissionManager;
 import org.sagebionetworks.repo.model.RestrictionInformationRequest;
 import org.sagebionetworks.repo.model.RestrictionInformationResponse;
@@ -14,6 +14,8 @@ import org.sagebionetworks.repo.model.dataaccess.OpenSubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.RequestInterface;
 import org.sagebionetworks.repo.model.dataaccess.ResearchProject;
 import org.sagebionetworks.repo.model.dataaccess.Submission;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPage;
+import org.sagebionetworks.repo.model.dataaccess.SubmissionInfoPageRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPage;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionPageRequest;
 import org.sagebionetworks.repo.model.dataaccess.SubmissionStateChangeRequest;
@@ -31,7 +33,7 @@ public class DataAccessServiceImpl implements DataAccessService{
 	@Autowired
 	private SubmissionManager dataAccessSubmissionManager;
 	@Autowired
-	private AccessRequirementManager accessRequirementManager;
+	private RestrictionInformationManager restrictionInformationManager;
 
 	@Override
 	public ResearchProject createOrUpdate(Long userId, ResearchProject toCreateOrUpdate) {
@@ -82,6 +84,11 @@ public class DataAccessServiceImpl implements DataAccessService{
 	}
 
 	@Override
+	public SubmissionInfoPage listInfoForApprovedSubmissions(SubmissionInfoPageRequest request) {
+		return dataAccessSubmissionManager.listInfoForApprovedSubmissions(request);
+	}
+
+	@Override
 	public AccessRequirementStatus getAccessRequirementStatus(Long userId, String requirementId) {
 		UserInfo user = userManager.getUserInfo(userId);
 		return dataAccessSubmissionManager.getAccessRequirementStatus(user, requirementId);
@@ -90,7 +97,7 @@ public class DataAccessServiceImpl implements DataAccessService{
 	@Override
 	public RestrictionInformationResponse getRestrictionInformation(Long userId, RestrictionInformationRequest request) {
 		UserInfo user = userManager.getUserInfo(userId);
-		return accessRequirementManager.getRestrictionInformation(user, request);
+		return restrictionInformationManager.getRestrictionInformation(user, request);
 	}
 
 	@Override

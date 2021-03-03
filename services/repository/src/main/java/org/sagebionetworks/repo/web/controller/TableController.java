@@ -1,5 +1,9 @@
 package org.sagebionetworks.repo.web.controller;
 
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.download;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.modify;
+import static org.sagebionetworks.repo.model.oauth.OAuthScope.view;
+
 import java.io.IOException;
 import java.util.List;
 
@@ -40,11 +44,15 @@ import org.sagebionetworks.repo.model.table.UploadToTablePreviewRequest;
 import org.sagebionetworks.repo.model.table.UploadToTablePreviewResult;
 import org.sagebionetworks.repo.model.table.UploadToTableRequest;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
+import org.sagebionetworks.repo.model.table.ViewColumnModelRequest;
+import org.sagebionetworks.repo.model.table.ViewColumnModelResponse;
+import org.sagebionetworks.repo.model.table.ViewEntityType;
 import org.sagebionetworks.repo.model.table.ViewScope;
 import org.sagebionetworks.repo.model.table.ViewType;
 import org.sagebionetworks.repo.model.table.ViewTypeMask;
 import org.sagebionetworks.repo.web.DeprecatedServiceException;
 import org.sagebionetworks.repo.web.NotFoundException;
+import org.sagebionetworks.repo.web.RequiredScope;
 import org.sagebionetworks.repo.web.UrlHelpers;
 import org.sagebionetworks.repo.web.rest.doc.ControllerInfo;
 import org.sagebionetworks.repo.web.service.ServiceProvider;
@@ -169,17 +177,17 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * </tr>
  * <tr>
  * <td>The maximum number of projects/folder per view scope</td>
- * <td>10 K</td>
+ * <td>20 K</td>
  * <td>Recursive sub-folders count towards this limit. For example, if a project
- * contains more than 10 K sub-folders then it cannot be included in a view's
+ * contains more than 20 K sub-folders then it cannot be included in a view's
  * scope.</td>
  * </tr>
  * <tr>
  * <td>The maximum number of rows per view</td>
- * <td>100 M</td>
+ * <td>200 M</td>
  * <td>A single folder cannot contain more then 10 K files/folders. Since a
- * view's scope is limited to 10 K project/folders, the maximum number of rows
- * per view is 10 K * 10 K = 100 M.</td>
+ * view's scope is limited to 20 K project/folders, the maximum number of rows
+ * per view is 10 K * 20 K = 200 M.</td>
  * </tr>
  * <tr>
  * <td>The maximum file size of a CSV that can be appended to a table</td>
@@ -190,6 +198,16 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  * <td>The maximum size of a single query result</td>
  * <td>512000 bytes</td>
  * <td></td>
+ * </tr>
+ * <tr>
+ * <td>Entity View only: The maximum total character length for a STRING or STRING_LIST <a href="${org.sagebionetworks.repo.model.table.ColumnType}" >ColumnType</a></td>
+ * <td>500 characters</td>
+ * <td>Entity Views ONLY! This follows limitations placed on Annotations. For the type STRING_LIST, the total character count is the cumulative length of all string contained in the list.</td>
+ * </tr>
+ * <tr>
+ * <td>Entity View only: The maximum list length for "_LIST" suffixed <a href="${org.sagebionetworks.repo.model.table.ColumnType}" >ColumnType</a></td>
+ * <td>100 values</td>
+ * <td>Entity Views ONLY! This follows limitations placed on Annotations.</td>
  * </tr>
  * </table>
  * 
@@ -224,6 +242,7 @@ public class TableController {
 	 * @throws DatastoreException
 	 *             - Synapse error.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.COLUMN, method = RequestMethod.POST)
 	public @ResponseBody
@@ -258,6 +277,7 @@ public class TableController {
 	 * @throws DatastoreException
 	 *             - Synapse error.
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.COLUMN_BATCH, method = RequestMethod.POST)
 	public @ResponseBody
@@ -282,6 +302,7 @@ public class TableController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.COLUMN_ID, method = RequestMethod.GET)
 	public @ResponseBody
@@ -319,6 +340,7 @@ public class TableController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.ENTITY_COLUMNS, method = RequestMethod.GET)
 	public @ResponseBody
@@ -355,6 +377,7 @@ public class TableController {
 	 * @throws DatastoreException
 	 * @throws NotFoundException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.COLUMN, method = RequestMethod.GET)
 	public @ResponseBody
@@ -383,6 +406,7 @@ public class TableController {
 	 *  
 	 */
 	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.COLUMN_TABLE_VIEW_DEFAULT_TYPE, method = RequestMethod.GET)
 	public @ResponseBody
@@ -392,32 +416,38 @@ public class TableController {
 		ViewType type = ViewType.valueOf(viewtype);
 		Long viewTypeMaks = ViewTypeMask.getMaskForDepricatedType(type);
 		List<ColumnModel> results = serviceProvider.getTableServices()
-				.getDefaultViewColumnsForType(viewTypeMaks);
+				.getDefaultViewColumnsForType(ViewEntityType.entityview, viewTypeMaks);
 		return ListWrapper.wrap(results, ColumnModel.class);
 	}
 	
 	/**
 	 * Get the list of default
 	 * <a href="${org.sagebionetworks.repo.model.table.ColumnModel}">ColumnModels
-	 * </a> for the given viewTypeMask.
+	 * </a> for the given <a href=
+	 * "${org.sagebionetworks.repo.model.table.ViewEntityType}">viewEntityType</a>
+	 * and viewTypeMask.
 	 * 
-	 * @param viewTypeMask
-	 *            Bit mask representing the types to include in the view. The
-	 *            following are the possible types (type=<mask_hex>): File=0x01,
-	 *            Project=0x02, Table=0x04, Folder=0x08, View=0x10, Docker=0x20.
+	 * @param viewEntityType The <a href=
+	 *                       "${org.sagebionetworks.repo.model.table.ViewEntityType}">entity
+	 *                       type</a> of the view, if omitted use entityview
+	 * @param viewTypeMask   Bit mask representing the types to include in the view.
+	 *                       Not required for a submission view. For an entity view
+	 *                       following are the possible types: (type=<mask_hex>):
+	 *                       File=0x01, Project=0x02, Table=0x04, Folder=0x08,
+	 *                       View=0x10, Docker=0x20.
 	 * 
 	 * @return -
-	 * @throws DatastoreException
-	 *             - Synapse error.
+	 * @throws DatastoreException - Synapse error.
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.OK)
 	@RequestMapping(value = UrlHelpers.COLUMN_TABLE_VIEW_DEFAULT, method = RequestMethod.GET)
 	public @ResponseBody
 	ListWrapper<ColumnModel> getDefaultColumnsForViewType(
-			@RequestParam(value = "viewTypeMask") Long viewTypeMask)
+			@RequestParam(value = "viewEntityType", required = false, defaultValue = "entityview") ViewEntityType viewEntityType,
+			@RequestParam(value = "viewTypeMask", required = false) Long viewTypeMask)
 			throws DatastoreException, NotFoundException {
-		List<ColumnModel> results = serviceProvider.getTableServices()
-				.getDefaultViewColumnsForType(viewTypeMask);
+		List<ColumnModel> results = serviceProvider.getTableServices().getDefaultViewColumnsForType(viewEntityType, viewTypeMask);
 		return ListWrapper.wrap(results, ColumnModel.class);
 	}
 	
@@ -457,6 +487,7 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_TRANSACTION_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -494,6 +525,7 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws AsynchJobFailedException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_TRANSACTION_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -597,6 +629,7 @@ public class TableController {
 	 * @throws IOException
 	 */
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_APPEND_ROW_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -635,6 +668,7 @@ public class TableController {
 	 * @throws AsynchJobFailedException
 	 */
 	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_APPEND_ROW_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -649,6 +683,7 @@ public class TableController {
 	}
 
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_DELETE_ROWS, method = RequestMethod.POST)
 	public @ResponseBody
@@ -702,6 +737,7 @@ public class TableController {
 	 * @throws IOException
 	 */
 	@ResponseStatus(HttpStatus.OK)
+	@RequiredScope({view})
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_FILE_HANDLES, method = RequestMethod.POST)
 	public @ResponseBody
 	TableFileHandleResults getFileHandles(
@@ -738,9 +774,9 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_FILE, method = RequestMethod.GET)
-	public @ResponseBody
-	void fileRedirectURLForRow(
+	public void fileRedirectURLForRow(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String id, @PathVariable String columnId,
 			@PathVariable Long rowId, @PathVariable Long versionNumber,
@@ -778,9 +814,9 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({download})
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_FILE_PREVIEW, method = RequestMethod.GET)
-	public @ResponseBody
-	void filePreviewRedirectURLForRow(
+	public void filePreviewRedirectURLForRow(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId,
 			@PathVariable String id, @PathVariable String columnId,
 			@PathVariable Long rowId, @PathVariable Long versionNumber,
@@ -823,22 +859,12 @@ public class TableController {
 	 * This services depends on an index that is created/update asynchronously
 	 * from table creation and update events. This means there could be short
 	 * window of time when the index is inconsistent with the true state of the
-	 * table. When a query is run with the isConsistent parameter set to true
-	 * (the default) and the index is out-of-sych, then a status code of 202
+	 * table. When the index is out-of-synch, then a status code of 202
 	 * (ACCEPTED) will be returned and the response body will be a <a
 	 * href="${org.sagebionetworks.repo.model.table.TableStatus}"
 	 * >TableStatus</a> object. The TableStatus will indicates the current
 	 * status of the index including how much work is remaining until the index
 	 * is consistent with the truth of the table.
-	 * </p>
-	 * <p>
-	 * isConsistent Defaults to true. When true, a query will be run only if the
-	 * index is up-to-date with all changes to the table and a read-lock is
-	 * successfully acquired on the index. When set to false, the query will be
-	 * run against the index regardless of the state of the index and without
-	 * attempting to acquire a read-lock. When isConsistent is set to false the
-	 * query results will not contain an etag so the results cannot be used as
-	 * input to a table update.
 	 * </p>
 	 * <p>
 	 * The 'partsMask' is an integer "mask" that can be combined into to request
@@ -867,15 +893,6 @@ public class TableController {
 	 * @param id
 	 *            The ID of the TableEntity.
 	 * @param query
-	 * @param isConsistent
-	 *            Defaults to true. When true, a query will be run only if the
-	 *            index is up-to-date with all changes to the table and a
-	 *            read-lock is successfully acquired on the index. When set to
-	 *            false, the query will be run against the index regardless of
-	 *            the state of the index and without attempting to acquire a
-	 *            read-lock. When isConsistent is set to false the query results
-	 *            will not contain an etag so the results cannot be used as
-	 *            input to a table update.
 	 * @param countOnly
 	 *            When this parameter is included and set to 'true', the passed
 	 *            query will be converted into a count query. This means the
@@ -890,6 +907,7 @@ public class TableController {
 	 * @throws TableUnavailableException
 	 * @throws TableFailedException
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_QUERY_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -928,6 +946,7 @@ public class TableController {
 	 * @throws AsynchJobFailedException
 	 *             when the asynchronous job failed
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_QUERY_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -959,6 +978,7 @@ public class TableController {
 	 * @throws IOException
 	 */
 	@Deprecated
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_QUERY_NEXT_PAGE_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -999,6 +1019,7 @@ public class TableController {
 	 * @throws NotReadyException
 	 */
 	@Deprecated
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_QUERY_NEXT_PAGE_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -1013,6 +1034,7 @@ public class TableController {
 	}
 
 	@Deprecated
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_DOWNLOAD_CSV_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -1024,6 +1046,7 @@ public class TableController {
 	}
 
 	@Deprecated
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_DOWNLOAD_CSV_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -1048,6 +1071,7 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_DOWNLOAD_CSV_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -1087,6 +1111,7 @@ public class TableController {
 	 * @throws AsynchJobFailedException
 	 * @throws NotReadyException
 	 */
+	@RequiredScope({view,download})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_DOWNLOAD_CSV_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -1117,6 +1142,7 @@ public class TableController {
 	 * @throws NotFoundException
 	 * @throws IOException
 	 */
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_UPLOAD_CSV_PREVIEW_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -1152,6 +1178,7 @@ public class TableController {
 	 * @throws AsynchJobFailedException
 	 * @throws NotReadyException
 	 */
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_UPLOAD_CSV_PREVIEW_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -1165,6 +1192,7 @@ public class TableController {
 	}
 
 	@Deprecated
+	@RequiredScope({view,modify})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_UPLOAD_CSV_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
@@ -1176,6 +1204,7 @@ public class TableController {
 	}
 
 	@Deprecated
+	@RequiredScope({view})
 	@ResponseStatus(HttpStatus.CREATED)
 	@RequestMapping(value = UrlHelpers.TABLE_UPLOAD_CSV_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
@@ -1215,6 +1244,7 @@ public class TableController {
 	 * @throws IOException
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({view,modify})
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_UPLOAD_CSV_ASYNC_START, method = RequestMethod.POST)
 	public @ResponseBody
 	AsyncJobId csvUploadAsyncStart(
@@ -1257,6 +1287,7 @@ public class TableController {
 	 * @throws NotReadyException
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({view})
 	@RequestMapping(value = UrlHelpers.ENTITY_TABLE_UPLOAD_CSV_ASYNC_GET, method = RequestMethod.GET)
 	public @ResponseBody
 	UploadToTableResult csvUploadAsyncGet(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @PathVariable String id,
@@ -1285,15 +1316,64 @@ public class TableController {
 	 * 
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({view})
 	@RequestMapping(value = UrlHelpers.TABLE_COLUMNS_OF_SCOPE, method = RequestMethod.POST)
+	@Deprecated
 	public @ResponseBody
 	ColumnModelPage getPossibleColumnModelsForView(
 			@RequestBody ViewScope viewScope,
-			@RequestParam(value = "nextPageToken", required = false) String nextPageToken) {
+			@RequestParam(value = UrlHelpers.NEXT_PAGE_TOKEN_PARAM, required = false) String nextPageToken) {
 		ValidateArgument.required(viewScope, "viewScope");
 		return serviceProvider.getTableServices()
 				.getPossibleColumnModelsForScopeIds(viewScope,
 						nextPageToken);
+	}
+	
+	/**
+	 * Starts an asynchronous job to compute a page of the possible <a href="${org.sagebionetworks.repo.model.table.ColumnModel}">ColumnModels</a>
+	 * based on the annotations within the provided scope. The result of the job can be fetched using the
+	 * <a href="${GET.column.view.scope.async.get.asyncToken}">GET /column/view/scope/async/get</a> service with the job token returned by this request.
+	 * 
+	 * @param request The request specifies the scope to compute the model against as well as the optional nextPageToken used to fetch subsequent pages
+	 * @return An object containing the id of the asynchronous job whose results can be fetched using the 
+	 * <a href="${GET.column.view.scope.async.get.asyncToken}">GET /column/view/scope/async/get</a> service
+	 * @throws DatastoreException
+	 * @throws NotFoundException
+	 * @throws IOException
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.CREATED)
+	@RequestMapping(value = UrlHelpers.VIEW_COLUMNS_FROM_SCOPE_ASYNC_START, method = RequestMethod.POST)
+	public @ResponseBody AsyncJobId getViewScopeColumnsAsyncStart(
+			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @RequestBody ViewColumnModelRequest request)
+			throws DatastoreException, NotFoundException, IOException {
+		AsynchronousJobStatus job = serviceProvider .getAsynchronousJobServices().startJob(userId, request);
+		AsyncJobId asyncJobId = new AsyncJobId();
+		asyncJobId.setToken(job.getJobId());
+		return asyncJobId;
+	}
+	
+	/**
+	 * Fetches the result of the <a href="${POST.column.view.scope.async.start}">POST /column/view/scope/async/start</a> service that'll contain
+	 * a page of possible <a href="${org.sagebionetworks.repo.model.table.ColumnModel}">ColumnModels</a> within the scope supplied in the original request.
+	 * 
+	 * <p>
+	 * Note: When the result is not ready yet, this method will return a status
+	 * code of 202 (ACCEPTED) and the response body will be a <a
+	 * href="${org.sagebionetworks.repo.model.asynch.AsynchronousJobStatus}"
+	 * >AsynchronousJobStatus</a> object.
+	 * </p>
+	 * @param asyncToken
+	 * @return
+	 * @throws Throwable
+	 */
+	@RequiredScope({view})
+	@ResponseStatus(HttpStatus.CREATED)
+	@RequestMapping(value = UrlHelpers.VIEW_COLUMNS_FROM_SCOPE_ASYNC_GET, method = RequestMethod.GET)
+	public @ResponseBody
+	ViewColumnModelResponse getViewScopeColumnsAsyncGet(@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @PathVariable String asyncToken) throws Throwable {
+		AsynchronousJobStatus jobStatus = serviceProvider.getAsynchronousJobServices().getJobStatusAndThrow(userId, asyncToken);
+		return (ViewColumnModelResponse) jobStatus.getResponseBody();
 	}
 
 	/**
@@ -1308,16 +1388,26 @@ public class TableController {
 	 * @throws ParseException 
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({})
 	@RequestMapping(value = UrlHelpers.TABLE_SQL_TRANSFORM, method = RequestMethod.POST)
 	public @ResponseBody SqlTransformResponse transformSqlRequest(@RequestBody SqlTransformRequest request) throws ParseException {
 		return serviceProvider.getTableServices().transformSqlRequest(request);
 	}
 	
 	/**
-	 * Request to create a new snapshot of a table or view. The provided comment,
-	 * label, and activity ID will be applied to the current version thereby
-	 * creating a snapshot and locking the current version. After the snapshot is
-	 * created a new version will be started with an 'in-progress' label.
+	 * Request to create a new snapshot of a table. The provided comment, label, and
+	 * activity ID will be applied to the current version thereby creating a
+	 * snapshot and locking the current version. After the snapshot is created a new
+	 * version will be started with an 'in-progress' label.
+	 * <p>
+	 * NOTE: This service is for
+	 * <a href= "${org.sagebionetworks.repo.model.table.TableEntity}"
+	 * >TableEntities</a> only. Snapshots of
+	 * <a href= "${org.sagebionetworks.repo.model.table.EntityView}"
+	 * >EntityViews</a> require asynchronous processing and can be created via:
+	 * <a href="${POST.entity.id.table.transaction.async.start}">POST
+	 * /entity/{id}/table/transaction/async/start</a>
+	 * </p>
 	 * 
 	 * @param userId
 	 * @param id
@@ -1325,6 +1415,7 @@ public class TableController {
 	 * @return
 	 */
 	@ResponseStatus(HttpStatus.CREATED)
+	@RequiredScope({view,modify})
 	@RequestMapping(value = UrlHelpers.TABLE_SNAPSHOT, method = RequestMethod.POST)
 	public @ResponseBody SnapshotResponse createSnapshot(
 			@RequestParam(value = AuthorizationConstants.USER_ID_PARAM) Long userId, @PathVariable String id,

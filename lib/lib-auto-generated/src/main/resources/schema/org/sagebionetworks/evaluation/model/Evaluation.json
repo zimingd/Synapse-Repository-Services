@@ -37,7 +37,7 @@
 		},
 		"status": {
 			"type": "object",
-			"description": "The current status of this Evaluation.",
+			"description": "DEPRECATED with no replacement! No longer used in Synapse.",
 			"$ref": "org.sagebionetworks.evaluation.model.EvaluationStatus"
 		},
 		"submissionInstructionsMessage": {
@@ -50,7 +50,7 @@
 		},
 		"quota": {
 			"type":"object",
-			"description":"Maximum submissions per team/participant per submission round",
+			"description":"DEPRECATED: use EvaluationRound API instead. Maximum submissions per team/participant per submission round",
 			"$ref":"org.sagebionetworks.evaluation.model.SubmissionQuota"
 		}
 	}

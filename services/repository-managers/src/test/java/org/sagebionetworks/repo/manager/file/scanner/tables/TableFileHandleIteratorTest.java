@@ -35,6 +35,7 @@ import org.sagebionetworks.table.model.SparseChangeSet;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.AmazonServiceException.ErrorType;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.google.common.collect.ImmutableMap;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,7 +87,7 @@ public class TableFileHandleIteratorTest {
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.COLUMN);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId.toString());
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId);
 		
 		// Call under test
 		ScannedFileHandleAssociation result = iterator.next();
@@ -107,7 +108,7 @@ public class TableFileHandleIteratorTest {
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId.toString());
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId);
 		
 		// Call under test
 		ScannedFileHandleAssociation result = iterator.next();
@@ -131,7 +132,7 @@ public class TableFileHandleIteratorTest {
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId.toString());
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId);
 		
 		// Call under test
 		ScannedFileHandleAssociation result = iterator.next();
@@ -155,7 +156,7 @@ public class TableFileHandleIteratorTest {
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId.toString()).withFileHandleIds(Collections.emptyList());
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId).withFileHandleIds(Collections.emptySet());
 		
 		// Call under test
 		ScannedFileHandleAssociation result = iterator.next();
@@ -191,7 +192,7 @@ public class TableFileHandleIteratorTest {
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId.toString()).withFileHandleIds(Arrays.asList(456L));
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId).withFileHandleIds(Collections.singleton(456L));
 		
 		// Call under test
 		ScannedFileHandleAssociation result = iterator.next();
@@ -211,19 +212,52 @@ public class TableFileHandleIteratorTest {
 		
 		doThrow(ex).when(mockTableChange).loadChangeData(any());
 		
+		Long changeNumber = 123L;
+		
 		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
+		when(mockTableChange.getChangeNumber()).thenReturn(changeNumber);
 		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
 		
-		UnrecoverableException result = assertThrows(UnrecoverableException.class, () -> {			
-			// Call under test
-			iterator.next();
-		});
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId);
 		
-		assertEquals(ex, result.getCause());
+		// Call under test
+		ScannedFileHandleAssociation result = iterator.next();
+		
+		assertEquals(expected, result);
 		
 		verify(mockTableChangeIterator).next();
 		verify(mockTableChange).getChangeType();
 		verify(mockTableChange).loadChangeData(SparseChangeSet.class);
+		verify(mockTableChange).getChangeNumber();
+		
+	}
+	
+	@Test
+	public void testNextWithRowChangeAndAmazonNotFoundS3Exception() throws NotFoundException, IOException {
+		
+		AmazonS3Exception ex = new AmazonS3Exception("Not found");
+		
+		ex.setStatusCode(404);
+		
+		doThrow(ex).when(mockTableChange).loadChangeData(any());
+		
+		Long changeNumber = 123L;
+		
+		when(mockTableChange.getChangeType()).thenReturn(TableChangeType.ROW);
+		when(mockTableChange.getChangeNumber()).thenReturn(changeNumber);
+		when(mockTableChangeIterator.next()).thenReturn(mockTableChange);
+		
+		ScannedFileHandleAssociation expected = new ScannedFileHandleAssociation(tableId);
+		
+		// Call under test
+		ScannedFileHandleAssociation result = iterator.next();
+		
+		assertEquals(expected, result);
+		
+		verify(mockTableChangeIterator).next();
+		verify(mockTableChange).getChangeType();
+		verify(mockTableChange).loadChangeData(SparseChangeSet.class);
+		verify(mockTableChange).getChangeNumber();
 		
 	}
 	

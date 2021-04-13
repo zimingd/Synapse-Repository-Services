@@ -406,4 +406,9 @@ public class DBOSubmissionDAOImpl implements SubmissionDAO{
 			}
 		}, limit, offset);
 	}
+	
+	@Override
+	public void truncateAll() {
+		jdbcTemplate.update("DELETE FROM " + TABLE_DATA_ACCESS_SUBMISSION);
+	}
 }

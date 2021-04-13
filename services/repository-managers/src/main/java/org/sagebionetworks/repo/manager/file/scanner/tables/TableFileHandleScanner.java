@@ -10,11 +10,11 @@ import java.util.Map;
 import org.apache.commons.collections4.IteratorUtils;
 import org.sagebionetworks.repo.manager.file.scanner.BasicFileHandleAssociationScanner;
 import org.sagebionetworks.repo.manager.file.scanner.FileHandleAssociationScanner;
-import org.sagebionetworks.repo.manager.file.scanner.IdRange;
 import org.sagebionetworks.repo.manager.file.scanner.ScannedFileHandleAssociation;
 import org.sagebionetworks.repo.manager.table.TableEntityManager;
 import org.sagebionetworks.repo.model.dbo.DMLUtils;
 import org.sagebionetworks.repo.model.dbo.migration.QueryStreamIterable;
+import org.sagebionetworks.repo.model.file.IdRange;
 import org.sagebionetworks.util.NestedMappingIterator;
 import org.sagebionetworks.util.ValidateArgument;
 import org.springframework.jdbc.core.RowMapper;
@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 
 public class TableFileHandleScanner implements FileHandleAssociationScanner {
 
+	private static final long MAX_SCAN_ID_RANGE = 10000;
 	private static final long MAX_TABLES_LIMIT = 10000;
 	
 	private static final String SQL_SELECT_MIN_MAX = "SELECT MIN(" + COL_TABLE_ROW_TABLE_ID + "), MAX(" + COL_TABLE_ROW_TABLE_ID+") FROM " + TABLE_ROW_CHANGE;
@@ -41,6 +42,11 @@ public class TableFileHandleScanner implements FileHandleAssociationScanner {
 	public TableFileHandleScanner(TableEntityManager tableManager, NamedParameterJdbcTemplate namedJdbcTemplate) {
 		this.tableManager = tableManager;
 		this.namedJdbcTemplate = namedJdbcTemplate;
+	}
+	
+	@Override
+	public long getMaxIdRangeSize() {
+		return MAX_SCAN_ID_RANGE;
 	}
 	
 	@Override
